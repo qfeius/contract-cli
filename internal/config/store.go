@@ -60,6 +60,8 @@ type Profile struct {
 	Name                           string       `json:"name"`
 	Environment                    string       `json:"environment"`
 	ServerURL                      string       `json:"server_url"`
+	OpenPlatformBaseURL            string       `json:"open_platform_base_url,omitempty"`
+	BotTokenEndpoint               string       `json:"bot_token_endpoint,omitempty"`
 	ProtectedResourceMetadataURL   string       `json:"protected_resource_metadata_url"`
 	AuthorizationServerMetadataURL string       `json:"authorization_server_metadata_url"`
 	Resource                       string       `json:"resource"`
@@ -88,6 +90,8 @@ type rawProfile struct {
 	Name                           string       `json:"name"`
 	Environment                    string       `json:"environment"`
 	ServerURL                      string       `json:"server_url"`
+	OpenPlatformBaseURL            string       `json:"open_platform_base_url,omitempty"`
+	BotTokenEndpoint               string       `json:"bot_token_endpoint,omitempty"`
 	ProtectedResourceMetadataURL   string       `json:"protected_resource_metadata_url"`
 	AuthorizationServerMetadataURL string       `json:"authorization_server_metadata_url"`
 	Resource                       string       `json:"resource"`
@@ -289,6 +293,8 @@ func decodeProfile(data []byte) (Profile, error) {
 		Name:                           raw.Name,
 		Environment:                    raw.Environment,
 		ServerURL:                      raw.ServerURL,
+		OpenPlatformBaseURL:            raw.OpenPlatformBaseURL,
+		BotTokenEndpoint:               raw.BotTokenEndpoint,
 		ProtectedResourceMetadataURL:   raw.ProtectedResourceMetadataURL,
 		AuthorizationServerMetadataURL: raw.AuthorizationServerMetadataURL,
 		Resource:                       raw.Resource,

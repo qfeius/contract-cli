@@ -16,14 +16,16 @@ func TestStoreRoundTrip(t *testing.T) {
 	store := config.NewStore(t.TempDir())
 	expiry := time.Date(2026, 4, 8, 18, 0, 0, 0, time.UTC)
 	profile := config.Profile{
-		Name:            "contract-group",
-		Environment:     "dev",
-		ServerURL:       "http://example.com/mcp",
-		Resource:        "http://example.com/mcp-servers",
-		Scopes:          []string{"mcp:tools", "mcp:resources"},
-		BusinessType:    "contract",
-		ClientName:      "contract-cli",
-		DefaultIdentity: config.IdentityBot,
+		Name:                "contract-group",
+		Environment:         "dev",
+		ServerURL:           "http://example.com/mcp",
+		OpenPlatformBaseURL: "https://dev-open.qtech.cn",
+		BotTokenEndpoint:    "https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal",
+		Resource:            "http://example.com/mcp-servers",
+		Scopes:              []string{"mcp:tools", "mcp:resources"},
+		BusinessType:        "contract",
+		ClientName:          "contract-cli",
+		DefaultIdentity:     config.IdentityBot,
 		Identities: config.Identities{
 			User: config.UserIdentity{
 				ClientID:              "zsdcli_test",
@@ -68,6 +70,12 @@ func TestStoreRoundTrip(t *testing.T) {
 	}
 	if got.Identities.Bot.Token == nil || got.Identities.Bot.Token.AccessToken != "bot-token" {
 		t.Fatalf("bot token mismatch: got %+v", got.Identities.Bot.Token)
+	}
+	if got.BotTokenEndpoint != profile.BotTokenEndpoint {
+		t.Fatalf("bot token endpoint mismatch: got %q want %q", got.BotTokenEndpoint, profile.BotTokenEndpoint)
+	}
+	if got.OpenPlatformBaseURL != profile.OpenPlatformBaseURL {
+		t.Fatalf("open platform base url mismatch: got %q want %q", got.OpenPlatformBaseURL, profile.OpenPlatformBaseURL)
 	}
 	if got.DefaultIdentity != config.IdentityBot {
 		t.Fatalf("default identity mismatch: got %q want %q", got.DefaultIdentity, config.IdentityBot)

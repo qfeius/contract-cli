@@ -2,11 +2,15 @@ package oauth_test
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
+	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/oauth"
 )
 
@@ -78,6 +82,119 @@ func TestExchangeAuthorizationCode(t *testing.T) {
 	}
 	if time.Until(token.Expiry) <= 0 {
 		t.Fatalf("expected future expiry, got %v", token.Expiry)
+	}
+}
+
+func TestExchangeTenantAccessToken(t *testing.T) {
+	t.Parallel()
+
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s", r.Method)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Fatalf("content-type = %q", got)
+		}
+		if r.URL.String() != "https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal" {
+			t.Fatalf("url = %q", r.URL.String())
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll() error = %v", err)
+		}
+		var payload map[string]string
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("Unmarshal() error = %v", err)
+		}
+		if payload["appId"] != "cli_bot_123" {
+			t.Fatalf("appId = %q", payload["appId"])
+		}
+		if payload["appSecret"] != "bot-secret" {
+			t.Fatalf("appSecret = %q", payload["appSecret"])
+		}
+
+		return jsonResponse(`{"code":0,"expire":7200,"msg":"ok","tenant_access_token":"tenant-token"}`), nil
+	})}
+
+	token, err := oauth.ExchangeTenantAccessToken(
+		context.Background(),
+		client,
+		nil,
+		"https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal",
+		"cli_bot_123",
+		"bot-secret",
+	)
+	if err != nil {
+		t.Fatalf("ExchangeTenantAccessToken() error = %v", err)
+	}
+	if token.AccessToken != "tenant-token" {
+		t.Fatalf("access_token = %q", token.AccessToken)
+	}
+	if token.TokenType != "Bearer" {
+		t.Fatalf("token_type = %q", token.TokenType)
+	}
+	if time.Until(token.Expiry) <= 0 {
+		t.Fatalf("expected future expiry, got %v", token.Expiry)
+	}
+}
+
+func TestExchangeTenantAccessTokenReturnsErrors(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		response   *http.Response
+		wantErr    string
+		checkToken func(*testing.T, *config.Token)
+	}{
+		{
+			name:     "non-2xx status",
+			response: responseWithStatus(http.StatusBadGateway, `upstream failed`),
+			wantErr:  "tenant access token request failed with status 502",
+		},
+		{
+			name:     "business error",
+			response: jsonResponse(`{"code":999,"msg":"invalid app"}`),
+			wantErr:  "tenant access token request failed: invalid app",
+		},
+		{
+			name:     "missing token",
+			response: jsonResponse(`{"code":0,"expire":7200,"msg":"ok"}`),
+			wantErr:  "tenant access token response missing tenant_access_token",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if !strings.Contains(r.URL.String(), "tenant_access_token/internal") {
+					t.Fatalf("unexpected url: %s", r.URL.String())
+				}
+				return tc.response, nil
+			})}
+
+			token, err := oauth.ExchangeTenantAccessToken(
+				context.Background(),
+				client,
+				nil,
+				"https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal",
+				"cli_bot_123",
+				"bot-secret",
+			)
+			if err == nil {
+				t.Fatalf("expected error")
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("error = %q, want substring %q", err.Error(), tc.wantErr)
+			}
+			if token != nil {
+				t.Fatalf("token = %+v, want nil", token)
+			}
+		})
 	}
 }
 

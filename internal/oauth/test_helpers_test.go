@@ -19,3 +19,11 @@ func jsonResponse(payload string) *http.Response {
 		Body:       io.NopCloser(strings.NewReader(payload)),
 	}
 }
+
+func responseWithStatus(statusCode int, payload string) *http.Response {
+	return &http.Response{
+		StatusCode: statusCode,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(payload)),
+	}
+}

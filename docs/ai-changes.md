@@ -1,6 +1,16 @@
 # AI 变更记录
 
 - 2026-04-14
+  变更摘要：新增开放平台统一 client、输出渲染层和 `api call` 命令，为后续业务域命令封装打底。
+  涉及文件/模块：`internal/openplatform`、`internal/output`、`internal/cli`、`internal/config`、`docs/ai-changes.md`
+  关键逻辑/决策：profile 新增 `open_platform_base_url` 并由 `config add --env dev` 写入 `https://dev-open.qtech.cn`；新增统一的相对路径 `/open-apis/...` 校验、token 解析与 HTTP 请求包装；`contract-cli api call` 支持 `--profile/--as/--file/--data/--output/--raw/--header`；新增 `vendor` 域 service 样板和 CLI 禁止直接发 HTTP 的架构约束测试。
+
+- 2026-04-14
+  变更摘要：实现 bot 身份 `tenant_access_token` 登录、状态展示与保留凭证登出语义。
+  涉及文件/模块：`internal/cli`、`internal/oauth`、`internal/config`、`docs/ai-changes.md`
+  关键逻辑/决策：`config add` 为 `dev` profile 写入 `bot_token_endpoint`；`auth login --as bot` 立即调用 `https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal` 换 token 并保存过期时间；token 兑换失败时保留新 `appId/appSecret` 但不切默认身份；`auth status --as bot` 区分 `authorized/expired/configured/unconfigured`；`auth logout --as bot` 仅清 token、保留 bot 凭证。
+
+- 2026-04-14
   变更摘要：清理旧的根目录二进制产物，并新增 Git 忽略规则避免本地产物再次出现在仓库根目录变更中。
   涉及文件/模块：`.gitignore`、`docs/ai-changes.md`
   关键逻辑/决策：删除历史 `democli` 二进制；将根目录 `contract-cli` 与 `democli` 纳入忽略规则，保留本地可执行文件使用能力，同时避免构建产物污染版本管理视图。

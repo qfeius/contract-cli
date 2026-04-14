@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -57,6 +58,18 @@ type tokenResponse struct {
 	ExpiresIn    int64  `json:"expires_in"`
 	Scope        string `json:"scope"`
 	RefreshToken string `json:"refresh_token"`
+}
+
+type tenantAccessTokenRequest struct {
+	AppID     string `json:"appId"`
+	AppSecret string `json:"appSecret"`
+}
+
+type tenantAccessTokenResponse struct {
+	Code              int    `json:"code"`
+	Expire            int64  `json:"expire"`
+	Msg               string `json:"msg"`
+	TenantAccessToken string `json:"tenant_access_token"`
 }
 
 func BuildAuthorizationURL(request AuthorizationRequest) (string, error) {
@@ -130,6 +143,99 @@ func ExchangeAuthorizationCode(ctx context.Context, client *http.Client, logger 
 		token.Expiry = time.Now().Add(time.Duration(payload.ExpiresIn) * time.Second)
 	}
 	return token, nil
+}
+
+func ExchangeTenantAccessToken(ctx context.Context, client *http.Client, logger *slog.Logger, endpoint, appID, appSecret string) (*config.Token, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	if logger != nil {
+		logger.Info("exchange tenant access token", "token_endpoint", endpoint)
+	}
+
+	payload, err := json.Marshal(tenantAccessTokenRequest{
+		AppID:     appID,
+		AppSecret: appSecret,
+	})
+	if err != nil {
+		if logger != nil {
+			logger.Error("encode tenant access token request failed", "token_endpoint", endpoint, "error", err.Error())
+		}
+		return nil, fmt.Errorf("encode tenant access token request: %w", err)
+	}
+
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		if logger != nil {
+			logger.Error("build tenant access token request failed", "token_endpoint", endpoint, "error", err.Error())
+		}
+		return nil, fmt.Errorf("build tenant access token request: %w", err)
+	}
+	httpRequest.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(httpRequest)
+	if err != nil {
+		if logger != nil {
+			logger.Error("perform tenant access token request failed", "token_endpoint", endpoint, "error", err.Error())
+		}
+		return nil, fmt.Errorf("perform tenant access token request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+		err = fmt.Errorf("tenant access token request failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		if logger != nil {
+			logger.Error("tenant access token request returned non-success status", "token_endpoint", endpoint, "status_code", resp.StatusCode, "error", err.Error())
+		}
+		return nil, err
+	}
+
+	var response tenantAccessTokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		if logger != nil {
+			logger.Error("decode tenant access token response failed", "token_endpoint", endpoint, "error", err.Error())
+		}
+		return nil, fmt.Errorf("decode tenant access token response: %w", err)
+	}
+	if response.Code != 0 {
+		err = fmt.Errorf("tenant access token request failed: %s", emptyTenantAccessTokenMessage(response.Msg))
+		if logger != nil {
+			logger.Error("tenant access token request returned business error", "token_endpoint", endpoint, "code", response.Code, "error", err.Error())
+		}
+		return nil, err
+	}
+	if response.TenantAccessToken == "" {
+		err = fmt.Errorf("tenant access token response missing tenant_access_token")
+		if logger != nil {
+			logger.Error("tenant access token response missing token", "token_endpoint", endpoint, "error", err.Error())
+		}
+		return nil, err
+	}
+
+	token := &config.Token{
+		AccessToken: response.TenantAccessToken,
+		TokenType:   "Bearer",
+	}
+	if response.Expire > 0 {
+		token.Expiry = time.Now().Add(time.Duration(response.Expire) * time.Second)
+	}
+
+	if logger != nil {
+		attrs := []any{"token_endpoint", endpoint}
+		if !token.Expiry.IsZero() {
+			attrs = append(attrs, "expires_at", token.Expiry.Format(time.RFC3339))
+		}
+		logger.Info("tenant access token exchange completed", attrs...)
+	}
+	return token, nil
+}
+
+func emptyTenantAccessTokenMessage(message string) string {
+	if strings.TrimSpace(message) == "" {
+		return "unknown error"
+	}
+	return message
 }
 
 func StartCallbackServer(redirectURL string) (*CallbackServer, error) {

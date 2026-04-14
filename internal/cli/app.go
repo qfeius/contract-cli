@@ -44,6 +44,8 @@ type App struct {
 
 type environmentPreset struct {
 	ServerURL                    string
+	OpenPlatformBaseURL          string
+	BotTokenEndpoint             string
 	ProtectedResourceMetadataURL string
 	RedirectURL                  string
 	Scopes                       []string
@@ -111,9 +113,10 @@ func New(options Options) *App {
 		openBrowser: opener,
 	}
 	app.botProvider = botAuthProvider{
-		logger:    logger,
-		secrets:   secrets,
-		lookupEnv: lookupEnv,
+		httpClient: httpClient,
+		logger:     logger,
+		secrets:    secrets,
+		lookupEnv:  lookupEnv,
 	}
 	return app
 }
@@ -131,6 +134,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.runConfig(ctx, args[1:])
 	case "auth":
 		return a.runAuth(ctx, args[1:])
+	case "api":
+		return a.runAPI(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
@@ -143,6 +148,7 @@ func (a *App) printUsage() {
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli auth status [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli auth logout [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli auth use [flags]")
+	_, _ = fmt.Fprintln(a.stdout, "  contract-cli api call [flags]")
 }
 
 func (a *App) runConfig(ctx context.Context, args []string) error {
@@ -217,6 +223,8 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 		Name:                           profileName,
 		Environment:                    env,
 		ServerURL:                      serverURL,
+		OpenPlatformBaseURL:            preset.OpenPlatformBaseURL,
+		BotTokenEndpoint:               preset.BotTokenEndpoint,
 		ProtectedResourceMetadataURL:   protectedResourceURL,
 		AuthorizationServerMetadataURL: discovery.AuthorizationServerMetadataURL,
 		Resource:                       discovery.ProtectedResource.Resource,
@@ -243,6 +251,7 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 
 	_, _ = fmt.Fprintf(a.stdout, "Profile %q saved for %s.\n", profileName, env)
 	_, _ = fmt.Fprintf(a.stdout, "Server URL: %s\n", serverURL)
+	_, _ = fmt.Fprintf(a.stdout, "Open Platform URL: %s\n", profile.OpenPlatformBaseURL)
 	_, _ = fmt.Fprintf(a.stdout, "Authorization endpoint: %s\n", profile.Identities.User.AuthorizationEndpoint)
 	return nil
 }
@@ -307,6 +316,12 @@ func (a *App) runAuthLogin(ctx context.Context, args []string) error {
 		AppSecret:     appSecret,
 	})
 	if err != nil {
+		if identity == config.IdentityBot {
+			if saveErr := a.store.SaveProfile(profile); saveErr != nil {
+				a.logger.Error("auth login failed while saving bot profile", "profile", profile.Name, "identity", identity, "error", saveErr.Error())
+				return saveErr
+			}
+		}
 		a.logger.Error("auth login failed", "profile", profile.Name, "identity", identity, "error", err.Error())
 		return err
 	}
@@ -353,6 +368,7 @@ func (a *App) runAuthStatus(ctx context.Context, args []string) error {
 	_, _ = fmt.Fprintf(a.stdout, "Profile: %s\n", profile.Name)
 	_, _ = fmt.Fprintf(a.stdout, "Environment: %s\n", profile.Environment)
 	_, _ = fmt.Fprintf(a.stdout, "Server URL: %s\n", profile.ServerURL)
+	_, _ = fmt.Fprintf(a.stdout, "Open Platform URL: %s\n", emptyFallback(profile.OpenPlatformBaseURL, "<not-configured>"))
 	_, _ = fmt.Fprintf(a.stdout, "Default Identity: %s\n", defaultIdentity(profile))
 	_, _ = fmt.Fprintf(a.stdout, "Identity: %s\n", identity)
 	for _, field := range view.Fields {
@@ -446,6 +462,8 @@ func resolveEnvironment(name string) (environmentPreset, error) {
 	case "dev":
 		return environmentPreset{
 			ServerURL:                    "http://higress-gateway.higress-system/mcp-servers/contract-group",
+			OpenPlatformBaseURL:          "https://dev-open.qtech.cn",
+			BotTokenEndpoint:             "https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal",
 			ProtectedResourceMetadataURL: "http://higress-gateway.higress-system/.well-known/oauth-protected-resource",
 			RedirectURL:                  "http://127.0.0.1:8000/callback",
 			Scopes:                       []string{"mcp:tools", "mcp:resources"},

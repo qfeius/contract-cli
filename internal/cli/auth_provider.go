@@ -169,9 +169,10 @@ func (p userAuthProvider) Logout(_ context.Context, profile *config.Profile, _ a
 }
 
 type botAuthProvider struct {
-	logger    *slog.Logger
-	secrets   *config.SecretsStore
-	lookupEnv func(string) (string, bool)
+	httpClient *http.Client
+	logger     *slog.Logger
+	secrets    *config.SecretsStore
+	lookupEnv  func(string) (string, bool)
 }
 
 type botCredentials struct {
@@ -180,16 +181,23 @@ type botCredentials struct {
 	source    string
 }
 
-func (p botAuthProvider) Login(_ context.Context, profile *config.Profile, options authCommandOptions) (string, error) {
+func (p botAuthProvider) Login(ctx context.Context, profile *config.Profile, options authCommandOptions) (string, error) {
 	p.logger.Info("bot auth login started", "profile", profile.Name)
 
 	credentials, err := p.resolveCredentials(*profile, options, true)
 	if err != nil {
+		p.logger.Error("bot auth resolve credentials failed", "profile", profile.Name, "error", err.Error())
+		return "", err
+	}
+	if profile.BotTokenEndpoint == "" {
+		err = fmt.Errorf("bot identity is not configured; run `contract-cli config add --env %s --name %s` first", profile.Environment, profile.Name)
+		p.logger.Error("bot auth token endpoint missing", "profile", profile.Name, "environment", profile.Environment, "error", err.Error())
 		return "", err
 	}
 
 	secretKey := config.BotSecretKey(profile.Name)
 	if err := p.secrets.Set(secretKey, credentials.appSecret); err != nil {
+		p.logger.Error("bot auth save secret failed", "profile", profile.Name, "error", err.Error())
 		return "", err
 	}
 
@@ -201,7 +209,24 @@ func (p botAuthProvider) Login(_ context.Context, profile *config.Profile, optio
 		Token:        nil,
 	}
 	p.logger.Info("bot credentials saved", "profile", profile.Name, "source", credentials.source)
-	return fmt.Sprintf("Bot credentials saved for profile %q; token exchange not implemented yet.", profile.Name), nil
+
+	p.logger.Info("bot token exchange started", "profile", profile.Name, "token_endpoint", profile.BotTokenEndpoint)
+	token, err := oauth.ExchangeTenantAccessToken(ctx, p.httpClient, p.logger, profile.BotTokenEndpoint, credentials.appID, credentials.appSecret)
+	if err != nil {
+		p.logger.Error("bot token exchange failed", "profile", profile.Name, "token_endpoint", profile.BotTokenEndpoint, "error", err.Error())
+		profile.Identities.Bot.Token = nil
+		return "", err
+	}
+
+	profile.Identities.Bot.Token = token
+	p.logger.Info("bot auth login completed", "profile", profile.Name, "token_endpoint", profile.BotTokenEndpoint, "expires_at", token.Expiry.Format(time.RFC3339))
+
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("Bot authorization succeeded for profile %q.", profile.Name))
+	if !token.Expiry.IsZero() {
+		builder.WriteString(fmt.Sprintf("\nAccess token expires at: %s", token.Expiry.Format(time.RFC3339)))
+	}
+	return builder.String(), nil
 }
 
 func (p botAuthProvider) Status(_ context.Context, profile config.Profile, options authCommandOptions) (authStatusView, error) {
@@ -218,29 +243,39 @@ func (p botAuthProvider) Status(_ context.Context, profile config.Profile, optio
 	if credentials.appID != "" && credentials.appSecret != "" {
 		authorization = "configured"
 	}
+	if token := profile.Identities.Bot.Token; token != nil && token.AccessToken != "" {
+		authorization = "authorized"
+		if !token.Expiry.IsZero() && time.Now().After(token.Expiry) {
+			authorization = "expired"
+		}
+	}
+
+	fields := []authStatusField{
+		{Label: "Auth Mode", Value: emptyFallback(profile.Identities.Bot.AuthMode, config.BotAuthModeAppCredentials)},
+		{Label: "App ID", Value: emptyFallback(credentials.appID, "<not-configured>")},
+		{Label: "App Secret", Value: secretState},
+		{Label: "Credential Source", Value: credentials.source},
+		{Label: "Token Endpoint", Value: emptyFallback(profile.BotTokenEndpoint, "<not-configured>")},
+		{Label: "Token Protocol", Value: "tenant_access_token/internal"},
+	}
+	if token := profile.Identities.Bot.Token; token != nil && !token.Expiry.IsZero() {
+		fields = append(fields, authStatusField{
+			Label: "Expires At",
+			Value: token.Expiry.Format(time.RFC3339),
+		})
+	}
 
 	return authStatusView{
 		Authorization: authorization,
-		Fields: []authStatusField{
-			{Label: "Auth Mode", Value: emptyFallback(profile.Identities.Bot.AuthMode, config.BotAuthModeAppCredentials)},
-			{Label: "App ID", Value: emptyFallback(credentials.appID, "<not-configured>")},
-			{Label: "App Secret", Value: secretState},
-			{Label: "Credential Source", Value: credentials.source},
-			{Label: "Token Protocol", Value: "not_implemented"},
-		},
+		Fields:        fields,
 	}, nil
 }
 
 func (p botAuthProvider) Logout(_ context.Context, profile *config.Profile, _ authCommandOptions) (string, error) {
-	p.logger.Info("bot auth logout", "profile", profile.Name)
-
-	if profile.Identities.Bot.SecretRef != "" {
-		if err := p.secrets.Delete(profile.Identities.Bot.SecretRef); err != nil {
-			return "", err
-		}
-	}
-	profile.Identities.Bot = config.BotIdentity{}
-	return fmt.Sprintf("Logged out bot identity for profile %q.", profile.Name), nil
+	p.logger.Info("bot auth logout", "profile", profile.Name, "preserve_credentials", true)
+	profile.Identities.Bot.Token = nil
+	p.logger.Info("bot auth logout completed", "profile", profile.Name, "preserve_credentials", true)
+	return fmt.Sprintf("Logged out bot token for profile %q while keeping app credentials.", profile.Name), nil
 }
 
 func (p botAuthProvider) resolveCredentials(profile config.Profile, options authCommandOptions, requireComplete bool) (botCredentials, error) {
