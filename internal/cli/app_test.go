@@ -31,6 +31,7 @@ func TestRunWithoutArgsPrintsContractCLIUsage(t *testing.T) {
 
 	if !strings.Contains(stdout.String(), "contract-cli config add [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli auth login [flags]") ||
+		!strings.Contains(stdout.String(), "contract-cli version") ||
 		!strings.Contains(stdout.String(), "contract-cli api call [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm vendor <subcommand> [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm legal <subcommand> [flags]") ||
@@ -44,6 +45,57 @@ func TestRunWithoutArgsPrintsContractCLIUsage(t *testing.T) {
 		strings.Contains(stdout.String(), "contract-cli mdm-legal <subcommand> [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli mdm-fields [flags]") {
 		t.Fatalf("usage should not contain legacy command names: %s", stdout.String())
+	}
+}
+
+func TestVersionCommandPrintsBuildInfo(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := cli.New(cli.Options{
+		Stdout: stdout,
+		Stderr: stderr,
+		Store:  config.NewStore(t.TempDir()),
+	})
+
+	if err := app.Run(context.Background(), []string{"version"}); err != nil {
+		t.Fatalf("Run(version) error = %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "contract-cli") {
+		t.Fatalf("version output should contain binary name: %s", output)
+	}
+	if !strings.Contains(output, "version dev") {
+		t.Fatalf("version output should contain default version: %s", output)
+	}
+	if !strings.Contains(output, "commit unknown") {
+		t.Fatalf("version output should contain default commit: %s", output)
+	}
+	if !strings.Contains(output, "built unknown") {
+		t.Fatalf("version output should contain default build date: %s", output)
+	}
+}
+
+func TestVersionFlagPrintsBuildInfo(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := cli.New(cli.Options{
+		Stdout: stdout,
+		Stderr: stderr,
+		Store:  config.NewStore(t.TempDir()),
+	})
+
+	if err := app.Run(context.Background(), []string{"--version"}); err != nil {
+		t.Fatalf("Run(--version) error = %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "contract-cli") || !strings.Contains(output, "version dev") {
+		t.Fatalf("unexpected version flag output: %s", output)
 	}
 }
 
@@ -78,7 +130,6 @@ func TestConfigAddAndAuthStatus(t *testing.T) {
 		"config", "add",
 		"--name", "contract-group",
 		"--env", "dev",
-		"--server-url", testServer.serverURL,
 		"--resource-metadata-url", testServer.protectedResourceMetadataURL,
 		"--redirect-url", "http://127.0.0.1:19090/callback",
 	})
@@ -88,6 +139,9 @@ func TestConfigAddAndAuthStatus(t *testing.T) {
 
 	if !strings.Contains(stdout.String(), `Profile "contract-group" saved`) {
 		t.Fatalf("unexpected config add output: %s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "Server URL: ") {
+		t.Fatalf("config add output should not contain removed server url: %s", stdout.String())
 	}
 	savedProfile, err := store.GetProfile("contract-group")
 	if err != nil {
@@ -107,6 +161,78 @@ func TestConfigAddAndAuthStatus(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Identity: user") || !strings.Contains(stdout.String(), "Authorization: unauthorized") {
 		t.Fatalf("unexpected auth status output: %s", stdout.String())
 	}
+	if strings.Contains(stdout.String(), "Server URL: ") {
+		t.Fatalf("auth status output should not contain removed server url: %s", stdout.String())
+	}
+}
+
+func TestConfigAddUsesPublicDevPresetByDefault(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	store := config.NewStore(t.TempDir())
+
+	app := cli.New(cli.Options{
+		Stdout: stdout,
+		Stderr: stderr,
+		Store:  store,
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				switch req.URL.String() {
+				case "https://dev-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract":
+					return jsonResponse(`{"issuer":"common-organization-v2","authorization_endpoint":"https://example.test/oauth/authorize/contract","token_endpoint":"https://example.test/oauth/token/contract","registration_endpoint":"https://example.test/oauth/register/contract"}`), nil
+				default:
+					t.Fatalf("unexpected request url: %s", req.URL.String())
+					return nil, nil
+				}
+			}),
+		},
+	})
+
+	if err := app.Run(context.Background(), []string{"config", "add", "--name", "contract-group", "--env", "dev"}); err != nil {
+		t.Fatalf("config add error = %v", err)
+	}
+
+	savedProfile, err := store.GetProfile("contract-group")
+	if err != nil {
+		t.Fatalf("GetProfile() error = %v", err)
+	}
+	if savedProfile.ProtectedResourceMetadataURL != "" {
+		t.Fatalf("protected resource metadata url = %q", savedProfile.ProtectedResourceMetadataURL)
+	}
+	if savedProfile.AuthorizationServerMetadataURL != "https://dev-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract" {
+		t.Fatalf("authorization server metadata url = %q", savedProfile.AuthorizationServerMetadataURL)
+	}
+	if savedProfile.Resource != "http://higress-gateway.higress-system/mcp-servers" {
+		t.Fatalf("resource = %q", savedProfile.Resource)
+	}
+
+	configContent, err := os.ReadFile(store.Path())
+	if err != nil {
+		t.Fatalf("ReadFile(config) error = %v", err)
+	}
+	if strings.Contains(string(configContent), "\"server_url\"") {
+		t.Fatalf("config should not persist removed server_url field: %s", string(configContent))
+	}
+}
+
+func TestConfigAddRejectsRemovedServerURLFlag(t *testing.T) {
+	t.Parallel()
+
+	app := cli.New(cli.Options{
+		Stdout: &bytes.Buffer{},
+		Stderr: &bytes.Buffer{},
+		Store:  config.NewStore(t.TempDir()),
+	})
+
+	err := app.Run(context.Background(), []string{
+		"config", "add",
+		"--server-url", "https://example.test/mcp-servers/contract-group",
+	})
+	if err == nil || !strings.Contains(err.Error(), "flag provided but not defined: -server-url") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestAuthLoginBotStoresCredentialsTokenAndSwitchesDefaultIdentity(t *testing.T) {
@@ -121,7 +247,6 @@ func TestAuthLoginBotStoresCredentialsTokenAndSwitchesDefaultIdentity(t *testing
 	profile := config.Profile{
 		Name:             "contract-group",
 		Environment:      "dev",
-		ServerURL:        "https://example.test/mcp-servers/contract-group",
 		BotTokenEndpoint: "https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal",
 		DefaultIdentity:  config.IdentityUser,
 		Identities: config.Identities{
@@ -469,7 +594,6 @@ func TestAuthStatusBotAndAuthUse(t *testing.T) {
 	profile := config.Profile{
 		Name:             "contract-group",
 		Environment:      "dev",
-		ServerURL:        "https://example.test/mcp-servers/contract-group",
 		BotTokenEndpoint: "https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal",
 		DefaultIdentity:  config.IdentityBot,
 		Identities: config.Identities{
@@ -537,7 +661,6 @@ func TestAuthStatusDefaultsToUserEvenWhenDefaultIdentityIsBot(t *testing.T) {
 	profile := config.Profile{
 		Name:             "contract-group",
 		Environment:      "dev",
-		ServerURL:        "https://example.test/mcp-servers/contract-group",
 		BotTokenEndpoint: "https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal",
 		DefaultIdentity:  config.IdentityBot,
 		Identities: config.Identities{
@@ -764,14 +887,12 @@ func TestAuthLogoutBotKeepsUserTokenAndCredentials(t *testing.T) {
 }
 
 type discoveryServer struct {
-	serverURL                    string
 	protectedResourceMetadataURL string
 }
 
 func newDiscoveryServer(t *testing.T) discoveryServer {
 	t.Helper()
 	return discoveryServer{
-		serverURL:                    "https://example.test/mcp-servers/contract-group",
 		protectedResourceMetadataURL: "https://example.test/.well-known/oauth-protected-resource",
 	}
 }

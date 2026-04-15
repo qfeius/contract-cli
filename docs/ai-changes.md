@@ -1,6 +1,26 @@
 # AI 变更记录
 
 - 2026-04-15
+  变更摘要：补齐源码构建、版本注入、GoReleaser 和 npm/npx 薄包装发布脚手架。
+  涉及文件/模块：`internal/build`、`internal/cli/app.go`、`internal/cli/app_test.go`、`build.sh`、`Makefile`、`package.json`、`scripts/*`、`.goreleaser.yml`、`.github/workflows/release.yml`、`README.md`、`CHANGELOG.md`、`LICENSE`、`tests/cli_e2e/*`、`.gitignore`、`docs/ai-changes.md`
+  关键逻辑/决策：新增 `contract-cli version` / `--version` 并统一从 `internal/build` 读取 `Version/Commit/Date`；`build.sh`、`Makefile`、GoReleaser 和 npm 本地源码回退构建全部复用同一套 ldflags；npm 包采用 thin wrapper 设计，优先从可配置的 `downloadBaseURLTemplate` 下载预编译产物，若当前是源码仓库则回退到本地 `go build`；同时补齐 README/CHANGELOG/UNLICENSED 许可证与 e2e smoke 脚本，形成最小可用的发布骨架。
+
+- 2026-04-15
+  变更摘要：移除未参与运行时链路的 `ServerURL` 配置，以及 `config add` 的 `--server-url` 入口。
+  涉及文件/模块：`internal/config/store.go`、`internal/config/store_test.go`、`internal/cli/app.go`、`internal/cli/app_test.go`、`docs/ai-changes.md`
+  关键逻辑/决策：确认当前 `user` 登录走 `resource + authorization/token/registration endpoint`，`bot` 登录走 `bot_token_endpoint`，开放平台业务请求走 `open_platform_base_url`，`ServerURL` 仅剩保存和展示作用；因此删除 profile 中的 `server_url` 字段、`config add --server-url` flag，以及相关 stdout/status 输出；新增回归测试确保配置文件不再持久化该字段且旧 flag 被拒绝。
+
+- 2026-04-15
+  变更摘要：纠正 `config add --env dev` 的默认鉴权预设，把 user OAuth 与 bot 直调 token 链路彻底分开。
+  涉及文件/模块：`internal/cli/app.go`、`internal/cli/app_test.go`、`internal/oauth/discovery.go`、`internal/oauth/discovery_test.go`、`docs/ai-changes.md`
+  关键逻辑/决策：确认 `--as bot` 只使用 `https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal`；`--as user` 不再错误地复用 `dev-open` 的 `.well-known/oauth-protected-resource`，而是默认通过公开的 `https://dev-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract` 加载 OAuth server metadata，并配合固定 `resource=http://higress-gateway.higress-system/mcp-servers` 生成 user 登录配置；新增回归测试覆盖该默认链路。
+
+- 2026-04-15
+  变更摘要：修复 `config add --env dev` 默认预设使用集群内 Higress 地址导致本机发现链路易出现 502 的问题。
+  涉及文件/模块：`internal/cli/app.go`、`internal/cli/app_test.go`、`docs/ai-changes.md`
+  关键逻辑/决策：新增回归测试，要求默认 dev 预设走公共 `https://dev-open.qtech.cn` 的 `mcp-servers/contract-group` 和 `/.well-known/oauth-protected-resource`；将 `resolveEnvironment("dev")` 中原本的 `http://higress-gateway.higress-system/...` 集群内地址替换为公共 HTTPS 地址，避免本机 `config add` 默认链路命中 502。
+
+- 2026-04-15
   变更摘要：将主数据命令树进一步统一为 `contract-cli mdm <vendor|legal|fields> ...`，其中字段配置收口为 `mdm fields list`。
   涉及文件/模块：`internal/cli`、`internal/cli/*_test.go`、`docs/cli-command-design*.md`、`skills/contract-cli-shared`、`skills/contract-cli-mdm-vendor`、`skills/contract-cli-mdm-legal`、`skills/contract-cli-mdm-fields`、`docs/ai-changes.md`
   关键逻辑/决策：新增 `mdm` 一级命令并作为主数据唯一入口，`vendor`、`legal`、`fields` 下降为二级资源；`fields` 再显式使用 `list` 子命令，统一成“一级领域 + 二级资源 + 三级动作”的用户心智；移除 `mdm-vendor`、`mdm-legal`、`mdm-fields` 旧入口；同步更新结构化命令测试、skill 示例、参数附录与设计文档中的命令写法。

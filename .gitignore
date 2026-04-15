@@ -1,4 +1,8 @@
 # Local root build outputs
 /contract-cli
+/bin/
+/dist/
+*.tar.gz
+*.zip
+/checksums.txt
 /.idea/
-

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"cn.qfei/contract-cli/internal/build"
 	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/oauth"
 )
@@ -43,14 +44,15 @@ type App struct {
 }
 
 type environmentPreset struct {
-	ServerURL                    string
-	OpenPlatformBaseURL          string
-	BotTokenEndpoint             string
-	ProtectedResourceMetadataURL string
-	RedirectURL                  string
-	Scopes                       []string
-	BusinessType                 string
-	ClientName                   string
+	OpenPlatformBaseURL            string
+	BotTokenEndpoint               string
+	ProtectedResourceMetadataURL   string
+	AuthorizationServerMetadataURL string
+	Resource                       string
+	RedirectURL                    string
+	Scopes                         []string
+	BusinessType                   string
+	ClientName                     string
 }
 
 func New(options Options) *App {
@@ -127,6 +129,12 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return nil
 	}
 
+	switch args[0] {
+	case "version", "--version", "-version", "-v":
+		a.printVersion()
+		return nil
+	}
+
 	a.logger.Info("run command", "args", strings.Join(args, " "))
 
 	switch args[0] {
@@ -152,11 +160,16 @@ func (a *App) printUsage() {
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli auth status [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli auth logout [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli auth use [flags]")
+	_, _ = fmt.Fprintln(a.stdout, "  contract-cli version")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli api call [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli contract <subcommand> [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli mdm vendor <subcommand> [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli mdm legal <subcommand> [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli mdm fields list [flags]")
+}
+
+func (a *App) printVersion() {
+	_, _ = fmt.Fprintln(a.stdout, build.Current().String())
 }
 
 func (a *App) runConfig(ctx context.Context, args []string) error {
@@ -180,14 +193,12 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 
 	var env string
 	var profileName string
-	var serverURL string
 	var protectedResourceURL string
 	var redirectURL string
 	var scopes string
 
 	flags.StringVar(&env, "env", "dev", "environment preset")
 	flags.StringVar(&profileName, "name", defaultProfileName, "profile name")
-	flags.StringVar(&serverURL, "server-url", "", "override MCP server URL")
 	flags.StringVar(&protectedResourceURL, "resource-metadata-url", "", "override protected resource metadata URL")
 	flags.StringVar(&redirectURL, "redirect-url", "", "OAuth redirect URL")
 	flags.StringVar(&scopes, "scope", "", "space-separated OAuth scopes")
@@ -202,9 +213,6 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 		return err
 	}
 
-	if serverURL == "" {
-		serverURL = preset.ServerURL
-	}
 	if protectedResourceURL == "" {
 		protectedResourceURL = preset.ProtectedResourceMetadataURL
 	}
@@ -216,10 +224,22 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 		scopeList = strings.Fields(scopes)
 	}
 
-	discovery, err := oauth.Discover(ctx, a.httpClient, a.logger, protectedResourceURL)
-	if err != nil {
-		a.logger.Error("config add discover failed", "profile", profileName, "error", err.Error())
-		return err
+	var discovery *oauth.DiscoveryResult
+	switch {
+	case protectedResourceURL != "":
+		discovery, err = oauth.Discover(ctx, a.httpClient, a.logger, protectedResourceURL)
+		if err != nil {
+			a.logger.Error("config add discover failed", "profile", profileName, "protected_resource_url", protectedResourceURL, "error", err.Error())
+			return err
+		}
+	case preset.AuthorizationServerMetadataURL != "" && preset.Resource != "":
+		discovery, err = oauth.DiscoverFromAuthorizationServer(ctx, a.httpClient, a.logger, preset.AuthorizationServerMetadataURL, preset.Resource)
+		if err != nil {
+			a.logger.Error("config add discover from authorization server failed", "profile", profileName, "authorization_server_metadata_url", preset.AuthorizationServerMetadataURL, "error", err.Error())
+			return err
+		}
+	default:
+		return fmt.Errorf("environment %q is missing oauth discovery defaults", env)
 	}
 
 	existing, found, err := a.store.LookupProfile(profileName)
@@ -230,7 +250,6 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 	profile := config.Profile{
 		Name:                           profileName,
 		Environment:                    env,
-		ServerURL:                      serverURL,
 		OpenPlatformBaseURL:            preset.OpenPlatformBaseURL,
 		BotTokenEndpoint:               preset.BotTokenEndpoint,
 		ProtectedResourceMetadataURL:   protectedResourceURL,
@@ -251,14 +270,13 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 	profile.Identities.User.RegistrationEndpoint = discovery.AuthorizationServer.RegistrationEndpoint
 	profile.Identities.User.RedirectURL = redirectURL
 
-	a.logger.Info("save profile", "profile", profileName, "environment", env, "server_url", serverURL)
+	a.logger.Info("save profile", "profile", profileName, "environment", env)
 	if err := a.store.UpsertProfile(profile, true); err != nil {
 		a.logger.Error("save profile failed", "profile", profileName, "error", err.Error())
 		return err
 	}
 
 	_, _ = fmt.Fprintf(a.stdout, "Profile %q saved for %s.\n", profileName, env)
-	_, _ = fmt.Fprintf(a.stdout, "Server URL: %s\n", serverURL)
 	_, _ = fmt.Fprintf(a.stdout, "Open Platform URL: %s\n", profile.OpenPlatformBaseURL)
 	_, _ = fmt.Fprintf(a.stdout, "Authorization endpoint: %s\n", profile.Identities.User.AuthorizationEndpoint)
 	return nil
@@ -375,7 +393,6 @@ func (a *App) runAuthStatus(ctx context.Context, args []string) error {
 
 	_, _ = fmt.Fprintf(a.stdout, "Profile: %s\n", profile.Name)
 	_, _ = fmt.Fprintf(a.stdout, "Environment: %s\n", profile.Environment)
-	_, _ = fmt.Fprintf(a.stdout, "Server URL: %s\n", profile.ServerURL)
 	_, _ = fmt.Fprintf(a.stdout, "Open Platform URL: %s\n", emptyFallback(profile.OpenPlatformBaseURL, "<not-configured>"))
 	_, _ = fmt.Fprintf(a.stdout, "Default Identity: %s\n", defaultIdentity(profile))
 	_, _ = fmt.Fprintf(a.stdout, "Identity: %s\n", identity)
@@ -469,14 +486,15 @@ func resolveEnvironment(name string) (environmentPreset, error) {
 	switch name {
 	case "dev":
 		return environmentPreset{
-			ServerURL:                    "http://higress-gateway.higress-system/mcp-servers/contract-group",
-			OpenPlatformBaseURL:          "https://dev-open.qtech.cn",
-			BotTokenEndpoint:             "https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal",
-			ProtectedResourceMetadataURL: "http://higress-gateway.higress-system/.well-known/oauth-protected-resource",
-			RedirectURL:                  "http://127.0.0.1:8000/callback",
-			Scopes:                       []string{"mcp:tools", "mcp:resources"},
-			BusinessType:                 "contract",
-			ClientName:                   "contract-cli",
+			OpenPlatformBaseURL:            "https://dev-open.qtech.cn",
+			BotTokenEndpoint:               "https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal",
+			ProtectedResourceMetadataURL:   "",
+			AuthorizationServerMetadataURL: "https://dev-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract",
+			Resource:                       "http://higress-gateway.higress-system/mcp-servers",
+			RedirectURL:                    "http://127.0.0.1:8000/callback",
+			Scopes:                         []string{"mcp:tools", "mcp:resources"},
+			BusinessType:                   "contract",
+			ClientName:                     "contract-cli",
 		}, nil
 	default:
 		return environmentPreset{}, fmt.Errorf("unsupported environment %q; only dev is preconfigured right now", name)

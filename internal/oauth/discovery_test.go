@@ -63,3 +63,37 @@ func TestAuthorizationServerMetadataURL(t *testing.T) {
 		t.Fatalf("AuthorizationServerMetadataURL() = %q, want %q", got, want)
 	}
 }
+
+func TestDiscoverFromAuthorizationServer(t *testing.T) {
+	t.Parallel()
+
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.String() != "https://dev-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract" {
+			t.Fatalf("unexpected url: %s", req.URL.String())
+		}
+		return jsonResponse(`{"issuer":"common-organization-v2","authorization_endpoint":"https://dev-myaccount.qtech.cn/api/public/oauth/authorize/contract","token_endpoint":"https://dev-myaccount.qtech.cn/api/public/oauth/token/contract","registration_endpoint":"https://dev-myaccount.qtech.cn/api/public/oauth/register/contract"}`), nil
+	})}
+
+	got, err := oauth.DiscoverFromAuthorizationServer(
+		context.Background(),
+		client,
+		nil,
+		"https://dev-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract",
+		"http://higress-gateway.higress-system/mcp-servers",
+	)
+	if err != nil {
+		t.Fatalf("DiscoverFromAuthorizationServer() error = %v", err)
+	}
+	if got.ProtectedResourceMetadataURL != "" {
+		t.Fatalf("protected resource metadata url = %q", got.ProtectedResourceMetadataURL)
+	}
+	if got.AuthorizationServerMetadataURL != "https://dev-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract" {
+		t.Fatalf("authorization server metadata url = %q", got.AuthorizationServerMetadataURL)
+	}
+	if got.ProtectedResource.Resource != "http://higress-gateway.higress-system/mcp-servers" {
+		t.Fatalf("resource = %q", got.ProtectedResource.Resource)
+	}
+	if got.AuthorizationServer.AuthorizationEndpoint != "https://dev-myaccount.qtech.cn/api/public/oauth/authorize/contract" {
+		t.Fatalf("authorization endpoint = %q", got.AuthorizationServer.AuthorizationEndpoint)
+	}
+}

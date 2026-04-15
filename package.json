@@ -1,0 +1,41 @@
+{
+  "name": "contract-cli",
+  "version": "0.1.0",
+  "description": "CLI for Qfei contract open platform",
+  "bin": {
+    "contract-cli": "scripts/run.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js",
+    "build": "./build.sh",
+    "test": "go test ./..."
+  },
+  "config": {
+    "binaryName": "contract-cli",
+    "downloadBaseURLTemplate": ""
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://git.qtech.cn/liyuanye/contract-cli.git"
+  },
+  "license": "UNLICENSED",
+  "files": [
+    "scripts/install.js",
+    "scripts/run.js",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ]
+}

@@ -18,7 +18,6 @@ func TestStoreRoundTrip(t *testing.T) {
 	profile := config.Profile{
 		Name:                "contract-group",
 		Environment:         "dev",
-		ServerURL:           "http://example.com/mcp",
 		OpenPlatformBaseURL: "https://dev-open.qtech.cn",
 		BotTokenEndpoint:    "https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal",
 		Resource:            "http://example.com/mcp-servers",
@@ -80,6 +79,13 @@ func TestStoreRoundTrip(t *testing.T) {
 	if got.DefaultIdentity != config.IdentityBot {
 		t.Fatalf("default identity mismatch: got %q want %q", got.DefaultIdentity, config.IdentityBot)
 	}
+	configContent, err := os.ReadFile(store.Path())
+	if err != nil {
+		t.Fatalf("ReadFile(config) error = %v", err)
+	}
+	if strings.Contains(string(configContent), "\"server_url\"") {
+		t.Fatalf("config should not contain removed server_url field: %s", string(configContent))
+	}
 	if store.Path() != filepath.Join(storeDir(t, store), "config.json") {
 		t.Fatalf("unexpected config path: %s", store.Path())
 	}
@@ -135,7 +141,6 @@ func TestLoadLegacyProfileMigration(t *testing.T) {
     "contract-group": {
       "name": "contract-group",
       "environment": "dev",
-      "server_url": "http://example.com/mcp",
       "protected_resource_metadata_url": "http://example.com/.well-known/oauth-protected-resource",
       "authorization_server_metadata_url": "http://example.com/.well-known/oauth-authorization-server/contract",
       "resource": "http://example.com/mcp-servers",

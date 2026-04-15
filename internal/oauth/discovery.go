@@ -78,6 +78,36 @@ func Discover(ctx context.Context, client *http.Client, logger *slog.Logger, pro
 	return result, nil
 }
 
+func DiscoverFromAuthorizationServer(ctx context.Context, client *http.Client, logger *slog.Logger, authorizationServerMetadataURL string, resource string) (*DiscoveryResult, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	if logger != nil {
+		logger.Info("discover oauth metadata from authorization server", "authorization_server_metadata_url", authorizationServerMetadataURL)
+	}
+
+	authServer, err := getJSON[AuthorizationServerMetadata](ctx, client, authorizationServerMetadataURL)
+	if err != nil {
+		if logger != nil {
+			logger.Error("discover authorization server failed", "authorization_server_metadata_url", authorizationServerMetadataURL, "error", err.Error())
+		}
+		return nil, err
+	}
+
+	result := &DiscoveryResult{
+		ProtectedResourceMetadataURL:   "",
+		AuthorizationServerMetadataURL: authorizationServerMetadataURL,
+		ProtectedResource: ProtectedResourceMetadata{
+			Resource: resource,
+		},
+		AuthorizationServer: authServer,
+	}
+	if logger != nil {
+		logger.Info("oauth metadata discovered from authorization server", "authorization_server_metadata_url", authorizationServerMetadataURL)
+	}
+	return result, nil
+}
+
 func AuthorizationServerMetadataURL(rawServer string) (string, error) {
 	parsed, err := url.Parse(rawServer)
 	if err != nil {
