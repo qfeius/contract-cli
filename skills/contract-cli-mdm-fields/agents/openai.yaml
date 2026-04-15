@@ -1,0 +1,7 @@
+interface:
+  display_name: "Contract CLI MDM Fields"
+  short_description: "Fetch vendor and legal-entity field definitions with user-only commands"
+  default_prompt: "Use $contract-cli-mdm-fields to inspect field definitions for vendor, legal_entity, or vendor_risk with a user-authorized contract-cli profile."
+
+policy:
+  allow_implicit_invocation: true

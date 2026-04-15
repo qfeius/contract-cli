@@ -68,7 +68,7 @@ func TestAPICallUsesDefaultIdentityAndRendersJSON(t *testing.T) {
 	}
 }
 
-func TestAPICallSupportsRawOutputAndFileBody(t *testing.T) {
+func TestAPICallSupportsRawOutputAndInputFileBody(t *testing.T) {
 	t.Parallel()
 
 	stdout := &bytes.Buffer{}
@@ -123,7 +123,7 @@ func TestAPICallSupportsRawOutputAndFileBody(t *testing.T) {
 	})
 
 	if err := app.Run(context.Background(), []string{
-		"api", "call", "POST", "/open-apis/mdm/v1/vendors", "--profile", "contract-group", "--file", bodyFile, "--raw",
+		"api", "call", "POST", "/open-apis/mdm/v1/vendors", "--profile", "contract-group", "--input-file", bodyFile, "--raw",
 	}); err != nil {
 		t.Fatalf("api call error = %v", err)
 	}
@@ -213,9 +213,123 @@ func TestAPICallRejectsConflictingBodyInputs(t *testing.T) {
 	})
 
 	err := app.Run(context.Background(), []string{
-		"api", "call", "POST", "/open-apis/mdm/v1/vendors", "--profile", "contract-group", "--file", bodyFile, "--data", `{"vendor":"inline"}`,
+		"api", "call", "POST", "/open-apis/mdm/v1/vendors", "--profile", "contract-group", "--input-file", bodyFile, "--data", `{"vendor":"inline"}`,
 	})
-	if err == nil || !strings.Contains(err.Error(), "only one of --file or --data may be provided") {
+	if err == nil || !strings.Contains(err.Error(), "only one of --input-file or --data may be provided") {
 		t.Fatalf("unexpected conflicting-body-input error: %v", err)
+	}
+}
+
+func TestAPICallUserOnlyPathDefaultsToUserIdentity(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	store := config.NewStore(t.TempDir())
+	profile := config.Profile{
+		Name:                "contract-group",
+		Environment:         "dev",
+		OpenPlatformBaseURL: "https://dev-open.qtech.cn",
+		DefaultIdentity:     config.IdentityBot,
+		Identities: config.Identities{
+			User: config.UserIdentity{
+				Token: &config.Token{
+					AccessToken: "user-token",
+					TokenType:   "Bearer",
+					Expiry:      time.Now().Add(time.Hour),
+				},
+			},
+			Bot: config.BotIdentity{
+				Token: &config.Token{
+					AccessToken: "bot-token",
+					TokenType:   "Bearer",
+					Expiry:      time.Now().Add(time.Hour),
+				},
+			},
+		},
+	}
+	if err := store.UpsertProfile(profile, true); err != nil {
+		t.Fatalf("UpsertProfile() error = %v", err)
+	}
+
+	app := cli.New(cli.Options{
+		Stdout: stdout,
+		Stderr: stderr,
+		Store:  store,
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.Header.Get("Authorization") != "Bearer user-token" {
+					t.Fatalf("authorization = %q", req.Header.Get("Authorization"))
+				}
+				return jsonResponse(`{"code":0,"data":{"vendor_id":"123"}}`), nil
+			}),
+		},
+	})
+
+	if err := app.Run(context.Background(), []string{
+		"api", "call", "GET", "/open-apis/contract/v1/mcp/vendors/123", "--profile", "contract-group",
+	}); err != nil {
+		t.Fatalf("api call error = %v", err)
+	}
+
+	if !strings.Contains(stdout.String(), `"vendor_id": "123"`) {
+		t.Fatalf("unexpected api call output: %s", stdout.String())
+	}
+}
+
+func TestAPICallRejectsBotForUserOnlyPathAndLegacyFileFlag(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	dir := t.TempDir()
+	store := config.NewStore(dir)
+	bodyFile := filepath.Join(dir, "vendor.json")
+	if err := os.WriteFile(bodyFile, []byte(`{"vendor":"V00108006"}`), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if err := store.UpsertProfile(config.Profile{
+		Name:                "contract-group",
+		Environment:         "dev",
+		OpenPlatformBaseURL: "https://dev-open.qtech.cn",
+		DefaultIdentity:     config.IdentityBot,
+		Identities: config.Identities{
+			User: config.UserIdentity{
+				Token: &config.Token{
+					AccessToken: "user-token",
+					TokenType:   "Bearer",
+					Expiry:      time.Now().Add(time.Hour),
+				},
+			},
+			Bot: config.BotIdentity{
+				Token: &config.Token{
+					AccessToken: "bot-token",
+					TokenType:   "Bearer",
+					Expiry:      time.Now().Add(time.Hour),
+				},
+			},
+		},
+	}, true); err != nil {
+		t.Fatalf("UpsertProfile() error = %v", err)
+	}
+
+	app := cli.New(cli.Options{
+		Stdout: stdout,
+		Stderr: stderr,
+		Store:  store,
+	})
+
+	err := app.Run(context.Background(), []string{
+		"api", "call", "GET", "/open-apis/contract/v1/mcp/vendors/123", "--profile", "contract-group", "--as", "bot",
+	})
+	if err == nil || !strings.Contains(err.Error(), "only supports --as user") {
+		t.Fatalf("unexpected bot user-only error: %v", err)
+	}
+
+	err = app.Run(context.Background(), []string{
+		"api", "call", "POST", "/open-apis/mdm/v1/vendors", "--profile", "contract-group", "--file", bodyFile,
+	})
+	if err == nil || !strings.Contains(err.Error(), `unknown flag "--file"`) {
+		t.Fatalf("unexpected legacy file flag error: %v", err)
 	}
 }

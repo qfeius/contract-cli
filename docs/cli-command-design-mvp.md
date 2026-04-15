@@ -36,8 +36,8 @@ contract-cli auth status
 contract-cli contract create --input contract-create.json
 contract-cli contract get <contract-id>
 
-contract-cli vendor create --input vendor.json
-contract-cli vendor get <vendor-id>
+contract-cli mdm vendor create --input vendor.json
+contract-cli mdm vendor get <vendor-id>
 ```
 
 ### 3.2 可选补充命令
@@ -62,8 +62,8 @@ contract-cli contract create --input contract-create.json --print-input
 - `contract template list/get/fields/instantiate`
 - `contract create from-file`
 - `contract create from-template`
-- `vendor fields`
-- `entity *`
+- `mdm fields list --biz-line vendor`
+- `mdm legal *`
 - `event *`
 - `payment *`
 - `rule table *`
@@ -96,8 +96,8 @@ contract-cli contract create --input contract-create.json
 
 - 创建合同：`contract create --input`
 - 查询合同：`contract get`
-- 创建交易方：`vendor create --input`
-- 查询交易方：`vendor get`
+- 创建交易方：`mdm vendor create --input`
+- 查询交易方：`mdm vendor get`
 
 这样学习成本最低。
 
@@ -218,7 +218,7 @@ contract-cli contract create --input contract-create.template.json
 执行命令：
 
 ```bash
-contract-cli vendor create --input vendor.json
+contract-cli mdm vendor create --input vendor.json
 ```
 
 ## 6. 谁来提供 input
@@ -249,7 +249,7 @@ contract-cli contract create --input /tmp/generated-contract-create.json
 
 ```bash
 contract-cli contract create --input ./fixtures/contract-create.template.json
-contract-cli vendor create --input ./fixtures/vendor.json
+contract-cli mdm vendor create --input ./fixtures/vendor.json
 ```
 
 ### 6.3 结论
@@ -329,15 +329,15 @@ contract-cli auth login
 contract-cli auth status
 contract-cli contract create --input contract-create.json
 contract-cli contract get <id>
-contract-cli vendor create --input vendor.json
-contract-cli vendor get <id>
+contract-cli mdm vendor create --input vendor.json
+contract-cli mdm vendor get <id>
 ```
 
 ### 10.2 第二阶段：补调试和查询能力
 
 ```bash
 contract-cli contract search
-contract-cli vendor fields
+contract-cli mdm fields list --biz-line vendor
 contract-cli contract create --dry-run
 contract-cli contract create --print-input
 ```
@@ -365,7 +365,7 @@ contract-cli contract create from-template
 
 ```bash
 contract-cli contract create --input contract-create.json
-contract-cli vendor create --input vendor.json
+contract-cli mdm vendor create --input vendor.json
 ```
 
 核心理由：

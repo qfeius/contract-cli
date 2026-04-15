@@ -55,8 +55,8 @@
 ```bash
 contract-cli contract get
 contract-cli contract create
-contract-cli vendor get
-contract-cli vendor create
+contract-cli mdm vendor get
+contract-cli mdm vendor create
 contract-cli event serve
 ```
 
@@ -71,8 +71,8 @@ contract-cli event serve
 是否接受复杂对象统一走文件输入，例如：
 
 ```bash
-contract-cli contract create --template TMP001 --file contract.json
-contract-cli vendor create --operator 123123123123 --file vendor.json
+contract-cli contract create --input-file contract.json
+contract-cli mdm vendor create --operator 123123123123 --input-file vendor.json
 ```
 
 目标：
@@ -89,8 +89,9 @@ contract-cli vendor create --operator 123123123123 --file vendor.json
 - `contract template`
 - `contract file`
 - `payment`
-- `vendor`
-- `entity`
+- `mdm vendor`
+- `mdm legal`
+- `mdm fields`
 - `event`
 - `rule table`
 - `api call`
@@ -106,9 +107,9 @@ contract-cli vendor create --operator 123123123123 --file vendor.json
 主文档里对交易方已经形成了相对清晰的设计：
 
 ```bash
-contract-cli vendor get 1063197165850985296
-contract-cli vendor create --operator 123123123123 --file vendor.json
-contract-cli vendor fields
+contract-cli mdm vendor get 1063197165850985296
+contract-cli mdm vendor create --operator 123123123123 --input-file vendor.json
+contract-cli mdm fields list --biz-line vendor
 ```
 
 这部分可作为首批落地命令的样板。
@@ -194,8 +195,8 @@ contract-cli auth status
 contract-cli contract create --input contract-create.json
 contract-cli contract get <contract-id>
 
-contract-cli vendor create --input vendor.json
-contract-cli vendor get <vendor-id>
+contract-cli mdm vendor create --input vendor.json
+contract-cli mdm vendor get <vendor-id>
 ```
 
 ### 6.2 MVP 适合的场景
@@ -261,7 +262,7 @@ contract-cli vendor get <vendor-id>
 1. 是否认可以 `cli-command-design.md` 作为长期主方案
 2. 首发是否采用 MVP 收敛思路
 3. 合同创建采用哪一种封装方式
-4. 首发是否保留 `vendor fields`
+4. 首发是否保留 `mdm fields list --biz-line vendor`
 5. 首发是否需要 `api call` 兜底
 
 这样可以避免会议陷入细枝末节。
@@ -273,7 +274,7 @@ contract-cli vendor get <vendor-id>
 ### 9.1 结论 A：按主方案推进
 
 - 长期设计按 `cli-command-design.md`
-- 首发实现 `contract`、`vendor`、`event`、`api call` 等主要能力
+- 首发实现 `contract`、`mdm`、`event`、`api call` 等主要能力
 - 合同创建后续再补充分支设计
 
 适合：

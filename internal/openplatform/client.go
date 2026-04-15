@@ -40,12 +40,13 @@ type RequestContext struct {
 }
 
 type Request struct {
-	Method  string
-	Path    string
-	Query   url.Values
-	Headers http.Header
-	Body    []byte
-	Raw     bool
+	Method         string
+	Path           string
+	Query          url.Values
+	Headers        http.Header
+	Body           []byte
+	Raw            bool
+	IdentityPolicy IdentityPolicy
 }
 
 type Response struct {
@@ -90,6 +91,14 @@ func (c *Client) Do(ctx context.Context, requestContext RequestContext, request 
 	method := strings.ToUpper(strings.TrimSpace(request.Method))
 	if method == "" {
 		return Response{}, fmt.Errorf("open platform request method is required")
+	}
+	policy := request.IdentityPolicy
+	if policy == "" {
+		policy = IdentityPolicyForPath(request.Path)
+	}
+	if err := validateIdentityPolicy(requestContext.Identity, policy, request.Path); err != nil {
+		c.logger.Error("open platform identity policy rejected", "method", method, "path", request.Path, "identity", requestContext.Identity, "error", err.Error())
+		return Response{}, err
 	}
 
 	headers := cloneHeaders(request.Headers)
@@ -243,4 +252,18 @@ func emptyFallback(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func validateIdentityPolicy(identity config.IdentityKind, policy IdentityPolicy, path string) error {
+	switch policy {
+	case "", IdentityPolicyAny:
+		return nil
+	case IdentityPolicyUserOnly:
+		if identity != config.IdentityUser {
+			return fmt.Errorf("open platform path %q only supports --as user", path)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported identity policy %q", policy)
+	}
 }

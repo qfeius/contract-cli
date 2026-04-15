@@ -114,6 +114,63 @@ func TestClientDoRejectsInvalidPathAndWrapsNon2xx(t *testing.T) {
 	}
 }
 
+func TestClientDoRejectsUserOnlyRequestForBotIdentity(t *testing.T) {
+	t.Parallel()
+
+	transportUsed := false
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				transportUsed = true
+				return jsonResponse(`{"code":0}`), nil
+			}),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	requestContext, err := client.RequestContext(config.Profile{
+		Name:                "contract-group",
+		Environment:         "dev",
+		OpenPlatformBaseURL: "https://dev-open.qtech.cn",
+		DefaultIdentity:     config.IdentityBot,
+		Identities: config.Identities{
+			Bot: config.BotIdentity{
+				Token: &config.Token{
+					AccessToken: "bot-token",
+					TokenType:   "Bearer",
+					Expiry:      time.Now().Add(time.Hour),
+				},
+			},
+		},
+	}, config.IdentityBot)
+	if err != nil {
+		t.Fatalf("RequestContext() error = %v", err)
+	}
+
+	_, err = client.Do(context.Background(), requestContext, openplatform.Request{
+		Method:         http.MethodGet,
+		Path:           "/open-apis/contract/v1/mcp/vendors/123",
+		IdentityPolicy: openplatform.IdentityPolicyUserOnly,
+	})
+	if err == nil || !strings.Contains(err.Error(), "only supports --as user") {
+		t.Fatalf("unexpected user-only error: %v", err)
+	}
+	if transportUsed {
+		t.Fatalf("request transport should not be used for rejected user-only requests")
+	}
+}
+
+func TestIdentityPolicyForPathRecognizesContractMCPAsUserOnly(t *testing.T) {
+	t.Parallel()
+
+	if got := openplatform.IdentityPolicyForPath("/open-apis/contract/v1/mcp/vendors"); got != openplatform.IdentityPolicyUserOnly {
+		t.Fatalf("policy = %q", got)
+	}
+	if got := openplatform.IdentityPolicyForPath("/open-apis/mdm/v1/vendors"); got != openplatform.IdentityPolicyAny {
+		t.Fatalf("policy = %q", got)
+	}
+}
+
 func TestRequestContextRequiresConfiguredBaseURLAndToken(t *testing.T) {
 	t.Parallel()
 

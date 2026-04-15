@@ -136,6 +136,10 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.runAuth(ctx, args[1:])
 	case "api":
 		return a.runAPI(ctx, args[1:])
+	case "contract":
+		return a.runContract(ctx, args[1:])
+	case "mdm":
+		return a.runMDM(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
@@ -149,6 +153,10 @@ func (a *App) printUsage() {
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli auth logout [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli auth use [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli api call [flags]")
+	_, _ = fmt.Fprintln(a.stdout, "  contract-cli contract <subcommand> [flags]")
+	_, _ = fmt.Fprintln(a.stdout, "  contract-cli mdm vendor <subcommand> [flags]")
+	_, _ = fmt.Fprintln(a.stdout, "  contract-cli mdm legal <subcommand> [flags]")
+	_, _ = fmt.Fprintln(a.stdout, "  contract-cli mdm fields list [flags]")
 }
 
 func (a *App) runConfig(ctx context.Context, args []string) error {

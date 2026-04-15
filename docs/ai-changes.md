@@ -1,5 +1,45 @@
 # AI 变更记录
 
+- 2026-04-15
+  变更摘要：将主数据命令树进一步统一为 `contract-cli mdm <vendor|legal|fields> ...`，其中字段配置收口为 `mdm fields list`。
+  涉及文件/模块：`internal/cli`、`internal/cli/*_test.go`、`docs/cli-command-design*.md`、`skills/contract-cli-shared`、`skills/contract-cli-mdm-vendor`、`skills/contract-cli-mdm-legal`、`skills/contract-cli-mdm-fields`、`docs/ai-changes.md`
+  关键逻辑/决策：新增 `mdm` 一级命令并作为主数据唯一入口，`vendor`、`legal`、`fields` 下降为二级资源；`fields` 再显式使用 `list` 子命令，统一成“一级领域 + 二级资源 + 三级动作”的用户心智；移除 `mdm-vendor`、`mdm-legal`、`mdm-fields` 旧入口；同步更新结构化命令测试、skill 示例、参数附录与设计文档中的命令写法。
+
+- 2026-04-15
+  变更摘要：将主数据命令统一重命名为 `mdm-vendor`、`mdm-legal`、`mdm-fields`，并同步把对应 skill 目录改成新命名。
+  涉及文件/模块：`internal/cli`、`internal/openplatform`、`docs/cli-command-design*.md`、`skills/contract-cli-shared`、`skills/contract-cli-mdm-vendor`、`skills/contract-cli-mdm-legal`、`skills/contract-cli-mdm-fields`、`docs/ai-changes.md`
+  关键逻辑/决策：移除旧的 `vendor`、`entity`、`schema fields` 顶层命令名，不保留别名；CLI 用法、结构化命令测试、skill 元数据和设计文档统一改为 `mdm-vendor`、`mdm-legal`、`mdm-fields`；同时将 skill 目录从 `contract-cli-vendor|entity|schema` 重命名为 `contract-cli-mdm-vendor|mdm-legal|mdm-fields`，并修正相对链接；主文档和会议版中仍作为请求体输入的 `--file` 示例同步改为 `--input-file`。
+
+- 2026-04-14
+  变更摘要：将 `vendor`、`entity`、`schema`、`api call` 四组 skill 统一重构为“主 guide + 规则/参数附录 + 命令示例”的阅读结构。
+  涉及文件/模块：`skills/contract-cli-mdm-vendor`、`skills/contract-cli-mdm-legal`、`skills/contract-cli-mdm-fields`、`skills/contract-cli-api-call`、`skills/contract-cli-shared`、`docs/ai-changes.md`
+  关键逻辑/决策：参考合同模块的阅读路径，把其他接口 skill 也拆成“先选场景，再查参数/规则，最后抄示例”的结构；新增 vendor/entity 参数映射附录、schema biz-line 附录和 api call 规则附录，并在 shared skill 中统一说明各模块的新阅读方式。
+
+- 2026-04-14
+  变更摘要：将 `contract create` skill 字段文档重构为“主文档 + 字段树附录 + 枚举附录”三段式结构。
+  涉及文件/模块：`skills/contract-cli-contract/SKILL.md`、`skills/contract-cli-contract/references/create-contract-fields.md`、`skills/contract-cli-contract/references/create-contract-field-tree.md`、`skills/contract-cli-contract/references/create-contract-enums.md`、`docs/ai-changes.md`
+  关键逻辑/决策：主文档改为场景配方与阅读导航，不再用单一平铺大表；新增 JSON Path 字段树附录承接全部顶层与嵌套字段；新增枚举附录承接 code 型字段和值域说明；合同总 skill 明确阅读顺序为“场景 -> 字段树 -> 枚举值”，整体不再依赖 `mcp.yaml` 作为说明来源。
+
+- 2026-04-14
+  变更摘要：把 `contract create` 字段参考补成独立主档，明确列出全部顶层字段和嵌套字段，不再依赖 `mcp.yaml` 兜底说明。
+  涉及文件/模块：`skills/contract-cli-contract/SKILL.md`、`skills/contract-cli-contract/references/create-contract-fields.md`、`docs/ai-changes.md`
+  关键逻辑/决策：重写 `create-contract-fields.md`，补齐 `create-contracts` 的全部字段、条件必填、文件 id 约束、变更/终止规则、嵌套对象说明和示例；合同总 skill 明确该 reference 已是 `contract create` 的完整参数来源。
+
+- 2026-04-14
+  变更摘要：补充 `contract-cli contract create` 的 skill 字段参考，并在合同总 skill 中增加明确入口。
+  涉及文件/模块：`skills/contract-cli-contract/SKILL.md`、`skills/contract-cli-contract/references/create-contract-fields.md`、`docs/ai-changes.md`
+  关键逻辑/决策：为 `contract create` 新增专门的字段参考，说明 CLI 参数、文件正文/模板实例两种常见路径、顶层核心字段、条件必填和最小 JSON 示例；总 skill 明确引导在需要具体字段说明时优先读取该 reference，并强调当前实现只是透传请求体、不做本地字段校验。
+
+- 2026-04-14
+  变更摘要：新增按命令模块拆分的 contract-cli skill 文档，并修正现有 auth skill 以匹配当前 bot token 实现。
+  涉及文件/模块：`skills/auth`、`skills/contract-cli-shared`、`skills/contract-cli-contract`、`skills/contract-cli-mdm-vendor`、`skills/contract-cli-mdm-legal`、`skills/contract-cli-mdm-fields`、`skills/contract-cli-api-call`、`docs/ai-changes.md`
+  关键逻辑/决策：参考 `lark-sheets` 风格把 skill 拆成共享约定 + 业务模块；每个模块补 `SKILL.md`、`agents/openai.yaml` 和按需 `references/commands.md`；共享强调 `contract/v1/mcp` 只支持 `--as user`、请求体统一走 `--input-file`；同步修正 `auth` skill 中 bot 已支持 `tenant_access_token` 兑换、状态枚举和 logout 仅清 token 的真实语义。
+
+- 2026-04-14
+  变更摘要：实现 `mcp.yaml` 驱动的 user-only 结构化 CLI 命令，并将请求体文件参数统一改为 `--input-file`。
+  涉及文件/模块：`internal/openplatform`、`internal/openplatform/contract|vendor|entity|schema`、`internal/cli`、`docs/cli-command-design.md`、`docs/ai-changes.md`
+  关键逻辑/决策：新增 `contract/v1/mcp` 静态工具映射与契约测试；`openplatform` 增加 `IdentityPolicy` 并对 `/open-apis/contract/v1/mcp/` 执行 `--as user` 硬拦截；新增 `contract/vendor/entity/schema` 结构化命令并统一复用 service 层；`api call` 对该前缀默认走 user 身份；所有请求体文件输入从 `--file` 迁移到 `--input-file`，`--file` 保留给后续真实文件上传。
+
 - 2026-04-14
   变更摘要：新增开放平台统一 client、输出渲染层和 `api call` 命令，为后续业务域命令封装打底。
   涉及文件/模块：`internal/openplatform`、`internal/output`、`internal/cli`、`internal/config`、`docs/ai-changes.md`

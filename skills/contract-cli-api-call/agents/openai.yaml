@@ -1,0 +1,7 @@
+interface:
+  display_name: "Contract CLI API Call"
+  short_description: "Use raw open-platform API calls for unsupported or exact-path scenarios"
+  default_prompt: "Use $contract-cli-api-call when the user gives an exact /open-apis path or when structured contract-cli commands do not yet cover the needed endpoint."
+
+policy:
+  allow_implicit_invocation: true

@@ -1,4 +1,4 @@
-package vendor
+package entity
 
 import (
 	"context"
@@ -25,14 +25,14 @@ func NewService(client *openplatform.Client) *Service {
 }
 
 func (s *Service) List(ctx context.Context, requestContext openplatform.RequestContext, input ListInput) (openplatform.Response, error) {
-	spec, ok := openplatformContractSpec("get-vendors")
+	spec, ok := openplatform.ContractMCPToolSpec("get-legal-entities")
 	if !ok {
-		return openplatform.Response{}, fmt.Errorf("vendor list spec is not configured")
+		return openplatform.Response{}, fmt.Errorf("legal entity list spec is not configured")
 	}
 
 	query := url.Values{}
 	if strings.TrimSpace(input.Name) != "" {
-		query.Set("vendor", strings.TrimSpace(input.Name))
+		query.Set("legalEntity", strings.TrimSpace(input.Name))
 	}
 	if input.PageSize > 0 {
 		query.Set("page_size", strconv.Itoa(input.PageSize))
@@ -49,25 +49,21 @@ func (s *Service) List(ctx context.Context, requestContext openplatform.RequestC
 	})
 }
 
-func (s *Service) Get(ctx context.Context, requestContext openplatform.RequestContext, vendorID string) (openplatform.Response, error) {
-	vendorID = strings.TrimSpace(vendorID)
-	if vendorID == "" {
-		return openplatform.Response{}, fmt.Errorf("vendor id is required")
+func (s *Service) Get(ctx context.Context, requestContext openplatform.RequestContext, legalEntityID string) (openplatform.Response, error) {
+	legalEntityID = strings.TrimSpace(legalEntityID)
+	if legalEntityID == "" {
+		return openplatform.Response{}, fmt.Errorf("legal entity id is required")
 	}
 
-	spec, ok := openplatformContractSpec("get-vendor-detail")
+	spec, ok := openplatform.ContractMCPToolSpec("get-legal-entity-detail")
 	if !ok {
-		return openplatform.Response{}, fmt.Errorf("vendor detail spec is not configured")
+		return openplatform.Response{}, fmt.Errorf("legal entity detail spec is not configured")
 	}
 
 	return s.client.Do(ctx, requestContext, openplatform.Request{
 		Method:         spec.Method,
-		Path:           strings.ReplaceAll(spec.Path, "{vendor_id}", url.PathEscape(vendorID)),
+		Path:           strings.ReplaceAll(spec.Path, "{legal_entity_id}", url.PathEscape(legalEntityID)),
 		Query:          spec.Query(nil),
 		IdentityPolicy: spec.IdentityPolicy,
 	})
-}
-
-func openplatformContractSpec(toolName string) (openplatform.ToolSpec, bool) {
-	return openplatform.ContractMCPToolSpec(toolName)
 }

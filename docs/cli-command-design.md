@@ -11,11 +11,32 @@
 
 因此，业务命令只表达“我要做什么”，不要求用户理解开放平台底层接入细节。
 
+## 1.1 当前实现状态
+
+截至 2026-04-14，仓库内已经实现的开放平台结构化命令主要覆盖 `mcp.yaml` 中的 `contract/v1/mcp` 用户态能力：
+
+- `contract get/search/create/sync-user-groups/text`
+- `contract category list`
+- `contract template list/get/instantiate`
+- `contract enum list`
+- `mdm vendor list/get`
+- `mdm legal list/get`
+- `mdm fields list`
+- `api call`
+
+当前实现约定：
+
+- `contract/v1/mcp` 这批命令和对应的 `api call` 路径只支持 `--as user`
+- 这批命令不暴露 `--operator`
+- 请求体文件输入统一使用 `--input-file`
+- `--file` 预留给后续真实文件上传命令，不再表示 JSON 请求体
+- 文件上传链路本轮尚未实现
+
 ## 2. 设计目标
 
 - 采用“资源 + 动作”命令风格，降低学习成本
 - 高价值业务动作优先，避免首版命令树过重
-- 复杂请求体统一走 `--file` 或 `--data`
+- 复杂请求体统一走 `--input-file` 或 `--data`
 - 位置参数优先承载主键 ID，避免过度 flag 化
 - 平台底层参数尽量映射为业务语义
 - 保留 `api call` 作为长尾接口兜底能力
@@ -24,7 +45,8 @@
 
 ### 3.1 命名规则
 
-- 一级命令代表业务资源，如 `contract`、`vendor`、`event`
+- 一级命令代表业务域，如 `contract`、`mdm`、`event`
+- `mdm` 域下再细分资源，如 `vendor`、`legal`、`fields`
 - 二级命令代表动作，如 `get`、`create`、`search`
 - 若存在强从属关系，则放在资源下一级，如 `contract template get`
 
@@ -32,15 +54,15 @@
 
 - `get` 类命令的主键采用位置参数
 - 简单查询条件使用 flags
-- 复杂 JSON 请求体使用 `--file`
+- 复杂 JSON 请求体使用 `--input-file`
 - 仅在需要传内联 JSON 时使用 `--data`
 
 示例：
 
 ```bash
 contract-cli contract get 7023646046559404327
-contract-cli contract create --template TMP001 --file contract.json
-contract-cli vendor create --operator 123123123123 --file vendor.json
+contract-cli contract create --input-file contract.json
+contract-cli api call POST /open-apis/contract/v1/mcp/contracts/search --input-file contract-search.json
 ```
 
 ### 3.3 输出规则
@@ -63,7 +85,8 @@ contract-cli vendor create --operator 123123123123 --file vendor.json
 
 CLI 层建议：
 
-- 对外暴露 `--operator`，内部映射到底层 `user_id`
+- 对 `contract/v1/mcp` 这批已实现命令，不对外暴露 `--operator`
+- 当前登录的 `--as user` 身份就是实际操作者
 - 默认内部固定 `user_id_type=user_id`
 - 首版不对外暴露 `open_id`、`lark_open_id`
 
@@ -85,7 +108,7 @@ CLI 层建议：
 复杂入参命令统一支持以下输入参数：
 
 ```bash
---file string
+--input-file string
 --data string
 ```
 
@@ -97,10 +120,16 @@ CLI 层建议：
 - `--verbose`：输出调试信息
 - `--timeout`：设置请求超时
 - `--yes`：跳过确认
-- `--file`：从文件读取 JSON 或 YAML
+- `--input-file`：从文件读取 JSON 请求体
 - `--data`：直接传递 JSON 字符串
 
+说明：
+
+- 当前 `--file` 不再用于请求体输入，预留给后续二进制文件上传命令
+
 ## 5. 一级命令树
+
+以下列表包含“已实现 + 规划中”的总命令树；已实现能力以 1.1 为准。
 
 ```bash
 contract-cli config add
@@ -139,16 +168,16 @@ contract-cli payment plan search
 contract-cli payment record create
 contract-cli payment record update
 
-contract-cli vendor fields
-contract-cli vendor get
-contract-cli vendor list
-contract-cli vendor create
-contract-cli vendor update
+contract-cli mdm fields list --biz-line vendor
+contract-cli mdm vendor get
+contract-cli mdm vendor list
+contract-cli mdm vendor create
+contract-cli mdm vendor update
 
-contract-cli entity get
-contract-cli entity list
-contract-cli entity create
-contract-cli entity update
+contract-cli mdm legal get
+contract-cli mdm legal list
+contract-cli mdm legal create
+contract-cli mdm legal update
 
 contract-cli event list
 contract-cli event serve
@@ -203,7 +232,7 @@ contract-cli auth logout --profile contract-group
 命令示例：
 
 ```bash
-contract-cli contract create --template TMP001 --file contract.json
+contract-cli contract create --input-file contract.json
 ```
 
 也支持内联 JSON：
@@ -238,8 +267,8 @@ contract-cli contract create --template TMP001 --data '{"title":"示例合同"}'
 
 设计说明：
 
-- `--template` 是创建合同的关键业务选择器，应保留为显式 flag
-- 合同 form 字段动态性强，请求体默认走 `--file`
+- 当前已实现版本直接透传创建合同请求体，不再额外暴露 `--template`
+- 合同 form 字段动态性强，请求体默认走 `--input-file`
 - 首版只提供一个统一的 `create`，内部自行处理模板实例和创建合同的编排
 
 #### 获取合同详情
@@ -257,13 +286,13 @@ contract-cli contract search --name "采购合同" --status approved
 复杂搜索建议：
 
 ```bash
-contract-cli contract search --file contract-search.json
+contract-cli contract search --input-file contract-search.json
 ```
 
 #### 更新合同
 
 ```bash
-contract-cli contract update 7023646046559404327 --file contract-update.json
+contract-cli contract update 7023646046559404327 --input-file contract-update.json
 ```
 
 #### 提交合同
@@ -307,7 +336,7 @@ contract-cli contract template fields TMP001
 #### 创建模板实例
 
 ```bash
-contract-cli contract template instantiate TMP001 --file template-instance.json
+contract-cli contract template instantiate --input-file template-instance.json
 ```
 
 设计说明：
@@ -340,7 +369,7 @@ contract-cli contract file print 7023646046559404327
 #### 发起审批
 
 ```bash
-contract-cli contract approval start 7023646046559404327 --file approval.json
+contract-cli contract approval start 7023646046559404327 --input-file approval.json
 ```
 
 #### 查询审批实例
@@ -352,7 +381,7 @@ contract-cli contract approval get 7499999999999999999
 #### 授予合同权限
 
 ```bash
-contract-cli contract authorization grant 7023646046559404327 --file grant.json
+contract-cli contract authorization grant 7023646046559404327 --input-file grant.json
 ```
 
 #### 查询合同分享记录
@@ -373,7 +402,7 @@ contract-cli contract esign org-url --contract 7023646046559404327
 #### 创建付款申请
 
 ```bash
-contract-cli payment create --file payment.json
+contract-cli payment create --input-file payment.json
 ```
 
 #### 查询付款详情
@@ -397,13 +426,13 @@ contract-cli payment plan search --contract 7023646046559404327
 #### 创建付款记录
 
 ```bash
-contract-cli payment record create --file payment-record.json
+contract-cli payment record create --input-file payment-record.json
 ```
 
 #### 更新付款记录
 
 ```bash
-contract-cli payment record update 7044444444444444444 --file payment-record-update.json
+contract-cli payment record update 7044444444444444444 --input-file payment-record-update.json
 ```
 
 ### 6.7 交易方命令
@@ -413,7 +442,7 @@ contract-cli payment record update 7044444444444444444 --file payment-record-upd
 #### 查询交易方字段配置
 
 ```bash
-contract-cli vendor fields
+contract-cli mdm fields list --biz-line vendor
 ```
 
 设计说明：
@@ -425,13 +454,13 @@ contract-cli vendor fields
 #### 获取单个交易方
 
 ```bash
-contract-cli vendor get 1063197165850985296
+contract-cli mdm vendor get 1063197165850985296
 ```
 
 带调试输出：
 
 ```bash
-contract-cli vendor get 1063197165850985296 --output json --raw
+contract-cli mdm vendor get 1063197165850985296 --output json --raw
 ```
 
 设计说明：
@@ -444,7 +473,7 @@ contract-cli vendor get 1063197165850985296 --output json --raw
 推荐主路径：
 
 ```bash
-contract-cli vendor create --operator 123123123123 --file vendor.json
+contract-cli mdm vendor create --operator 123123123123 --input-file vendor.json
 ```
 
 `vendor.json` 示例：
@@ -474,7 +503,7 @@ contract-cli vendor create --operator 123123123123 --file vendor.json
 如果需要轻量录入，可提供少量高频 flag：
 
 ```bash
-contract-cli vendor create \
+contract-cli mdm vendor create \
   --operator 123123123123 \
   --code V00108006 \
   --name "张三样例" \
@@ -494,18 +523,18 @@ contract-cli vendor create \
 - 对外使用 `--operator`，内部映射到底层 `user_id`
 - 首版不暴露 `user_id_type`，内部固定为 `user_id`
 - 不建议把所有嵌套字段全部做成 flags
-- `vendorAccounts`、`vendorAddresses`、`vendorCompanyViews`、`extendInfo` 等复杂结构建议一律放入 `--file`
+- `vendorAccounts`、`vendorAddresses`、`vendorCompanyViews`、`extendInfo` 等复杂结构建议一律放入 `--input-file`
 
 #### 更新交易方
 
 ```bash
-contract-cli vendor update 1063197165850985296 --operator 123123123123 --file vendor-update.json
+contract-cli mdm vendor update 1063197165850985296 --operator 123123123123 --input-file vendor-update.json
 ```
 
 #### 查询交易方列表
 
 ```bash
-contract-cli vendor list --name "张三样例"
+contract-cli mdm vendor list --name "张三样例"
 ```
 
 ### 6.8 法人实体命令
@@ -513,30 +542,30 @@ contract-cli vendor list --name "张三样例"
 #### 获取法人实体
 
 ```bash
-contract-cli entity get 7023646046559404327
+contract-cli mdm legal get 7023646046559404327
 ```
 
 #### 查询法人实体列表
 
 ```bash
-contract-cli entity list --name "上海主体"
+contract-cli mdm legal list --name "上海主体"
 ```
 
 #### 创建法人实体
 
 ```bash
-contract-cli entity create --operator 123123123123 --file entity.json
+contract-cli mdm legal create --operator 123123123123 --input-file entity.json
 ```
 
 #### 更新法人实体
 
 ```bash
-contract-cli entity update 7023646046559404327 --operator 123123123123 --file entity-update.json
+contract-cli mdm legal update 7023646046559404327 --operator 123123123123 --input-file entity-update.json
 ```
 
 设计说明：
 
-- `entity` 的参数风格应与 `vendor` 保持一致
+- `mdm legal` 的参数风格应与 `mdm vendor` 保持一致
 - 若底层接口也要求用户标识，继续沿用 `--operator`
 
 ### 6.9 事件命令
@@ -584,9 +613,9 @@ contract-cli event ip-list
 contract-cli rule table list
 contract-cli rule table headers TABLE001
 contract-cli rule table rows TABLE001
-contract-cli rule table query TABLE001 --file query.json
-contract-cli rule table create-row TABLE001 --file row.json
-contract-cli rule table update-row TABLE001 ROW001 --file row-update.json
+contract-cli rule table query TABLE001 --input-file query.json
+contract-cli rule table create-row TABLE001 --input-file row.json
+contract-cli rule table update-row TABLE001 ROW001 --input-file row-update.json
 contract-cli rule table delete-row TABLE001 ROW001
 contract-cli rule table publish TABLE001
 ```
@@ -597,7 +626,7 @@ contract-cli rule table publish TABLE001
 
 ```bash
 contract-cli api call GET /open-apis/mdm/v1/vendors/1063197165850985296
-contract-cli api call POST /open-apis/mdm/v1/vendors --file vendor.json
+contract-cli api call POST /open-apis/mdm/v1/vendors --input-file vendor.json
 ```
 
 设计说明：
@@ -614,8 +643,9 @@ contract-cli api call POST /open-apis/mdm/v1/vendors --file vendor.json
 - `contract`
 - `contract template`
 - `contract file`
-- `vendor`
-- `entity`
+- `mdm vendor`
+- `mdm legal`
+- `mdm fields`
 - `event`
 - `api call`
 
@@ -641,14 +671,15 @@ contract-cli api call POST /open-apis/mdm/v1/vendors --file vendor.json
 - 用户无需理解底层 token 生命周期
 - 能降低命令树噪音
 
-### 8.2 主路径优先 `--file`
+### 8.2 主路径优先 `--input-file`
 
 原因：
 
 - 合同和主数据接口都存在大量动态字段和嵌套结构
 - 如果把所有字段都平铺为 flags，命令会非常脆弱
+- `--file` 将保留给未来真实文件上传命令，避免语义冲突
 
-### 8.3 `vendor` 优先于 `party`
+### 8.3 主数据命令统一收口到 `mdm`
 
 原因：
 
@@ -661,7 +692,7 @@ contract-cli api call POST /open-apis/mdm/v1/vendors --file vendor.json
 
 约定：
 
-- `contract-cli contract create --template TMP001 --file contract.json`
+- `contract-cli contract create --input-file contract.json`
 - 命令面向业务动作，而非暴露多步底层流程
 
 ## 9. 帮助文案风格建议
@@ -669,7 +700,7 @@ contract-cli api call POST /open-apis/mdm/v1/vendors --file vendor.json
 示例：
 
 ```bash
-contract-cli vendor create --help
+contract-cli mdm vendor create --help
 ```
 
 建议输出：
@@ -678,11 +709,11 @@ contract-cli vendor create --help
 Create a vendor using the current authorized profile.
 
 Usage:
-  contract-cli vendor create --operator <user-id> --file <path>
+  contract-cli mdm vendor create --operator <user-id> --input-file <path>
 
 Examples:
-  contract-cli vendor create --operator 123123123123 --file vendor.json
-  contract-cli vendor create --operator 123123123123 --data '{"vendor":"V001"}'
+  contract-cli mdm vendor create --operator 123123123123 --input-file vendor.json
+  contract-cli mdm vendor create --operator 123123123123 --data '{"vendor":"V001"}'
 ```
 
 ## 10. 实现时的测试建议
@@ -691,9 +722,9 @@ Examples:
 
 - 命令解析测试：验证子命令、位置参数、flag 默认值和错误提示
 - 请求映射测试：验证 `--operator` 到底层 `user_id` 的映射
-- 文件输入测试：验证 `--file` 与 `--data` 的互斥或优先级规则
+- 文件输入测试：验证 `--input-file` 与 `--data` 的互斥或优先级规则
 - 输出测试：验证默认输出、`--output json` 与 `--raw`
-- 交易方预校验测试：验证 `vendor fields` 拉取字段后本地校验的行为
+- 交易方预校验测试：验证 `mdm fields list --biz-line vendor` 拉取字段后本地校验的行为
 - 工作流测试：验证“模板查询 -> 合同创建 -> 合同提交”等典型链路
 - 事件测试：验证 challenge、验签、解密和回调解析
 
@@ -703,10 +734,10 @@ Examples:
 contract-cli config add --env dev --name contract-group
 contract-cli auth login --profile contract-group
 contract-cli contract template fields TMP001
-contract-cli contract create --template TMP001 --file contract.json
-contract-cli vendor fields
-contract-cli vendor create --operator 123123123123 --file vendor.json
-contract-cli vendor get 1063197165850985296
+contract-cli contract create --input-file contract.json
+contract-cli mdm fields list --biz-line vendor
+contract-cli mdm vendor create --operator 123123123123 --input-file vendor.json
+contract-cli mdm vendor get 1063197165850985296
 ```
 
 以上流程兼顾了：

@@ -31,8 +31,19 @@ func TestRunWithoutArgsPrintsContractCLIUsage(t *testing.T) {
 
 	if !strings.Contains(stdout.String(), "contract-cli config add [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli auth login [flags]") ||
-		!strings.Contains(stdout.String(), "contract-cli api call [flags]") {
+		!strings.Contains(stdout.String(), "contract-cli api call [flags]") ||
+		!strings.Contains(stdout.String(), "contract-cli mdm vendor <subcommand> [flags]") ||
+		!strings.Contains(stdout.String(), "contract-cli mdm legal <subcommand> [flags]") ||
+		!strings.Contains(stdout.String(), "contract-cli mdm fields list [flags]") {
 		t.Fatalf("unexpected usage output: %s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "contract-cli vendor <subcommand> [flags]") ||
+		strings.Contains(stdout.String(), "contract-cli entity <subcommand> [flags]") ||
+		strings.Contains(stdout.String(), "contract-cli schema <subcommand> [flags]") ||
+		strings.Contains(stdout.String(), "contract-cli mdm-vendor <subcommand> [flags]") ||
+		strings.Contains(stdout.String(), "contract-cli mdm-legal <subcommand> [flags]") ||
+		strings.Contains(stdout.String(), "contract-cli mdm-fields [flags]") {
+		t.Fatalf("usage should not contain legacy command names: %s", stdout.String())
 	}
 }
 

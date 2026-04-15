@@ -1,7 +1,7 @@
 ---
 name: auth
-version: 1.0.0
-description: "contract-cli 登录与身份切换技能：初始化 dev profile、执行 user OAuth 登录、录入 bot 的 app_id/app_secret、查看状态、切换默认身份、排查本地 config/secrets 持久化问题。当用户需要 `contract-cli config add`、`contract-cli auth login --as user|bot`、`contract-cli auth status/logout/use` 或排查登录异常时触发。"
+version: 1.1.0
+description: "contract-cli 登录与身份切换技能：初始化 dev profile、执行 user OAuth 登录、录入 bot 的 app_id/app_secret 并立即兑换 tenant_access_token、查看状态、切换默认身份、排查本地 config/secrets 持久化问题。当用户需要 `contract-cli config add`、`contract-cli auth login --as user|bot`、`contract-cli auth status/logout/use` 或排查登录异常时触发。"
 ---
 
 # contract-cli Auth
@@ -45,7 +45,7 @@ contract-cli config add --env dev
 | 身份 | 命令 | 本地存储 | 当前实现 |
 |------|------|----------|----------|
 | `user` | `contract-cli auth login --as user` | `profiles.<name>.identities.user.token` | 已实现 OAuth 登录 |
-| `bot` | `contract-cli auth login --as bot` | `profiles.<name>.identities.bot` + `secrets.json` | 已实现凭据录入，未实现 token 兑换 |
+| `bot` | `contract-cli auth login --as bot` | `profiles.<name>.identities.bot` + `secrets.json` | 已实现凭据录入和 `tenant_access_token` 兑换 |
 
 额外还有一个默认身份指针：
 
@@ -71,7 +71,7 @@ contract-cli auth status --as user
 - 默认自动打开浏览器；如需仅打印链接，使用 `--no-open-browser`
 - 登录成功后写入 `identities.user.token`
 
-### `bot` 录入
+### `bot` 登录
 
 ```bash
 contract-cli auth login --as bot --app-id "<app_id>" --app-secret "<app_secret>"
@@ -96,9 +96,10 @@ contract-cli auth login --as bot
 
 行为约束：
 
-- `bot` 当前只保存凭据，不发起 token 兑换
+- `bot` 登录会先保存 `app_id/app_secret`，再调用 `tenant_access_token/internal` 兑换 token
 - `app_secret` 不写入 `config.json`
-- 成功后会输出 `token exchange not implemented yet`
+- token 成功后写入 `identities.bot.token`
+- token 兑换失败时，会保留新凭据，但不会切换默认身份到 `bot`
 - 登录成功后会切换 `default_identity=bot`
 
 ## 状态、退出与切换
@@ -114,8 +115,8 @@ contract-cli auth status --as bot
 
 - 不传 `--as` 时，`auth status` 默认查看 `user`
 - `user` 显示 `authorized` 或 `unauthorized`
-- `bot` 显示 `configured` 或 `unconfigured`
-- `bot` 状态必须明确显示 `Token Protocol: not_implemented`
+- `bot` 显示 `authorized`、`expired`、`configured` 或 `unconfigured`
+- `bot` 状态会显示 `Token Endpoint`、`Token Protocol: tenant_access_token/internal` 和过期时间（若有）
 
 ### 退出登录
 
@@ -127,7 +128,7 @@ contract-cli auth logout --as bot
 规则：
 
 - `logout --as user` 只清理 `user.token`
-- `logout --as bot` 清理 bot 凭据和对应 secret
+- `logout --as bot` 只清理 `bot.token`，保留 `app_id/app_secret` 和对应 secret
 - 不传 `--as` 时，`auth logout` 默认处理 `user`
 
 ### 切换默认身份
@@ -162,7 +163,7 @@ contract-cli auth use --as bot
 ## 安全规则
 
 - 禁止在终端或文档中明文输出 `app_secret`、`access_token`、`refresh_token`
-- 不要把 `bot` 描述成“已经具备可用 token”，当前代码未实现 bot token 兑换
+- 不要把 `bot` 登出描述成“删除凭据”，当前实现只清 token、不删 `app_id/app_secret`
 - 不要让用户误以为 `default_identity` 会影响 `auth status` 或 `auth logout` 的默认目标，这两个命令未传 `--as` 时仍按 `user`
 - 涉及写入、清理本地凭据时，先确认是在当前 profile 上操作
 
@@ -172,4 +173,5 @@ contract-cli auth use --as bot
 - 浏览器未自动打开：改用 `--no-open-browser`，手动访问输出的授权链接
 - 回调超时：检查 `redirect_url` 对应端口是否可监听，必要时调大 `--timeout`
 - bot 凭据不完整：补齐 `--app-id/--app-secret` 或设置 `CONTRACT_CLI_BOT_APP_ID/CONTRACT_CLI_BOT_APP_SECRET`
-- bot 状态显示 `Token Protocol: not_implemented`：这是当前实现预期，不是运行时故障
+- bot 登录提示缺少 `bot_token_endpoint`：说明 profile 过旧，重跑 `contract-cli config add --env dev --name <profile>`
+- bot 状态显示 `expired`：重新执行 `contract-cli auth login --as bot`

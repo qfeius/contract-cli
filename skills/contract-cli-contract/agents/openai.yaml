@@ -1,0 +1,7 @@
+interface:
+  display_name: "Contract CLI Contract"
+  short_description: "Search, inspect, and create contracts with user-only contract-cli commands"
+  default_prompt: "Use $contract-cli-contract to run contract search/get/create/text/category/template/enum commands with the current user-authorized profile."
+
+policy:
+  allow_implicit_invocation: true
