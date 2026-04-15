@@ -1,6 +1,16 @@
 # AI 变更记录
 
 - 2026-04-15
+  变更摘要：将内部主数据交易方 service 包从 `internal/openplatform/vendor` 重命名为 `internal/openplatform/mdmvendor`，规避 JetBrains 对 `vendor` 包路径的错误识别。
+  涉及文件/模块：`internal/cli/vendor_command.go`、`internal/openplatform/mdmvendor/*`、`docs/ai-changes.md`
+  关键逻辑/决策：Go 工具链可正常编译，但 IDE 对终止于 `/vendor` 的内部包索引不稳定，导致仅该导入路径持续爆红；外部 CLI 命令保持 `mdm vendor` 不变，只调整内部实现目录与测试导入路径，绕开 vendoring 语义歧义。
+
+- 2026-04-15
+  变更摘要：修正本地 `.idea` 模块内容根目录错误指向 `.idea/` 本身，导致 Go 源码在 IDE 中整体爆红的问题。
+  涉及文件/模块：`.idea/contract-cli.iml`、`docs/ai-changes.md`
+  关键逻辑/决策：排查发现本地 IntelliJ 对 `.iml` 里的 `$MODULE_DIR$` 宏实际按项目根目录解析，而不是按 `.idea/` 目录解析；因此上一版将 content root 调整为 `file://$MODULE_DIR$/..` 会把项目根错误扩大到 `/Users/lyy`。现已改回 `file://$MODULE_DIR$`，并显式排除 `.idea/bin/dist`，让模块根稳定回到 `/Users/lyy/contract-cli`。
+
+- 2026-04-15
   变更摘要：补齐源码构建、版本注入、GoReleaser 和 npm/npx 薄包装发布脚手架。
   涉及文件/模块：`internal/build`、`internal/cli/app.go`、`internal/cli/app_test.go`、`build.sh`、`Makefile`、`package.json`、`scripts/*`、`.goreleaser.yml`、`.github/workflows/release.yml`、`README.md`、`CHANGELOG.md`、`LICENSE`、`tests/cli_e2e/*`、`.gitignore`、`docs/ai-changes.md`
   关键逻辑/决策：新增 `contract-cli version` / `--version` 并统一从 `internal/build` 读取 `Version/Commit/Date`；`build.sh`、`Makefile`、GoReleaser 和 npm 本地源码回退构建全部复用同一套 ldflags；npm 包采用 thin wrapper 设计，优先从可配置的 `downloadBaseURLTemplate` 下载预编译产物，若当前是源码仓库则回退到本地 `go build`；同时补齐 README/CHANGELOG/UNLICENSED 许可证与 e2e smoke 脚本，形成最小可用的发布骨架。

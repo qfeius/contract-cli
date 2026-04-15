@@ -1,4 +1,4 @@
-package vendor_test
+package mdmvendor_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/openplatform"
-	"cn.qfei/contract-cli/internal/openplatform/vendor"
+	"cn.qfei/contract-cli/internal/openplatform/mdmvendor"
 )
 
 func TestServiceListUsesContractMCPVendorEndpoint(t *testing.T) {
@@ -46,8 +46,8 @@ func TestServiceListUsesContractMCPVendorEndpoint(t *testing.T) {
 		t.Fatalf("RequestContext() error = %v", err)
 	}
 
-	service := vendor.NewService(client)
-	response, err := service.List(context.Background(), requestContext, vendor.ListInput{
+	service := mdmvendor.NewService(client)
+	response, err := service.List(context.Background(), requestContext, mdmvendor.ListInput{
 		Name:      "acme",
 		PageSize:  20,
 		PageToken: "next",
@@ -79,7 +79,7 @@ func TestServiceGetUsesContractMCPVendorDetailEndpoint(t *testing.T) {
 		t.Fatalf("RequestContext() error = %v", err)
 	}
 
-	service := vendor.NewService(client)
+	service := mdmvendor.NewService(client)
 	response, err := service.Get(context.Background(), requestContext, "1063197165850985296")
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
@@ -92,7 +92,7 @@ func TestServiceGetUsesContractMCPVendorDetailEndpoint(t *testing.T) {
 func TestServiceGetRejectsEmptyVendorID(t *testing.T) {
 	t.Parallel()
 
-	service := vendor.NewService(openplatform.New(openplatform.Options{
+	service := mdmvendor.NewService(openplatform.New(openplatform.Options{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}))
 	_, err := service.Get(context.Background(), openplatform.RequestContext{}, "")

@@ -6,7 +6,7 @@ import (
 
 	"cn.qfei/contract-cli/internal/openplatform"
 	entitysvc "cn.qfei/contract-cli/internal/openplatform/entity"
-	vendorsvc "cn.qfei/contract-cli/internal/openplatform/vendor"
+	vendorsvc "cn.qfei/contract-cli/internal/openplatform/mdmvendor"
 )
 
 func (a *App) runMDM(ctx context.Context, args []string) error {
