@@ -19,7 +19,7 @@ func TestClientDoAddsAuthorizationAndQuery(t *testing.T) {
 	client := openplatform.New(openplatform.Options{
 		HTTPClient: &http.Client{
 			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				if req.URL.String() != "https://dev-open.qtech.cn/open-apis/mdm/v1/vendors/123?name=acme" {
+				if req.URL.String() != "https://dev-open.qtech.cn/open-apis/mdm/v1/vendors/123?name=acme&user_id=ou_123&user_id_type=employee_id" {
 					t.Fatalf("url = %q", req.URL.String())
 				}
 				if req.Header.Get("Authorization") != "Bearer bot-token" {
@@ -52,6 +52,10 @@ func TestClientDoAddsAuthorizationAndQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestContext() error = %v", err)
 	}
+	requestContext.CommonQuery = map[string][]string{
+		"user_id_type": {"employee_id"},
+		"user_id":      {"ou_123"},
+	}
 
 	response, err := client.Do(context.Background(), requestContext, openplatform.Request{
 		Method: http.MethodGet,
@@ -65,6 +69,57 @@ func TestClientDoAddsAuthorizationAndQuery(t *testing.T) {
 	}
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", response.StatusCode)
+	}
+}
+
+func TestClientDoCommonQueryOverridesRequestQuery(t *testing.T) {
+	t.Parallel()
+
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.String() != "https://dev-open.qtech.cn/open-apis/contract/v1/mcp/contracts/search?contract_number=CN-001&user_id=ou_123&user_id_type=employee_id" {
+					t.Fatalf("url = %q", req.URL.String())
+				}
+				return jsonResponse(`{"code":0}`), nil
+			}),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	requestContext, err := client.RequestContext(config.Profile{
+		Name:                "contract-group",
+		Environment:         "dev",
+		OpenPlatformBaseURL: "https://dev-open.qtech.cn",
+		DefaultIdentity:     config.IdentityUser,
+		Identities: config.Identities{
+			User: config.UserIdentity{
+				Token: &config.Token{
+					AccessToken: "user-token",
+					TokenType:   "Bearer",
+					Expiry:      time.Now().Add(time.Hour),
+				},
+			},
+		},
+	}, "")
+	if err != nil {
+		t.Fatalf("RequestContext() error = %v", err)
+	}
+	requestContext.CommonQuery = map[string][]string{
+		"user_id_type": {"employee_id"},
+		"user_id":      {"ou_123"},
+	}
+
+	_, err = client.Do(context.Background(), requestContext, openplatform.Request{
+		Method: http.MethodGet,
+		Path:   "/open-apis/contract/v1/mcp/contracts/search",
+		Query: map[string][]string{
+			"contract_number": {"CN-001"},
+			"user_id_type":    {"user_id"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
 	}
 }
 

@@ -21,10 +21,10 @@ contract-cli mdm fields list --profile contract-group --biz-line vendor
 
 硬约束：
 
-- 只支持 `--as user`
 - `--biz-line` 必填
-- 内部固定 `user_id_type=user_id`
 - 这条命令只查字段配置，不负责本地校验、字段清洗或自动组装写请求
+- `mdm fields list` 同时支持 `user` 和 `bot`
+- `--user-id-type` / `--user-id` 继续按共享约定透传，不做本地校验
 
 ## 2. 场景配方
 
@@ -38,6 +38,12 @@ contract-cli mdm fields list --profile contract-group --biz-line vendor
 
 ```bash
 contract-cli mdm fields list --profile contract-group --biz-line vendor
+```
+
+bot 示例：
+
+```bash
+contract-cli mdm fields list --profile contract-group --as bot --biz-line vendor --user-id-type employee_id
 ```
 
 ### 2.2 查法人实体字段定义
@@ -63,6 +69,13 @@ contract-cli mdm fields list --profile contract-group --biz-line legal_entity
 ```bash
 contract-cli mdm fields list --profile contract-group --biz-line vendor_risk
 ```
+
+补充说明：
+
+- user 路由走 `/open-apis/contract/v1/mcp/config/config_list`
+- bot 路由走 `/open-apis/mdm/v1/config/config_list`
+- 文档显示文本使用这条 bot 路径，但超链接目标误指到了 `vendors`
+- 文档 query 表使用 `biz_line`，CLI 继续保持 `--biz-line -> biz_line` 的透传映射
 
 ## 3. 什么时候不要走这里
 

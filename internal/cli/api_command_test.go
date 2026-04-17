@@ -133,6 +133,52 @@ func TestAPICallSupportsRawOutputAndInputFileBody(t *testing.T) {
 	}
 }
 
+func TestAPICallAppendsCommonUserIdentityQueryParams(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	store := config.NewStore(t.TempDir())
+	profile := config.Profile{
+		Name:                "contract-group",
+		Environment:         "dev",
+		OpenPlatformBaseURL: "https://dev-open.qtech.cn",
+		DefaultIdentity:     config.IdentityBot,
+		Identities: config.Identities{
+			Bot: config.BotIdentity{
+				Token: &config.Token{
+					AccessToken: "bot-token",
+					TokenType:   "Bearer",
+					Expiry:      time.Now().Add(time.Hour),
+				},
+			},
+		},
+	}
+	if err := store.UpsertProfile(profile, true); err != nil {
+		t.Fatalf("UpsertProfile() error = %v", err)
+	}
+
+	app := cli.New(cli.Options{
+		Stdout: stdout,
+		Stderr: stderr,
+		Store:  store,
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.String() != "https://dev-open.qtech.cn/open-apis/contract/v1/contracts/search?user_id=ou_123&user_id_type=employee_id" {
+					t.Fatalf("unexpected request url: %s", req.URL.String())
+				}
+				return jsonResponse(`{"code":0,"data":{"ok":true}}`), nil
+			}),
+		},
+	})
+
+	if err := app.Run(context.Background(), []string{
+		"api", "call", "GET", "/open-apis/contract/v1/contracts/search", "--profile", "contract-group", "--user-id", "ou_123", "--user-id-type", "employee_id",
+	}); err != nil {
+		t.Fatalf("api call error = %v", err)
+	}
+}
+
 func TestAPICallRejectsAbsoluteURLAndMissingOpenPlatformBaseURL(t *testing.T) {
 	t.Parallel()
 

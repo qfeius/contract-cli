@@ -37,6 +37,7 @@ type RequestContext struct {
 	Identity    config.IdentityKind
 	BaseURL     string
 	AccessToken string
+	CommonQuery url.Values
 }
 
 type Request struct {
@@ -83,7 +84,7 @@ func (c *Client) RequestContext(profile config.Profile, identity config.Identity
 }
 
 func (c *Client) Do(ctx context.Context, requestContext RequestContext, request Request) (Response, error) {
-	fullURL, err := buildURL(requestContext.BaseURL, request.Path, request.Query)
+	fullURL, err := buildURL(requestContext.BaseURL, request.Path, mergeQuery(request.Query, requestContext.CommonQuery))
 	if err != nil {
 		return Response{}, err
 	}
@@ -223,6 +224,34 @@ func buildURL(baseURL, path string, query url.Values) (string, error) {
 	parsedURL := parsedBase.ResolveReference(parsedPath)
 	parsedURL.RawQuery = query.Encode()
 	return parsedURL.String(), nil
+}
+
+func mergeQuery(requestQuery url.Values, commonQuery url.Values) url.Values {
+	if len(requestQuery) == 0 && len(commonQuery) == 0 {
+		return url.Values{}
+	}
+
+	merged := cloneQuery(requestQuery)
+	for key, values := range commonQuery {
+		cloned := make([]string, len(values))
+		copy(cloned, values)
+		merged[key] = cloned
+	}
+	return merged
+}
+
+func cloneQuery(values url.Values) url.Values {
+	if len(values) == 0 {
+		return url.Values{}
+	}
+
+	cloned := make(url.Values, len(values))
+	for key, fieldValues := range values {
+		copied := make([]string, len(fieldValues))
+		copy(copied, fieldValues)
+		cloned[key] = copied
+	}
+	return cloned
 }
 
 func responseSnippet(body []byte) string {

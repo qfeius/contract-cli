@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -20,6 +21,8 @@ type commandOptions struct {
 	raw         bool
 	inputFile   string
 	data        string
+	userIDType  string
+	userID      string
 }
 
 type parsedArgs struct {
@@ -122,6 +125,8 @@ func parseCommandOptions(parsed parsedArgs) commandOptions {
 		raw:         parsed.Bool("--raw"),
 		inputFile:   parsed.String("--input-file"),
 		data:        parsed.String("--data"),
+		userIDType:  parsed.String("--user-id-type"),
+		userID:      parsed.String("--user-id"),
 	}
 }
 
@@ -139,6 +144,13 @@ func commonValueFlags(extra ...string) map[string]struct{} {
 	return flags
 }
 
+func structuredValueFlags(extra ...string) map[string]struct{} {
+	flags := commonValueFlags(extra...)
+	flags["--user-id-type"] = struct{}{}
+	flags["--user-id"] = struct{}{}
+	return flags
+}
+
 func commonBoolFlags(extra ...string) map[string]struct{} {
 	flags := map[string]struct{}{
 		"--raw": {},
@@ -150,7 +162,7 @@ func commonBoolFlags(extra ...string) map[string]struct{} {
 }
 
 func (a *App) executeOpenPlatformCommand(ctx context.Context, options commandOptions, request openplatform.Request) error {
-	client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, request.Path, request.IdentityPolicy)
+	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, request.Path, request.IdentityPolicy)
 	if err != nil {
 		return err
 	}
@@ -160,6 +172,15 @@ func (a *App) executeOpenPlatformCommand(ctx context.Context, options commandOpt
 		return err
 	}
 	return a.renderOpenPlatformResponse(options, response)
+}
+
+func (a *App) openPlatformClientAndContextForOptions(options commandOptions, path string, policy openplatform.IdentityPolicy) (*openplatform.Client, openplatform.RequestContext, error) {
+	client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, path, policy)
+	if err != nil {
+		return nil, openplatform.RequestContext{}, err
+	}
+	requestContext.CommonQuery = commandCommonQuery(options)
+	return client, requestContext, nil
 }
 
 func (a *App) openPlatformClientAndContext(profileName, identityArg, path string, policy openplatform.IdentityPolicy) (*openplatform.Client, openplatform.RequestContext, error) {
@@ -233,6 +254,20 @@ func resolveRawBody(options commandOptions) ([]byte, error) {
 	default:
 		return nil, nil
 	}
+}
+
+func commandCommonQuery(options commandOptions) url.Values {
+	query := url.Values{}
+	if value := strings.TrimSpace(options.userIDType); value != "" {
+		query.Set("user_id_type", value)
+	}
+	if value := strings.TrimSpace(options.userID); value != "" {
+		query.Set("user_id", value)
+	}
+	if len(query) == 0 {
+		return nil
+	}
+	return query
 }
 
 func resolveJSONObjectBody(options commandOptions, requireInput bool) (map[string]any, error) {

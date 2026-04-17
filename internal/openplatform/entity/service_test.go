@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -55,6 +56,90 @@ func TestServiceListAndGetUseLegalEntityEndpoints(t *testing.T) {
 	}
 }
 
+func TestServiceListUsesBotLegalEntityEndpoint(t *testing.T) {
+	t.Parallel()
+
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path != "/open-apis/mdm/v1/legal_entities/list_all" {
+					t.Fatalf("path = %q", req.URL.Path)
+				}
+				query := req.URL.Query()
+				if query.Get("page_size") != "10" {
+					t.Fatalf("page_size = %q", query.Get("page_size"))
+				}
+				if query.Get("page_token") != "next" {
+					t.Fatalf("page_token = %q", query.Get("page_token"))
+				}
+				if query.Get("user_id_type") != "employee_id" {
+					t.Fatalf("user_id_type = %q", query.Get("user_id_type"))
+				}
+				if query.Get("legalEntity") != "主体A" {
+					t.Fatalf("legalEntity = %q", query.Get("legalEntity"))
+				}
+				return jsonResponse(`{"code":0,"data":{"items":[{"legalEntity":"L00002002"}],"hasMore":false}}`), nil
+			}),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	requestContext, err := client.RequestContext(profileWithBotToken(), config.IdentityBot)
+	if err != nil {
+		t.Fatalf("RequestContext() error = %v", err)
+	}
+	requestContext.CommonQuery = urlValues("user_id_type", "employee_id")
+
+	service := entity.NewService(client)
+	response, err := service.List(context.Background(), requestContext, entity.ListInput{
+		Name:      "主体A",
+		PageSize:  10,
+		PageToken: "next",
+	})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", response.StatusCode)
+	}
+}
+
+func TestServiceGetUsesBotLegalEntityEndpoint(t *testing.T) {
+	t.Parallel()
+
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path != "/open-apis/mdm/v1/legal_entities/7003410079584092448" {
+					t.Fatalf("path = %q", req.URL.Path)
+				}
+				query := req.URL.Query()
+				if query.Get("user_id_type") != "employee_id" {
+					t.Fatalf("user_id_type = %q", query.Get("user_id_type"))
+				}
+				if query.Get("legal_entity_id") != "7003410079584092448" {
+					t.Fatalf("legal_entity_id = %q", query.Get("legal_entity_id"))
+				}
+				return jsonResponse(`{"code":0,"data":{"legalEntity":{"legalEntity":"L00002002"}}}`), nil
+			}),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	requestContext, err := client.RequestContext(profileWithBotToken(), config.IdentityBot)
+	if err != nil {
+		t.Fatalf("RequestContext() error = %v", err)
+	}
+	requestContext.CommonQuery = urlValues("user_id_type", "employee_id")
+
+	service := entity.NewService(client)
+	response, err := service.Get(context.Background(), requestContext, "7003410079584092448")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", response.StatusCode)
+	}
+}
+
 func TestServiceGetRejectsEmptyEntityID(t *testing.T) {
 	t.Parallel()
 
@@ -83,6 +168,28 @@ func profileWithUserToken() config.Profile {
 			},
 		},
 	}
+}
+
+func profileWithBotToken() config.Profile {
+	return config.Profile{
+		Name:                "contract-group",
+		Environment:         "dev",
+		OpenPlatformBaseURL: "https://dev-open.qtech.cn",
+		DefaultIdentity:     config.IdentityBot,
+		Identities: config.Identities{
+			Bot: config.BotIdentity{
+				Token: &config.Token{
+					AccessToken: "bot-token",
+					TokenType:   "Bearer",
+					Expiry:      time.Now().Add(time.Hour),
+				},
+			},
+		},
+	}
+}
+
+func urlValues(key, value string) url.Values {
+	return url.Values{key: {value}}
 }
 
 func containsString(values []string, want string) bool {

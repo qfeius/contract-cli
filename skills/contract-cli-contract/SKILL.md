@@ -1,7 +1,7 @@
 ---
 name: contract-cli-contract
 version: 1.0.0
-description: "contract-cli 合同 user-only 命令技能：搜索合同、查看详情、创建合同、同步用户组、读取合同文本，以及查询合同分类、模板和枚举。当用户要使用 `contract-cli contract ...` 操作 `contract/v1/mcp` 合同能力时触发。"
+description: "contract-cli 合同命令技能：支持 user/bot 双身份下的合同详情、合同搜索、合同创建、同步用户组、读取合同文本、查询合同分类、列出模板、查看模板详情、创建模板实例，以及 user 身份下的枚举查询。当用户要使用 `contract-cli contract ...` 操作合同能力时触发。"
 ---
 
 # contract-cli Contract
@@ -34,14 +34,34 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ## 关键规则
 
-- 所有命令都只支持 `--as user`
+- `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate` 同时支持 `--as user` 和 `--as bot`
+- 除这九条外，其余命令仍然只支持 `--as user`
 - `contract create` 当前直接接收原始创建请求体，不额外暴露 `--template`
+- `contract create --as bot` 走 `POST /open-apis/contract/v1/contracts`
+- `contract create --as bot` 的请求体必须自己带 `create_user_id`
 - `contract create` 的推荐阅读顺序是：
   - 先读 [references/create-contract-fields.md](references/create-contract-fields.md) 选场景和最小请求体
   - 再读 [references/create-contract-field-tree.md](references/create-contract-field-tree.md) 查嵌套对象和 JSON Path
   - 最后读 [references/create-contract-enums.md](references/create-contract-enums.md) 确认 code 取值
 - 这三份文档一起构成 `contract create` 的完整参数主档，不需要再回查旧接口清单
+- `contract get --as bot` 走开放平台标准接口 `/open-apis/contract/v1/contracts/{contract_id}`
+- `--user-id-type` / `--user-id` 是通用 query 参数：
+  - 传了就原样拼到底层接口
+  - 不传就不带
+  - 不区分 `user` / `bot`
+  - 不做默认值补齐
+  - 不做命令级校验
 - `contract search` 会把 `--contract-number`、`--page-size`、`--page-token` 合并进 `--input-file/--data` 里的 JSON 对象
+- `contract search --as bot` 走开放平台标准接口 `/open-apis/contract/v1/contracts/search`
+- `contract sync-user-groups --as bot` 走 `/open-apis/contract/v1/contracts/user-groups/sync`
+- `contract text --as bot` 走 `POST /open-apis/contract/v1/contracts/{contract_id}/text`
+- `contract category list --as bot` 走 `/open-apis/contract/v1/contract_categorys`
+- `contract template list --as bot` 走 `/open-apis/contract/v1/templates`
+- 按生产文档，`contract template list --as bot` 的 `category_number`、`user_id`、`user_id_type` 都属于 query 参数；CLI 仍只透传，不做本地必填校验
+- `contract template get --as bot` 走 `/open-apis/contract/v1/templates/{template_id}`
+- 按生产文档，`contract template get --as bot` 的 `user_id`、`user_id_type` 都属于 query 参数；CLI 仍只透传，不做本地必填校验
+- `contract template instantiate --as bot` 走 `POST /open-apis/contract/v1/template_instances`
+- 按生产文档，`contract template instantiate --as bot` 的 query 只有 `user_id_type`，请求体里需要 `create_user_id`；CLI 仍只透传，不做本地必填校验
 - `contract text` 支持 `--full-text`、`--offset`、`--limit`
 - `contract template instantiate` 只接收请求体，不再接模板 ID 位置参数
 
@@ -56,7 +76,9 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ## 操作建议
 
-- 先确认 profile 已完成 `auth login --as user`
+- 先确认 profile 已完成目标身份的登录：
+  - user 详情、user 搜索、user 创建、user 同步用户组、user 合同文本、user 分类查询、user 模板列表、user 模板详情、user 模板实例和其他 user-only 命令：`auth login --as user`
+  - bot 详情、bot 搜索、bot 创建、bot 同步用户组、bot 合同文本、bot 分类查询、bot 模板列表、bot 模板详情、bot 模板实例：`auth login --as bot`
 - 复杂请求体优先用 `--input-file`
 - 需要脚本消费时加 `--output json`
 - 需要对照后端原始 envelope 时加 `--raw`
@@ -67,6 +89,6 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ## 不要这样做
 
-- 不要对这批命令传 `--as bot`
+- 不要对 `contract enum` 传 `--as bot`
 - 不要继续写 `--file contract.json`
 - 不要把 `contract template fields`、`contract file upload` 当成已实现能力

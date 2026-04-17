@@ -12,6 +12,7 @@
 
 ```text
 $
+├── create_user_id
 ├── contract_category_abbreviation
 ├── contract_category_id
 ├── contract_name
@@ -163,6 +164,7 @@ $
 
 | 字段 | 类型 | 必填性 | 业务含义 | 联动/注意 |
 | --- | --- | --- | --- | --- |
+| `create_user_id` | `string` | 条件必填 | 合同申请人 id。 | `--as bot` 时必填；这是请求体字段，不是 query 参数。 |
 | `contract_category_abbreviation` | `string` | 必填 | 合同分类缩写。 | 创建合同最核心的分类定位字段。 |
 | `contract_category_id` | `string` | 可选 | 合同分类 id。 | 分类缩写有歧义时，用它进一步唯一定位。 |
 | `contract_name` | `string` | 必填 | 合同名称。 | 若 `generate_contract_name_by_rule=true`，名称可能由平台规则生成。 |

@@ -22,10 +22,13 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ## 关键规则
 
-- 只支持 `--as user`
 - `mdm vendor list` 支持 `--name`、`--page-size`、`--page-token`
+- `mdm vendor list --as user` 走 `/open-apis/contract/v1/mcp/vendors`
+- `mdm vendor list --as bot` 走 `/open-apis/mdm/v1/vendors`
+- `mdm vendor get --as user` 走 `/open-apis/contract/v1/mcp/vendors/{vendor_id}`
+- `mdm vendor get --as bot` 走 `/open-apis/mdm/v1/vendors/{vendor_id}`
 - 不暴露 `--operator`
-- 默认内部固定 `user_id_type=user_id`
+- `--user-id-type` / `--user-id` 仍按共享规则透传，不做本地校验
 - 推荐阅读顺序是：
   - 先读 [references/vendor-query-guide.md](references/vendor-query-guide.md) 选查询场景
   - 再读 [references/vendor-query-parameters.md](references/vendor-query-parameters.md) 查请求参数映射
@@ -34,7 +37,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 ## 实现来源
 
 - [internal/cli/vendor_command.go](../../internal/cli/vendor_command.go)
-- [internal/openplatform/vendor/service.go](../../internal/openplatform/vendor/service.go)
+- [internal/openplatform/mdmvendor/service.go](../../internal/openplatform/mdmvendor/service.go)
 - [references/vendor-query-guide.md](references/vendor-query-guide.md)
 - [references/vendor-query-parameters.md](references/vendor-query-parameters.md)
 - [references/commands.md](references/commands.md)
@@ -47,6 +50,5 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ## 不要这样做
 
-- 不要对这批命令传 `--as bot`
-- 不要把 `mdm vendor list` 当成字段配置查询
+- 不要把 `mdm vendor list/get` 当成字段配置查询
 - 不要把未实现的 `mdm vendor create/update` 当成已有结构化命令

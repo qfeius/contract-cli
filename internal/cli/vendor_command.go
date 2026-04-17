@@ -33,7 +33,7 @@ func (a *App) runMDMVendor(ctx context.Context, args []string) error {
 
 	switch args[0] {
 	case "list":
-		parsed, err := parseArgs(args[1:], commonValueFlags("--name", "--page-size", "--page-token"), commonBoolFlags())
+		parsed, err := parseArgs(args[1:], structuredValueFlags("--name", "--page-size", "--page-token"), commonBoolFlags())
 		if err != nil {
 			return err
 		}
@@ -45,7 +45,7 @@ func (a *App) runMDMVendor(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, contractMCPPathPrefix+"/vendors", openplatform.IdentityPolicyUserOnly)
+		client, requestContext, err := a.openPlatformClientAndContextForOptions(options, "/open-apis/mdm/v1/vendors", openplatform.IdentityPolicyAny)
 		if err != nil {
 			return err
 		}
@@ -59,7 +59,7 @@ func (a *App) runMDMVendor(ctx context.Context, args []string) error {
 		}
 		return a.renderOpenPlatformResponse(options, response)
 	case "get":
-		parsed, err := parseArgs(args[1:], commonValueFlags(), commonBoolFlags())
+		parsed, err := parseArgs(args[1:], structuredValueFlags(), commonBoolFlags())
 		if err != nil {
 			return err
 		}
@@ -68,7 +68,7 @@ func (a *App) runMDMVendor(ctx context.Context, args []string) error {
 		}
 		options := parseCommandOptions(parsed)
 		vendorID := parsed.positionals[0]
-		client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, contractMCPPathPrefix+"/vendors/"+vendorID, openplatform.IdentityPolicyUserOnly)
+		client, requestContext, err := a.openPlatformClientAndContextForOptions(options, "/open-apis/mdm/v1/vendors/"+vendorID, openplatform.IdentityPolicyAny)
 		if err != nil {
 			return err
 		}
@@ -89,7 +89,7 @@ func (a *App) runMDMLegal(ctx context.Context, args []string) error {
 
 	switch args[0] {
 	case "list":
-		parsed, err := parseArgs(args[1:], commonValueFlags("--name", "--page-size", "--page-token"), commonBoolFlags())
+		parsed, err := parseArgs(args[1:], structuredValueFlags("--name", "--page-size", "--page-token"), commonBoolFlags())
 		if err != nil {
 			return err
 		}
@@ -101,7 +101,7 @@ func (a *App) runMDMLegal(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, contractMCPPathPrefix+"/legal_entities", openplatform.IdentityPolicyUserOnly)
+		client, requestContext, err := a.openPlatformClientAndContextForOptions(options, "/open-apis/mdm/v1/legal_entities/list_all", openplatform.IdentityPolicyAny)
 		if err != nil {
 			return err
 		}
@@ -115,7 +115,7 @@ func (a *App) runMDMLegal(ctx context.Context, args []string) error {
 		}
 		return a.renderOpenPlatformResponse(options, response)
 	case "get":
-		parsed, err := parseArgs(args[1:], commonValueFlags(), commonBoolFlags())
+		parsed, err := parseArgs(args[1:], structuredValueFlags(), commonBoolFlags())
 		if err != nil {
 			return err
 		}
@@ -124,7 +124,7 @@ func (a *App) runMDMLegal(ctx context.Context, args []string) error {
 		}
 		options := parseCommandOptions(parsed)
 		entityID := parsed.positionals[0]
-		client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, contractMCPPathPrefix+"/legal_entities/"+entityID, openplatform.IdentityPolicyUserOnly)
+		client, requestContext, err := a.openPlatformClientAndContextForOptions(options, "/open-apis/mdm/v1/legal_entities/"+entityID, openplatform.IdentityPolicyAny)
 		if err != nil {
 			return err
 		}

@@ -53,7 +53,7 @@ func (a *App) runAPICall(ctx context.Context, args []string) error {
 }
 
 func parseAPICallArgs(args []string) (apiCallOptions, string, string, error) {
-	parsed, err := parseArgs(args, commonValueFlags("--header"), commonBoolFlags())
+	parsed, err := parseArgs(args, structuredValueFlags("--header"), commonBoolFlags())
 	if err != nil {
 		return apiCallOptions{}, "", "", err
 	}

@@ -15,7 +15,7 @@ func (a *App) runSchema(ctx context.Context, args []string) error {
 
 	switch args[0] {
 	case "list":
-		parsed, err := parseArgs(args[1:], commonValueFlags("--biz-line"), commonBoolFlags())
+		parsed, err := parseArgs(args[1:], structuredValueFlags("--biz-line"), commonBoolFlags())
 		if err != nil {
 			return err
 		}
@@ -24,7 +24,7 @@ func (a *App) runSchema(ctx context.Context, args []string) error {
 		}
 
 		options := parseCommandOptions(parsed)
-		client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, contractMCPPathPrefix+"/config/config_list", openplatform.IdentityPolicyUserOnly)
+		client, requestContext, err := a.openPlatformClientAndContextForOptions(options, "/open-apis/mdm/v1/config/config_list", openplatform.IdentityPolicyAny)
 		if err != nil {
 			return err
 		}

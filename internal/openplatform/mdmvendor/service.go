@@ -3,10 +3,12 @@ package mdmvendor
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
+	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/openplatform"
 )
 
@@ -25,11 +27,6 @@ func NewService(client *openplatform.Client) *Service {
 }
 
 func (s *Service) List(ctx context.Context, requestContext openplatform.RequestContext, input ListInput) (openplatform.Response, error) {
-	spec, ok := openplatformContractSpec("get-vendors")
-	if !ok {
-		return openplatform.Response{}, fmt.Errorf("vendor list spec is not configured")
-	}
-
 	query := url.Values{}
 	if strings.TrimSpace(input.Name) != "" {
 		query.Set("vendor", strings.TrimSpace(input.Name))
@@ -41,12 +38,29 @@ func (s *Service) List(ctx context.Context, requestContext openplatform.RequestC
 		query.Set("page_token", strings.TrimSpace(input.PageToken))
 	}
 
-	return s.client.Do(ctx, requestContext, openplatform.Request{
-		Method:         spec.Method,
-		Path:           spec.Path,
-		Query:          spec.Query(query),
-		IdentityPolicy: spec.IdentityPolicy,
-	})
+	switch requestContext.Identity {
+	case config.IdentityUser:
+		spec, ok := openplatformContractSpec("get-vendors")
+		if !ok {
+			return openplatform.Response{}, fmt.Errorf("vendor list spec is not configured")
+		}
+
+		return s.client.Do(ctx, requestContext, openplatform.Request{
+			Method:         spec.Method,
+			Path:           spec.Path,
+			Query:          spec.Query(query),
+			IdentityPolicy: spec.IdentityPolicy,
+		})
+	case config.IdentityBot:
+		return s.client.Do(ctx, requestContext, openplatform.Request{
+			Method:         http.MethodGet,
+			Path:           "/open-apis/mdm/v1/vendors",
+			Query:          query,
+			IdentityPolicy: openplatform.IdentityPolicyAny,
+		})
+	default:
+		return openplatform.Response{}, fmt.Errorf("unsupported identity %q for mdm vendor list", requestContext.Identity)
+	}
 }
 
 func (s *Service) Get(ctx context.Context, requestContext openplatform.RequestContext, vendorID string) (openplatform.Response, error) {
@@ -55,17 +69,28 @@ func (s *Service) Get(ctx context.Context, requestContext openplatform.RequestCo
 		return openplatform.Response{}, fmt.Errorf("vendor id is required")
 	}
 
-	spec, ok := openplatformContractSpec("get-vendor-detail")
-	if !ok {
-		return openplatform.Response{}, fmt.Errorf("vendor detail spec is not configured")
-	}
+	switch requestContext.Identity {
+	case config.IdentityUser:
+		spec, ok := openplatformContractSpec("get-vendor-detail")
+		if !ok {
+			return openplatform.Response{}, fmt.Errorf("vendor detail spec is not configured")
+		}
 
-	return s.client.Do(ctx, requestContext, openplatform.Request{
-		Method:         spec.Method,
-		Path:           strings.ReplaceAll(spec.Path, "{vendor_id}", url.PathEscape(vendorID)),
-		Query:          spec.Query(nil),
-		IdentityPolicy: spec.IdentityPolicy,
-	})
+		return s.client.Do(ctx, requestContext, openplatform.Request{
+			Method:         spec.Method,
+			Path:           strings.ReplaceAll(spec.Path, "{vendor_id}", url.PathEscape(vendorID)),
+			Query:          spec.Query(nil),
+			IdentityPolicy: spec.IdentityPolicy,
+		})
+	case config.IdentityBot:
+		return s.client.Do(ctx, requestContext, openplatform.Request{
+			Method:         http.MethodGet,
+			Path:           "/open-apis/mdm/v1/vendors/" + url.PathEscape(vendorID),
+			IdentityPolicy: openplatform.IdentityPolicyAny,
+		})
+	default:
+		return openplatform.Response{}, fmt.Errorf("unsupported identity %q for mdm vendor get", requestContext.Identity)
+	}
 }
 
 func openplatformContractSpec(toolName string) (openplatform.ToolSpec, bool) {

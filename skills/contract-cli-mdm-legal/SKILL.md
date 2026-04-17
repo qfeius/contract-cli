@@ -22,10 +22,13 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ## 关键规则
 
-- 只支持 `--as user`
 - `mdm legal list` 支持 `--name`、`--page-size`、`--page-token`
+- `mdm legal list --as user` 走 `/open-apis/contract/v1/mcp/legal_entities`
+- `mdm legal list --as bot` 走 `/open-apis/mdm/v1/legal_entities/list_all`
+- `mdm legal get --as user` 走 `/open-apis/contract/v1/mcp/legal_entities/{legal_entity_id}`
+- `mdm legal get --as bot` 走 `/open-apis/mdm/v1/legal_entities/{legal_entity_id}`，并额外透传 query `legal_entity_id`
 - 不暴露 `--operator`
-- 默认内部固定 `user_id_type=user_id`
+- `--user-id-type` / `--user-id` 仍按共享规则透传，不做本地校验
 - 推荐阅读顺序是：
   - 先读 [references/entity-query-guide.md](references/entity-query-guide.md) 选查询场景
   - 再读 [references/entity-query-parameters.md](references/entity-query-parameters.md) 查请求参数映射
@@ -47,6 +50,5 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ## 不要这样做
 
-- 不要对这批命令传 `--as bot`
-- 不要把 `mdm legal list` 当成字段配置查询
+- 不要把 `mdm legal list/get` 当成字段配置查询
 - 不要把未实现的 `mdm legal create/update` 当成已有结构化命令

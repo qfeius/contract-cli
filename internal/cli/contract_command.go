@@ -9,6 +9,7 @@ import (
 )
 
 const contractMCPPathPrefix = "/open-apis/contract/v1/mcp"
+const contractOpenAPIPathPrefix = "/open-apis/contract/v1"
 
 func (a *App) runContract(ctx context.Context, args []string) error {
 	if len(args) == 0 {
@@ -38,7 +39,7 @@ func (a *App) runContract(ctx context.Context, args []string) error {
 }
 
 func (a *App) runContractSearch(ctx context.Context, args []string) error {
-	parsed, err := parseArgs(args, commonValueFlags("--contract-number", "--page-size", "--page-token"), commonBoolFlags())
+	parsed, err := parseArgs(args, structuredValueFlags("--contract-number", "--page-size", "--page-token"), commonBoolFlags())
 	if err != nil {
 		return err
 	}
@@ -69,11 +70,13 @@ func (a *App) runContractSearch(ctx context.Context, args []string) error {
 		return err
 	}
 
-	client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, contractMCPPathPrefix+"/contracts/search", openplatform.IdentityPolicyUserOnly)
+	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, contractOpenAPIPathPrefix+"/contracts/search", openplatform.IdentityPolicyAny)
 	if err != nil {
 		return err
 	}
-	response, err := contractsvc.NewService(client).Search(ctx, requestContext, body)
+	response, err := contractsvc.NewService(client).Search(ctx, requestContext, contractsvc.SearchInput{
+		Body: body,
+	})
 	if err != nil {
 		return err
 	}
@@ -81,7 +84,7 @@ func (a *App) runContractSearch(ctx context.Context, args []string) error {
 }
 
 func (a *App) runContractGet(ctx context.Context, args []string) error {
-	parsed, err := parseArgs(args, commonValueFlags(), commonBoolFlags())
+	parsed, err := parseArgs(args, structuredValueFlags(), commonBoolFlags())
 	if err != nil {
 		return err
 	}
@@ -91,7 +94,7 @@ func (a *App) runContractGet(ctx context.Context, args []string) error {
 
 	options := parseCommandOptions(parsed)
 	contractID := parsed.positionals[0]
-	client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, contractMCPPathPrefix+"/contracts/"+contractID, openplatform.IdentityPolicyUserOnly)
+	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, contractOpenAPIPathPrefix+"/contracts/"+contractID, openplatform.IdentityPolicyAny)
 	if err != nil {
 		return err
 	}
@@ -103,7 +106,7 @@ func (a *App) runContractGet(ctx context.Context, args []string) error {
 }
 
 func (a *App) runContractSyncUserGroups(ctx context.Context, args []string) error {
-	parsed, err := parseArgs(args, commonValueFlags(), commonBoolFlags())
+	parsed, err := parseArgs(args, structuredValueFlags(), commonBoolFlags())
 	if err != nil {
 		return err
 	}
@@ -112,7 +115,7 @@ func (a *App) runContractSyncUserGroups(ctx context.Context, args []string) erro
 	}
 
 	options := parseCommandOptions(parsed)
-	client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, contractMCPPathPrefix+"/contracts/user-groups/sync", openplatform.IdentityPolicyUserOnly)
+	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, contractMCPPathPrefix+"/contracts/user-groups/sync", openplatform.IdentityPolicyAny)
 	if err != nil {
 		return err
 	}
@@ -124,7 +127,7 @@ func (a *App) runContractSyncUserGroups(ctx context.Context, args []string) erro
 }
 
 func (a *App) runContractText(ctx context.Context, args []string) error {
-	parsed, err := parseArgs(args, commonValueFlags("--offset", "--limit"), commonBoolFlags("--full-text"))
+	parsed, err := parseArgs(args, structuredValueFlags("--offset", "--limit"), commonBoolFlags("--full-text"))
 	if err != nil {
 		return err
 	}
@@ -142,7 +145,7 @@ func (a *App) runContractText(ctx context.Context, args []string) error {
 		return err
 	}
 	contractID := parsed.positionals[0]
-	client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, contractMCPPathPrefix+"/contracts/"+contractID+"/text", openplatform.IdentityPolicyUserOnly)
+	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, contractMCPPathPrefix+"/contracts/"+contractID+"/text", openplatform.IdentityPolicyAny)
 	if err != nil {
 		return err
 	}
@@ -158,7 +161,7 @@ func (a *App) runContractText(ctx context.Context, args []string) error {
 }
 
 func (a *App) runContractCreate(ctx context.Context, args []string) error {
-	parsed, err := parseArgs(args, commonValueFlags(), commonBoolFlags())
+	parsed, err := parseArgs(args, structuredValueFlags(), commonBoolFlags())
 	if err != nil {
 		return err
 	}
@@ -176,7 +179,7 @@ func (a *App) runContractCreate(ctx context.Context, args []string) error {
 		return err
 	}
 
-	client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, contractMCPPathPrefix+"/contracts", openplatform.IdentityPolicyUserOnly)
+	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, "/open-apis/contract/v1/contracts", openplatform.IdentityPolicyAny)
 	if err != nil {
 		return err
 	}
@@ -193,7 +196,7 @@ func (a *App) runContractCategory(ctx context.Context, args []string) error {
 	}
 	switch args[0] {
 	case "list":
-		parsed, err := parseArgs(args[1:], commonValueFlags("--lang"), commonBoolFlags())
+		parsed, err := parseArgs(args[1:], structuredValueFlags("--lang"), commonBoolFlags())
 		if err != nil {
 			return err
 		}
@@ -202,7 +205,7 @@ func (a *App) runContractCategory(ctx context.Context, args []string) error {
 		}
 
 		options := parseCommandOptions(parsed)
-		client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, contractMCPPathPrefix+"/contract_categorys", openplatform.IdentityPolicyUserOnly)
+		client, requestContext, err := a.openPlatformClientAndContextForOptions(options, "/open-apis/contract/v1/contract_categorys", openplatform.IdentityPolicyAny)
 		if err != nil {
 			return err
 		}
@@ -220,10 +223,9 @@ func (a *App) runContractTemplate(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("missing contract template subcommand")
 	}
-	servicePath := contractMCPPathPrefix + "/templates"
 	switch args[0] {
 	case "list":
-		parsed, err := parseArgs(args[1:], commonValueFlags("--category-number", "--page-size", "--page-token"), commonBoolFlags())
+		parsed, err := parseArgs(args[1:], structuredValueFlags("--category-number", "--page-size", "--page-token"), commonBoolFlags())
 		if err != nil {
 			return err
 		}
@@ -235,7 +237,7 @@ func (a *App) runContractTemplate(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, servicePath, openplatform.IdentityPolicyUserOnly)
+		client, requestContext, err := a.openPlatformClientAndContextForOptions(options, "/open-apis/contract/v1/templates", openplatform.IdentityPolicyAny)
 		if err != nil {
 			return err
 		}
@@ -249,7 +251,7 @@ func (a *App) runContractTemplate(ctx context.Context, args []string) error {
 		}
 		return a.renderOpenPlatformResponse(options, response)
 	case "get":
-		parsed, err := parseArgs(args[1:], commonValueFlags(), commonBoolFlags())
+		parsed, err := parseArgs(args[1:], structuredValueFlags(), commonBoolFlags())
 		if err != nil {
 			return err
 		}
@@ -258,7 +260,7 @@ func (a *App) runContractTemplate(ctx context.Context, args []string) error {
 		}
 		options := parseCommandOptions(parsed)
 		templateID := parsed.positionals[0]
-		client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, servicePath+"/"+templateID, openplatform.IdentityPolicyUserOnly)
+		client, requestContext, err := a.openPlatformClientAndContextForOptions(options, "/open-apis/contract/v1/templates/"+templateID, openplatform.IdentityPolicyAny)
 		if err != nil {
 			return err
 		}
@@ -268,7 +270,7 @@ func (a *App) runContractTemplate(ctx context.Context, args []string) error {
 		}
 		return a.renderOpenPlatformResponse(options, response)
 	case "instantiate":
-		parsed, err := parseArgs(args[1:], commonValueFlags(), commonBoolFlags())
+		parsed, err := parseArgs(args[1:], structuredValueFlags(), commonBoolFlags())
 		if err != nil {
 			return err
 		}
@@ -284,7 +286,7 @@ func (a *App) runContractTemplate(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, contractMCPPathPrefix+"/template_instances", openplatform.IdentityPolicyUserOnly)
+		client, requestContext, err := a.openPlatformClientAndContextForOptions(options, "/open-apis/contract/v1/template_instances", openplatform.IdentityPolicyAny)
 		if err != nil {
 			return err
 		}
@@ -304,7 +306,7 @@ func (a *App) runContractEnum(ctx context.Context, args []string) error {
 	}
 	switch args[0] {
 	case "list":
-		parsed, err := parseArgs(args[1:], commonValueFlags("--type"), commonBoolFlags())
+		parsed, err := parseArgs(args[1:], structuredValueFlags("--type"), commonBoolFlags())
 		if err != nil {
 			return err
 		}
@@ -312,7 +314,7 @@ func (a *App) runContractEnum(ctx context.Context, args []string) error {
 			return fmt.Errorf("usage: contract-cli contract enum list --type <enum-type> [flags]")
 		}
 		options := parseCommandOptions(parsed)
-		client, requestContext, err := a.openPlatformClientAndContext(options.profileName, options.identity, contractMCPPathPrefix+"/enum_values", openplatform.IdentityPolicyUserOnly)
+		client, requestContext, err := a.openPlatformClientAndContextForOptions(options, contractMCPPathPrefix+"/enum_values", openplatform.IdentityPolicyUserOnly)
 		if err != nil {
 			return err
 		}

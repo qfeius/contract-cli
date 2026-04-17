@@ -21,8 +21,10 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ## 关键规则
 
-- 只支持 `--as user`
 - `--biz-line` 必填
+- `mdm fields list --as user` 走 `/open-apis/contract/v1/mcp/config/config_list`
+- `mdm fields list --as bot` 走 `/open-apis/mdm/v1/config/config_list`
+- `--user-id-type` / `--user-id` 仍按共享规则透传，不做本地校验
 - 当前只封装字段配置查询，不负责本地校验和字段转换
 - 推荐阅读顺序是：
   - 先读 [references/schema-fields-guide.md](references/schema-fields-guide.md) 选业务线和查询场景
@@ -45,6 +47,5 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ## 不要这样做
 
-- 不要对这批命令传 `--as bot`
 - 不要把 `mdm fields list` 当成数据查询命令
 - 不要假设它会自动帮你校验写请求

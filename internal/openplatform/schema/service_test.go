@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +33,43 @@ func TestServiceFieldsUsesConfigListEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestContext() error = %v", err)
 	}
+
+	service := schema.NewService(client)
+	response, err := service.Fields(context.Background(), requestContext, "vendor")
+	if err != nil {
+		t.Fatalf("Fields() error = %v", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", response.StatusCode)
+	}
+}
+
+func TestServiceFieldsUsesBotConfigListEndpoint(t *testing.T) {
+	t.Parallel()
+
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path != "/open-apis/mdm/v1/config/config_list" {
+					t.Fatalf("path = %q", req.URL.Path)
+				}
+				query := req.URL.Query()
+				if query.Get("biz_line") != "vendor" {
+					t.Fatalf("biz_line = %q", query.Get("biz_line"))
+				}
+				if query.Get("user_id_type") != "employee_id" {
+					t.Fatalf("user_id_type = %q", query.Get("user_id_type"))
+				}
+				return jsonResponse(`{"code":0,"data":{"config":[{"fieldCode":"V00000001"}]}}`), nil
+			}),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	requestContext, err := client.RequestContext(profileWithBotToken(), config.IdentityBot)
+	if err != nil {
+		t.Fatalf("RequestContext() error = %v", err)
+	}
+	requestContext.CommonQuery = urlValues("user_id_type", "employee_id")
 
 	service := schema.NewService(client)
 	response, err := service.Fields(context.Background(), requestContext, "vendor")
@@ -71,6 +109,28 @@ func profileWithUserToken() config.Profile {
 			},
 		},
 	}
+}
+
+func profileWithBotToken() config.Profile {
+	return config.Profile{
+		Name:                "contract-group",
+		Environment:         "dev",
+		OpenPlatformBaseURL: "https://dev-open.qtech.cn",
+		DefaultIdentity:     config.IdentityBot,
+		Identities: config.Identities{
+			Bot: config.BotIdentity{
+				Token: &config.Token{
+					AccessToken: "bot-token",
+					TokenType:   "Bearer",
+					Expiry:      time.Now().Add(time.Hour),
+				},
+			},
+		},
+	}
+}
+
+func urlValues(key, value string) url.Values {
+	return url.Values{key: {value}}
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

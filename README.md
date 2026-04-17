@@ -7,6 +7,8 @@
 - 合同与 MDM 结构化命令
 - 源码构建、预编译二进制发布、npm/npx 薄包装分发
 
+命令清单请看：[docs/cli-command-reference.md](/Users/lyy/contract-cli/docs/cli-command-reference.md)
+
 ## 环境要求
 
 - Go `1.24.3+`

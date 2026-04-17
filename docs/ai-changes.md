@@ -1,5 +1,85 @@
 # AI 变更记录
 
+- 2026-04-17
+  变更摘要：为 `contract-cli mdm fields list` 增加按身份自动分流的 bot 查询字段配置能力。
+  涉及文件/模块：`internal/openplatform/schema/service.go`、`internal/openplatform/schema/service_test.go`、`internal/cli/schema_command.go`、`internal/cli/mcp_command_test.go`、`internal/cli/command_reference_doc_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-shared/SKILL.md`、`skills/contract-cli-mdm-fields/*`、`docs/ai-changes.md`
+  关键逻辑/决策：保持 `contract-cli mdm fields list --biz-line <...>` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 MCP `/open-apis/contract/v1/mcp/config/config_list`，`bot` 改走开放平台标准接口 `GET /open-apis/mdm/v1/config/config_list`；参考生产文档按显示文本采用 `config/config_list` 路径，同时记录超链接误指到 `vendors` 的瑕疵，并继续沿用 `biz_line` 的 query 透传映射，不做本地校验。
+
+- 2026-04-17
+  变更摘要：为 `contract-cli mdm legal get` 增加按身份自动分流的 bot 查询法人主体详情能力。
+  涉及文件/模块：`internal/openplatform/entity/service.go`、`internal/openplatform/entity/service_test.go`、`internal/cli/vendor_command.go`、`internal/cli/mcp_command_test.go`、`internal/cli/command_reference_doc_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-shared/SKILL.md`、`skills/contract-cli-mdm-legal/*`、`docs/ai-changes.md`
+  关键逻辑/决策：保持 `contract-cli mdm legal get <legal-entity-id>` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 MCP `/open-apis/contract/v1/mcp/legal_entities/{legal_entity_id}`，`bot` 改走开放平台标准接口 `GET /open-apis/mdm/v1/legal_entities/{legal_entity_id}`；由于生产文档同时把 `legal_entity_id` 写在查询参数表里，这次按确认方案采用“path + query 双带 `legal_entity_id`”的保守实现，并继续按共享约定透传 `--user-id-type` / `--user-id`，不做本地校验。
+
+- 2026-04-17
+  变更摘要：为 `contract-cli mdm legal list` 增加按身份自动分流的 bot 查询法人主体列表能力。
+  涉及文件/模块：`internal/openplatform/entity/service.go`、`internal/openplatform/entity/service_test.go`、`internal/cli/vendor_command.go`、`internal/cli/mcp_command_test.go`、`internal/cli/command_reference_doc_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-shared/SKILL.md`、`skills/contract-cli-mdm-legal/*`、`docs/ai-changes.md`
+  关键逻辑/决策：保持 `contract-cli mdm legal list` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 MCP `/open-apis/contract/v1/mcp/legal_entities`，`bot` 改走开放平台标准接口 `GET /open-apis/mdm/v1/legal_entities/list_all`；参考生产文档按显示文本采用 `legal_entities/list_all` 路径，同时记录文档超链接误指到 `vendors` 的瑕疵，并继续沿用当前 `legalEntity/page_size/page_token` 的 query 透传映射，不做本地校验。
+
+- 2026-04-17
+  变更摘要：为 `contract-cli mdm vendor get` 增加按身份自动分流的 bot 查询交易方详情能力。
+  涉及文件/模块：`internal/openplatform/mdmvendor/service.go`、`internal/openplatform/mdmvendor/service_test.go`、`internal/cli/vendor_command.go`、`internal/cli/mcp_command_test.go`、`internal/cli/command_reference_doc_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-shared/SKILL.md`、`skills/contract-cli-mdm-vendor/*`、`docs/ai-changes.md`
+  关键逻辑/决策：保持 `contract-cli mdm vendor get <vendor-id>` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 MCP `/open-apis/contract/v1/mcp/vendors/{vendor_id}`，`bot` 改走开放平台标准接口 `GET /open-apis/mdm/v1/vendors/{vendor_id}`；参考生产文档仅把 `user_id_type` 视为 bot 文档显式列出的查询参数，但 CLI 继续按共享约定透传 `--user-id-type` / `--user-id`，不做本地校验。
+
+- 2026-04-17
+  变更摘要：为 `contract-cli mdm vendor list` 增加按身份自动分流的 bot 查询交易方列表能力。
+  涉及文件/模块：`internal/openplatform/mdmvendor/service.go`、`internal/openplatform/mdmvendor/service_test.go`、`internal/cli/vendor_command.go`、`internal/cli/mcp_command_test.go`、`internal/cli/command_reference_doc_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-shared/SKILL.md`、`skills/contract-cli-mdm-vendor/*`、`docs/ai-changes.md`
+  关键逻辑/决策：保持 `contract-cli mdm vendor list` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 MCP `/open-apis/contract/v1/mcp/vendors`，`bot` 改走开放平台标准接口 `GET /open-apis/mdm/v1/vendors`；依据生产文档保留 `vendor` 查询参数名，CLI 继续沿用 `--name -> vendor` 的透传映射，不在本地改名或做额外校验，`mdm vendor get` 仍保持 user-only。
+
+- 2026-04-17
+  变更摘要：为 `contract-cli contract template instantiate` 增加按身份自动分流的 bot 创建模板实例能力。
+  涉及文件/模块：`internal/openplatform/contract/service.go`、`internal/openplatform/contract/service_test.go`、`internal/cli/contract_command.go`、`internal/cli/mcp_command_test.go`、`internal/cli/command_reference_doc_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-contract/*`、`skills/contract-cli-shared/SKILL.md`、`docs/ai-changes.md`
+  关键逻辑/决策：保持 `contract template instantiate` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 MCP `/open-apis/contract/v1/mcp/template_instances`，`bot` 改走开放平台标准接口 `POST /open-apis/contract/v1/template_instances`；按照生产文档仅保留 `user_id_type` 作为 query 参数语义，并要求由调用方自行在 body 中提供 `create_user_id`，CLI 不做本地必填校验。
+
+- 2026-04-17
+  变更摘要：为 `contract-cli contract template get` 增加按身份自动分流的 bot 查看模板详情能力。
+  涉及文件/模块：`internal/openplatform/contract/service.go`、`internal/openplatform/contract/service_test.go`、`internal/cli/contract_command.go`、`internal/cli/mcp_command_test.go`、`internal/cli/command_reference_doc_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-contract/*`、`skills/contract-cli-shared/SKILL.md`、`docs/ai-changes.md`
+  关键逻辑/决策：保持 `contract template get <template-id>` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 MCP `/open-apis/contract/v1/mcp/templates/{template_id}`，`bot` 改走开放平台标准接口 `GET /open-apis/contract/v1/templates/{template_id}`；查询参数继续沿用现有透传约定，不对生产文档中标注的 `user_id/user_id_type` 做本地必填校验，`template instantiate` 继续保持 user-only。
+
+- 2026-04-17
+  变更摘要：为 `contract-cli contract template list` 增加按身份自动分流的 bot 列出模板能力。
+  涉及文件/模块：`internal/openplatform/contract/service.go`、`internal/openplatform/contract/service_test.go`、`internal/cli/contract_command.go`、`internal/cli/mcp_command_test.go`、`internal/cli/command_reference_doc_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-contract/*`、`skills/contract-cli-shared/SKILL.md`、`docs/ai-changes.md`
+  关键逻辑/决策：保持 `contract template list` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 MCP `/open-apis/contract/v1/mcp/templates`，`bot` 改走开放平台标准接口 `GET /open-apis/contract/v1/templates`；查询参数仍沿用现有透传约定，不对生产文档中标注的 `category_number/user_id/user_id_type` 做本地必填校验，`template get/instantiate` 继续保持 user-only。
+
+- 2026-04-17
+  变更摘要：为 `contract-cli contract category list` 增加按身份自动分流的 bot 查询合同分类能力。
+  涉及文件/模块：`internal/openplatform/contract/service.go`、`internal/openplatform/contract/service_test.go`、`internal/cli/contract_command.go`、`internal/cli/mcp_command_test.go`、`internal/cli/command_reference_doc_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-contract/*`、`skills/contract-cli-shared/SKILL.md`、`docs/ai-changes.md`
+  关键逻辑/决策：保持 `contract category list` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 MCP `/open-apis/contract/v1/mcp/contract_categorys`，`bot` 改走开放平台标准接口 `GET /open-apis/contract/v1/contract_categorys`；`lang` 仍作为 query 参数透传，未放开其余模板/枚举等 user-only 合同命令。
+
+- 2026-04-17
+  变更摘要：为 `contract-cli contract create` 增加按身份自动分流的 bot 创建合同能力，并补齐 `create_user_id` 的命令/skill 说明。
+  涉及文件/模块：`internal/openplatform/contract/service.go`、`internal/openplatform/contract/service_test.go`、`internal/cli/contract_command.go`、`internal/cli/mcp_command_test.go`、`internal/cli/command_reference_doc_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-contract/*`、`skills/contract-cli-shared/SKILL.md`、`docs/ai-changes.md`
+  关键逻辑/决策：保持 `contract create` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 MCP `/open-apis/contract/v1/mcp/contracts`，`bot` 改走开放平台标准接口 `POST /open-apis/contract/v1/contracts`；CLI 仍旧透传原始 JSON body，不替用户补 `create_user_id`，只在命令文档和字段主档里明确它是 bot 创建时必须自行携带的请求体字段。
+
+- 2026-04-17
+  变更摘要：将 `--user-id-type` / `--user-id` 收敛为开放平台通用 query 参数，对结构化命令与 `api call` 统一透传，并同步纠正 `sync-user-groups` / `text` 的 bot 底层路径。
+  涉及文件/模块：`internal/openplatform/client.go`、`internal/openplatform/client_test.go`、`internal/cli/command_support.go`、`internal/cli/api_command.go`、`internal/cli/api_command_test.go`、`internal/cli/contract_command.go`、`internal/cli/mcp_command_test.go`、`internal/openplatform/contract/service.go`、`internal/openplatform/contract/service_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-contract/*`、`skills/contract-cli-shared/SKILL.md`、`docs/ai-changes.md`
+  关键逻辑/决策：通过 `RequestContext.CommonQuery` 在 `Client.Do()` 统一合并通用 query，显式传入的 `user_id_type/user_id` 会覆盖命令自身已有同名 query；结构化命令和 `api call` 只负责解析参数，不再对 `user` / `bot` 做必填、默认值或禁用校验；同时把 `contract sync-user-groups` 的 bot 路由纠正为 `POST /open-apis/contract/v1/contracts/user-groups/sync`，把 `contract text` 的 bot 路由纠正为 `POST /open-apis/contract/v1/contracts/{contract_id}/text`。
+
+- 2026-04-17
+  变更摘要：为 `contract-cli contract text` 增加按身份自动分流的 bot 获取合同文本能力。
+  涉及文件/模块：`internal/openplatform/contract`、`internal/cli/contract_command.go`、`internal/cli/mcp_command_test.go`、`internal/openplatform/contract/service_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-contract/*`、`skills/contract-cli-shared/SKILL.md`、`docs/ai-changes.md`
+  关键逻辑/决策：保持 `contract text <contract-id>` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 `/open-apis/contract/v1/mcp/contracts/{contract_id}/text?user_id_type=user_id&...`，`bot` 使用同一路径但不再追加 `user_id_type`，仅透传 `full_text/offset/limit` 查询参数并使用 `tenant_access_token` 调用；仅这条命令对 `/open-apis/contract/v1/mcp/contracts/{contract_id}/text` 单独放开 bot 访问，其余未改造的 `/contract/v1/mcp/` 结构化命令仍保持既有约束。
+
+- 2026-04-17
+  变更摘要：为 `contract-cli contract sync-user-groups` 增加按身份自动分流的 bot 同步用户组能力。
+  涉及文件/模块：`internal/openplatform/contract`、`internal/cli/contract_command.go`、`internal/cli/mcp_command_test.go`、`internal/openplatform/contract/service_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-contract/*`、`skills/contract-cli-shared/SKILL.md`、`docs/ai-changes.md`
+  关键逻辑/决策：保持 `contract sync-user-groups` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 `/open-apis/contract/v1/mcp/contracts/user-groups/sync?user_id_type=user_id`，`bot` 仍使用同一路径但不再追加 user 侧查询参数，只使用 `tenant_access_token` 完成调用；仅这条命令对 `/open-apis/contract/v1/mcp/contracts/user-groups/sync` 单独放开 bot 访问，其余未改造的 `/contract/v1/mcp/` 结构化命令仍保持 user-only。
+
+- 2026-04-17
+  变更摘要：为 `contract-cli contract get` 增加按身份自动分流的 bot 合同详情能力，并把统一的 `--user-id-type` / `--user-id` 约定扩展到详情命令。
+  涉及文件/模块：`internal/openplatform/contract`、`internal/cli/contract_command.go`、`internal/cli/mcp_command_test.go`、`internal/openplatform/contract/service_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-contract/*`、`skills/contract-cli-shared/SKILL.md`、`docs/ai-changes.md`
+  关键逻辑/决策：保持 `contract get <contract-id>` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 MCP `/open-apis/contract/v1/mcp/contracts/{contract_id}`，`bot` 改走开放平台标准接口 `/open-apis/contract/v1/contracts/{contract_id}`，并同样按“第二种方式”追加 `user_id_type/user_id` 查询参数；仅 `contract get --as bot` 真正消费 `--user-id-type` / `--user-id`，其中 `--user-id` 必填、`--user-id-type` 默认 `user_id`，而 `--as user` 传入这两个参数会直接报错；其余结构化命令仍保持 user-only。
+
+- 2026-04-16
+  变更摘要：为 `contract-cli contract search` 增加按身份自动分流的 bot 搜索能力，并引入统一的 `--user-id-type` / `--user-id` 参数约定。
+  涉及文件/模块：`internal/openplatform/contract`、`internal/cli/contract_command.go`、`internal/cli/command_support.go`、`internal/cli/mcp_command_test.go`、`internal/openplatform/contract/service_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-contract/*`、`skills/contract-cli-shared/SKILL.md`、`docs/ai-changes.md`
+  关键逻辑/决策：保持 `contract search` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 MCP `/open-apis/contract/v1/mcp/contracts/search`，`bot` 改走开放平台标准接口 `/open-apis/contract/v1/contracts/search`，并按“第二种方式”追加 `user_id_type/user_id` 查询参数；仅 `contract search --as bot` 真正消费 `--user-id-type` / `--user-id`，其中 `--user-id` 必填、`--user-id-type` 默认 `user_id`，而 `--as user` 传入这两个参数会直接报错；响应继续原样透传，不做 user/bot 结果归一化。
+
+- 2026-04-16
+  变更摘要：新增一份与当前代码实现对齐的 CLI 命令总览文档，并补轻量契约测试防止文档漂移。
+  涉及文件/模块：`docs/cli-command-reference.md`、`README.md`、`internal/cli/command_reference_doc_test.go`、`docs/ai-changes.md`
+  关键逻辑/决策：从 `internal/cli` 当前真实命令树反向整理 `config/auth/version/api/contract/mdm` 的命令矩阵、参数约定、输出约定和身份支持现状；明确当前结构化业务命令全部只支持 `--as user`，而 bot 业务接口后续优先通过 `api call --as bot` 验证；新增文档契约测试要求新文档必须覆盖所有已支持命令和 bot/user 边界，避免后续扩展时清单失真。
+
 - 2026-04-15
   变更摘要：将内部主数据交易方 service 包从 `internal/openplatform/vendor` 重命名为 `internal/openplatform/mdmvendor`，规避 JetBrains 对 `vendor` 包路径的错误识别。
   涉及文件/模块：`internal/cli/vendor_command.go`、`internal/openplatform/mdmvendor/*`、`docs/ai-changes.md`
