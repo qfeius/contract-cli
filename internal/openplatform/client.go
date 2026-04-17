@@ -84,11 +84,6 @@ func (c *Client) RequestContext(profile config.Profile, identity config.Identity
 }
 
 func (c *Client) Do(ctx context.Context, requestContext RequestContext, request Request) (Response, error) {
-	fullURL, err := buildURL(requestContext.BaseURL, request.Path, mergeQuery(request.Query, requestContext.CommonQuery))
-	if err != nil {
-		return Response{}, err
-	}
-
 	method := strings.ToUpper(strings.TrimSpace(request.Method))
 	if method == "" {
 		return Response{}, fmt.Errorf("open platform request method is required")
@@ -99,6 +94,10 @@ func (c *Client) Do(ctx context.Context, requestContext RequestContext, request 
 	}
 	if err := validateIdentityPolicy(requestContext.Identity, policy, request.Path); err != nil {
 		c.logger.Error("open platform identity policy rejected", "method", method, "path", request.Path, "identity", requestContext.Identity, "error", err.Error())
+		return Response{}, err
+	}
+	fullURL, err := buildURL(requestContext.BaseURL, request.Path, mergeQuery(policy, request.Query, requestContext.CommonQuery))
+	if err != nil {
 		return Response{}, err
 	}
 
@@ -226,13 +225,18 @@ func buildURL(baseURL, path string, query url.Values) (string, error) {
 	return parsedURL.String(), nil
 }
 
-func mergeQuery(requestQuery url.Values, commonQuery url.Values) url.Values {
+func mergeQuery(policy IdentityPolicy, requestQuery url.Values, commonQuery url.Values) url.Values {
 	if len(requestQuery) == 0 && len(commonQuery) == 0 {
 		return url.Values{}
 	}
 
 	merged := cloneQuery(requestQuery)
 	for key, values := range commonQuery {
+		if policy == IdentityPolicyUserOnly {
+			if _, exists := merged[key]; exists {
+				continue
+			}
+		}
 		cloned := make([]string, len(values))
 		copy(cloned, values)
 		merged[key] = cloned

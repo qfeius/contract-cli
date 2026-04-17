@@ -72,13 +72,13 @@ func TestClientDoAddsAuthorizationAndQuery(t *testing.T) {
 	}
 }
 
-func TestClientDoCommonQueryOverridesRequestQuery(t *testing.T) {
+func TestClientDoCommonQueryPreservesUserOnlyRequestQuery(t *testing.T) {
 	t.Parallel()
 
 	client := openplatform.New(openplatform.Options{
 		HTTPClient: &http.Client{
 			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				if req.URL.String() != "https://dev-open.qtech.cn/open-apis/contract/v1/mcp/contracts/search?contract_number=CN-001&user_id=ou_123&user_id_type=employee_id" {
+				if req.URL.String() != "https://dev-open.qtech.cn/open-apis/contract/v1/mcp/contracts/search?contract_number=CN-001&user_id=ou_123&user_id_type=user_id" {
 					t.Fatalf("url = %q", req.URL.String())
 				}
 				return jsonResponse(`{"code":0}`), nil
@@ -117,6 +117,57 @@ func TestClientDoCommonQueryOverridesRequestQuery(t *testing.T) {
 			"contract_number": {"CN-001"},
 			"user_id_type":    {"user_id"},
 		},
+		IdentityPolicy: openplatform.IdentityPolicyUserOnly,
+	})
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+}
+
+func TestClientDoCommonQueryOverridesAnyPolicyRequestQuery(t *testing.T) {
+	t.Parallel()
+
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.String() != "https://dev-open.qtech.cn/open-apis/mdm/v1/vendors/123?user_id_type=employee_id" {
+					t.Fatalf("url = %q", req.URL.String())
+				}
+				return jsonResponse(`{"code":0}`), nil
+			}),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	requestContext, err := client.RequestContext(config.Profile{
+		Name:                "contract-group",
+		Environment:         "dev",
+		OpenPlatformBaseURL: "https://dev-open.qtech.cn",
+		DefaultIdentity:     config.IdentityBot,
+		Identities: config.Identities{
+			Bot: config.BotIdentity{
+				Token: &config.Token{
+					AccessToken: "bot-token",
+					TokenType:   "Bearer",
+					Expiry:      time.Now().Add(time.Hour),
+				},
+			},
+		},
+	}, config.IdentityBot)
+	if err != nil {
+		t.Fatalf("RequestContext() error = %v", err)
+	}
+	requestContext.CommonQuery = map[string][]string{
+		"user_id_type": {"employee_id"},
+	}
+
+	_, err = client.Do(context.Background(), requestContext, openplatform.Request{
+		Method: http.MethodGet,
+		Path:   "/open-apis/mdm/v1/vendors/123",
+		Query: map[string][]string{
+			"user_id_type": {"user_id"},
+		},
+		IdentityPolicy: openplatform.IdentityPolicyAny,
 	})
 	if err != nil {
 		t.Fatalf("Do() error = %v", err)

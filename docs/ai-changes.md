@@ -1,6 +1,11 @@
 # AI 变更记录
 
 - 2026-04-17
+  变更摘要：修复 user-only MCP 请求中固定 query 被通用 `--user-id/--user-id-type` 覆盖的问题。
+  涉及文件/模块：`internal/openplatform/client.go`、`internal/openplatform/client_test.go`、`internal/cli/mcp_command_test.go`、`docs/ai-changes.md`
+  关键逻辑/决策：`Client.Do()` 先解析生效的 `IdentityPolicy` 再合并 query；对 `IdentityPolicyUserOnly` 保留 `request.Query` 现有 key，仅补入 `CommonQuery` 中缺失的参数，从而保护 MCP 固定的 `user_id_type=user_id`；对 `IdentityPolicyAny` 继续保持通用 query 可覆盖同名请求参数的既有语义，并补充对应回归测试。
+
+- 2026-04-17
   变更摘要：为 `contract-cli mdm fields list` 增加按身份自动分流的 bot 查询字段配置能力。
   涉及文件/模块：`internal/openplatform/schema/service.go`、`internal/openplatform/schema/service_test.go`、`internal/cli/schema_command.go`、`internal/cli/mcp_command_test.go`、`internal/cli/command_reference_doc_test.go`、`docs/cli-command-reference.md`、`skills/contract-cli-shared/SKILL.md`、`skills/contract-cli-mdm-fields/*`、`docs/ai-changes.md`
   关键逻辑/决策：保持 `contract-cli mdm fields list --biz-line <...>` 命令面不变，运行时按当前 token 身份路由；`user` 继续走 MCP `/open-apis/contract/v1/mcp/config/config_list`，`bot` 改走开放平台标准接口 `GET /open-apis/mdm/v1/config/config_list`；参考生产文档按显示文本采用 `config/config_list` 路径，同时记录超链接误指到 `vendors` 的瑕疵，并继续沿用 `biz_line` 的 query 透传映射，不做本地校验。
