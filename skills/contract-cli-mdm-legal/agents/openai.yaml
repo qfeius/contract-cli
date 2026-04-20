@@ -1,0 +1,7 @@
+interface:
+  display_name: "Contract CLI MDM Legal"
+  short_description: "List legal entities and fetch legal entity details with user-only commands"
+  default_prompt: "Use $contract-cli-mdm-legal to query legal entity candidates or details from contract-cli with a user-authorized profile."
+
+policy:
+  allow_implicit_invocation: true

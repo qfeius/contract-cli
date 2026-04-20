@@ -1,0 +1,7 @@
+interface:
+  display_name: "Contract CLI Auth"
+  short_description: "Configure contract-cli login and switch user/bot identities"
+  default_prompt: "Use $auth to initialize contract-cli auth, complete user or bot login, inspect local auth state, switch default identities, and troubleshoot config or secrets persistence."
+
+policy:
+  allow_implicit_invocation: true

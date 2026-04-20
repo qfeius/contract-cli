@@ -1,0 +1,7 @@
+interface:
+  display_name: "Contract CLI MDM Vendor"
+  short_description: "List vendor candidates and fetch vendor details with user-only commands"
+  default_prompt: "Use $contract-cli-mdm-vendor to query vendor candidates or vendor details from contract-cli with a user-authorized profile."
+
+policy:
+  allow_implicit_invocation: true
