@@ -1,6 +1,6 @@
 {
-  "name": "contract-cli",
-  "version": "0.1.0",
+  "name": "@qfeius/contract-cli",
+  "version": "0.1.0-beta.1",
   "description": "CLI for Qfei contract open platform",
   "bin": {
     "contract-cli": "scripts/run.js"
@@ -12,7 +12,7 @@
   },
   "config": {
     "binaryName": "contract-cli",
-    "downloadBaseURLTemplate": ""
+    "downloadBaseURLTemplate": "https://github.com/qfeius/contract-cli/releases/download/v{version}"
   },
   "os": [
     "darwin",
@@ -28,12 +28,19 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://git.qtech.cn/liyuanye/contract-cli.git"
+    "url": "git+https://github.com/qfeius/contract-cli.git"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
   },
   "license": "UNLICENSED",
   "files": [
     "scripts/install.js",
     "scripts/run.js",
+    "skills/**/SKILL.md",
+    "skills/**/agents/**",
+    "skills/**/references/**",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

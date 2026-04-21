@@ -3,13 +3,17 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
+	"cn.qfei/contract-cli/internal/build"
 	"cn.qfei/contract-cli/internal/cli"
 	"cn.qfei/contract-cli/internal/config"
 )
@@ -32,6 +36,9 @@ func TestRunWithoutArgsPrintsContractCLIUsage(t *testing.T) {
 	if !strings.Contains(stdout.String(), "contract-cli config add [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli auth login [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli version") ||
+		!strings.Contains(stdout.String(), "contract-cli skills list") ||
+		!strings.Contains(stdout.String(), "contract-cli skills install [flags]") ||
+		!strings.Contains(stdout.String(), "contract-cli update check [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli api call [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm vendor <subcommand> [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm legal <subcommand> [flags]") ||
@@ -96,6 +103,348 @@ func TestVersionFlagPrintsBuildInfo(t *testing.T) {
 	output := stdout.String()
 	if !strings.Contains(output, "contract-cli") || !strings.Contains(output, "version dev") {
 		t.Fatalf("unexpected version flag output: %s", output)
+	}
+}
+
+func TestUpdateCheckReportsAvailableBetaVersion(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	store := config.NewStore(t.TempDir())
+
+	app := cli.New(cli.Options{
+		Stdout:               stdout,
+		Stderr:               stderr,
+		Store:                store,
+		UpdateRegistryURL:    "https://registry.test/@qfeius%2fcontract-cli",
+		UpdateCurrentVersion: "0.1.0-beta.1",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.Method != http.MethodGet {
+					t.Fatalf("method = %s, want GET", req.Method)
+				}
+				if req.URL.String() != "https://registry.test/@qfeius%2fcontract-cli" {
+					t.Fatalf("unexpected update registry URL: %s", req.URL.String())
+				}
+				return jsonResponse(`{"dist-tags":{"latest":"0.1.0","beta":"0.1.0-beta.2"}}`), nil
+			}),
+		},
+	})
+
+	if err := app.Run(context.Background(), []string{"update", "check", "--channel", "beta"}); err != nil {
+		t.Fatalf("update check error = %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "A new contract-cli version is available: 0.1.0-beta.1 -> 0.1.0-beta.2") {
+		t.Fatalf("missing update notice: %s", output)
+	}
+	if !strings.Contains(output, "npm install -g @qfeius/contract-cli@beta --registry https://registry.npmjs.org") {
+		t.Fatalf("missing install command: %s", output)
+	}
+	cacheContent, err := os.ReadFile(filepath.Join(filepath.Dir(store.Path()), "update-check.json"))
+	if err != nil {
+		t.Fatalf("ReadFile(update cache) error = %v", err)
+	}
+	if !strings.Contains(string(cacheContent), `"latest_version": "0.1.0-beta.2"`) {
+		t.Fatalf("unexpected update cache: %s", string(cacheContent))
+	}
+}
+
+func TestAutomaticUpdateNoticeUsesThirtyMinuteCache(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	requests := 0
+
+	app := cli.New(cli.Options{
+		Stdout:               stdout,
+		Stderr:               stderr,
+		Store:                config.NewStore(t.TempDir()),
+		SkillsFS:             testSkillsFS(),
+		UpdateRegistryURL:    "https://registry.test/@qfeius%2fcontract-cli",
+		UpdateCurrentVersion: "0.1.0-beta.1",
+		UpdateCheckInterval:  30 * time.Minute,
+		Now: func() time.Time {
+			return time.Date(2026, 4, 20, 16, 0, 0, 0, time.FixedZone("CST", 8*60*60))
+		},
+		IsTerminal: func(io.Writer) bool { return true },
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				requests++
+				return jsonResponse(`{"dist-tags":{"beta":"0.1.0-beta.2"}}`), nil
+			}),
+		},
+	})
+
+	if err := app.Run(context.Background(), []string{"skills", "list"}); err != nil {
+		t.Fatalf("skills list error = %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("update requests = %d, want 1", requests)
+	}
+	if !strings.Contains(stderr.String(), "A new contract-cli version is available: 0.1.0-beta.1 -> 0.1.0-beta.2") {
+		t.Fatalf("missing automatic update notice: %s", stderr.String())
+	}
+
+	stderr.Reset()
+	stdout.Reset()
+	if err := app.Run(context.Background(), []string{"skills", "list"}); err != nil {
+		t.Fatalf("second skills list error = %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("fresh cache should avoid another update request, got %d requests", requests)
+	}
+	if strings.Contains(stderr.String(), "A new contract-cli version is available") {
+		t.Fatalf("fresh cache should suppress update notice: %s", stderr.String())
+	}
+}
+
+func TestAutomaticUpdateNoticeCanBeDisabledByEnv(t *testing.T) {
+	requests := 0
+	app := cli.New(cli.Options{
+		Stdout:               &bytes.Buffer{},
+		Stderr:               &bytes.Buffer{},
+		Store:                config.NewStore(t.TempDir()),
+		SkillsFS:             testSkillsFS(),
+		UpdateRegistryURL:    "https://registry.test/@qfeius%2fcontract-cli",
+		UpdateCurrentVersion: "0.1.0-beta.1",
+		IsTerminal:           func(io.Writer) bool { return true },
+		LookupEnv: func(key string) (string, bool) {
+			if key == "CONTRACT_CLI_NO_UPDATE_CHECK" {
+				return "1", true
+			}
+			return "", false
+		},
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				requests++
+				return jsonResponse(`{"dist-tags":{"beta":"0.1.0-beta.2"}}`), nil
+			}),
+		},
+	})
+
+	if err := app.Run(context.Background(), []string{"skills", "list"}); err != nil {
+		t.Fatalf("skills list error = %v", err)
+	}
+	if requests != 0 {
+		t.Fatalf("disabled update check sent %d requests, want 0", requests)
+	}
+}
+
+func TestAutomaticUpdateNoticeCachesFailureForThirtyMinutes(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	requests := 0
+	now := time.Date(2026, 4, 20, 16, 0, 0, 0, time.FixedZone("CST", 8*60*60))
+
+	app := cli.New(cli.Options{
+		Stdout:               stdout,
+		Stderr:               stderr,
+		Store:                config.NewStore(t.TempDir()),
+		SkillsFS:             testSkillsFS(),
+		UpdateRegistryURL:    "https://registry.test/@qfeius%2fcontract-cli",
+		UpdateCurrentVersion: "0.1.0-beta.1",
+		UpdateCheckInterval:  30 * time.Minute,
+		Now:                  func() time.Time { return now },
+		IsTerminal:           func(io.Writer) bool { return true },
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				requests++
+				return nil, errors.New("registry unavailable")
+			}),
+		},
+	})
+
+	if err := app.Run(context.Background(), []string{"skills", "list"}); err != nil {
+		t.Fatalf("skills list error = %v", err)
+	}
+	if err := app.Run(context.Background(), []string{"skills", "list"}); err != nil {
+		t.Fatalf("second skills list error = %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("failed update check should be cached, got %d requests", requests)
+	}
+	if strings.Contains(stderr.String(), "A new contract-cli version is available") {
+		t.Fatalf("failed update check should not print notice: %s", stderr.String())
+	}
+}
+
+func TestUpdateCheckUsesBuildVersionWhenNotOverridden(t *testing.T) {
+	originalVersion := build.Version
+	build.Version = "0.1.0-beta.1"
+	t.Cleanup(func() { build.Version = originalVersion })
+
+	stdout := &bytes.Buffer{}
+	app := cli.New(cli.Options{
+		Stdout:            stdout,
+		Stderr:            &bytes.Buffer{},
+		Store:             config.NewStore(t.TempDir()),
+		UpdateRegistryURL: "https://registry.test/@qfeius%2fcontract-cli",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return jsonResponse(`{"dist-tags":{"beta":"0.1.0-beta.1"}}`), nil
+			}),
+		},
+	})
+
+	if err := app.Run(context.Background(), []string{"update", "check", "--channel", "beta"}); err != nil {
+		t.Fatalf("update check error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "contract-cli is up to date: 0.1.0-beta.1") {
+		t.Fatalf("unexpected update output: %s", stdout.String())
+	}
+}
+
+const testAuthSkill = `---
+name: auth
+version: 1.1.0
+description: "contract-cli auth skill"
+---
+
+# Auth
+`
+
+func testSkillsFS() fstest.MapFS {
+	return fstest.MapFS{
+		"auth/SKILL.md": {
+			Data: []byte(testAuthSkill),
+		},
+		"auth/agents/openai.yaml": {
+			Data: []byte("name: auth\n"),
+		},
+		"contract-cli-contract/SKILL.md": {
+			Data: []byte(`---
+name: contract-cli-contract
+version: 1.0.0
+description: "contract commands skill"
+---
+
+# Contract
+`),
+		},
+		"contract-cli-contract/agents/openai.yaml": {
+			Data: []byte("name: contract-cli-contract\n"),
+		},
+		"contract-cli-contract/references/commands.md": {
+			Data: []byte("# Commands\n"),
+		},
+	}
+}
+
+func TestSkillsListReadsBundledSkillMetadata(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	app := cli.New(cli.Options{
+		Stdout:   stdout,
+		Stderr:   &bytes.Buffer{},
+		Store:    config.NewStore(t.TempDir()),
+		SkillsFS: testSkillsFS(),
+	})
+
+	if err := app.Run(context.Background(), []string{"skills", "list"}); err != nil {
+		t.Fatalf("skills list error = %v", err)
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"Built-in skills:",
+		"auth\t1.1.0\tcontract-cli auth skill",
+		"contract-cli-contract\t1.0.0\tcontract commands skill",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("skills list output missing %q: %s", want, output)
+		}
+	}
+}
+
+func TestSkillsInstallCopiesBundledSkillsAndSkipsExisting(t *testing.T) {
+	t.Parallel()
+
+	target := filepath.Join(t.TempDir(), "skills")
+	stdout := &bytes.Buffer{}
+	app := cli.New(cli.Options{
+		Stdout:   stdout,
+		Stderr:   &bytes.Buffer{},
+		Store:    config.NewStore(t.TempDir()),
+		SkillsFS: testSkillsFS(),
+	})
+
+	if err := app.Run(context.Background(), []string{"skills", "install", "--target", target}); err != nil {
+		t.Fatalf("skills install error = %v", err)
+	}
+	assertFileContent(t, filepath.Join(target, "auth", "SKILL.md"), testAuthSkill)
+	assertFileContent(t, filepath.Join(target, "auth", "agents", "openai.yaml"), "name: auth\n")
+	assertFileContent(t, filepath.Join(target, "contract-cli-contract", "references", "commands.md"), "# Commands\n")
+
+	if err := os.WriteFile(filepath.Join(target, "auth", "SKILL.md"), []byte("local custom skill\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(local custom skill) error = %v", err)
+	}
+	stdout.Reset()
+	if err := app.Run(context.Background(), []string{"skills", "install", "--target", target}); err != nil {
+		t.Fatalf("second skills install error = %v", err)
+	}
+	assertFileContent(t, filepath.Join(target, "auth", "SKILL.md"), "local custom skill\n")
+	if !strings.Contains(stdout.String(), "Skipped existing skill: auth") {
+		t.Fatalf("expected skip output, got: %s", stdout.String())
+	}
+}
+
+func TestSkillsInstallForceOverwritesExistingSkill(t *testing.T) {
+	t.Parallel()
+
+	target := filepath.Join(t.TempDir(), "skills")
+	if err := os.MkdirAll(filepath.Join(target, "auth"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(auth) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "auth", "SKILL.md"), []byte("local custom skill\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(local custom skill) error = %v", err)
+	}
+
+	app := cli.New(cli.Options{
+		Stdout:   &bytes.Buffer{},
+		Stderr:   &bytes.Buffer{},
+		Store:    config.NewStore(t.TempDir()),
+		SkillsFS: testSkillsFS(),
+	})
+
+	if err := app.Run(context.Background(), []string{"skills", "install", "--target", target, "--force"}); err != nil {
+		t.Fatalf("skills install --force error = %v", err)
+	}
+	assertFileContent(t, filepath.Join(target, "auth", "SKILL.md"), testAuthSkill)
+}
+
+func TestSkillsInstallDefaultsToCodexHome(t *testing.T) {
+	t.Parallel()
+
+	codexHome := t.TempDir()
+	app := cli.New(cli.Options{
+		Stdout:   &bytes.Buffer{},
+		Stderr:   &bytes.Buffer{},
+		Store:    config.NewStore(t.TempDir()),
+		SkillsFS: testSkillsFS(),
+		LookupEnv: func(key string) (string, bool) {
+			if key == "CODEX_HOME" {
+				return codexHome, true
+			}
+			return "", false
+		},
+	})
+
+	if err := app.Run(context.Background(), []string{"skills", "install"}); err != nil {
+		t.Fatalf("skills install error = %v", err)
+	}
+	assertFileContent(t, filepath.Join(codexHome, "skills", "auth", "SKILL.md"), testAuthSkill)
+}
+
+func assertFileContent(t *testing.T, path, want string) {
+	t.Helper()
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", path, err)
+	}
+	if string(content) != want {
+		t.Fatalf("%s content = %q, want %q", path, string(content), want)
 	}
 }
 

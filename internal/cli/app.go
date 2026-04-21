@@ -6,15 +6,19 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"cn.qfei/contract-cli/internal/build"
 	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/oauth"
+	updatecheck "cn.qfei/contract-cli/internal/update"
+	contractskills "cn.qfei/contract-cli/skills"
 )
 
 const defaultProfileName = "contract-group"
@@ -28,19 +32,32 @@ type Options struct {
 	HTTPClient  *http.Client
 	OpenBrowser func(string) error
 	LookupEnv   func(string) (string, bool)
+	SkillsFS    fs.FS
+
+	UpdateRegistryURL    string
+	UpdateCurrentVersion string
+	UpdateCheckInterval  time.Duration
+	Now                  func() time.Time
+	IsTerminal           func(io.Writer) bool
 }
 
 type App struct {
-	stdout       io.Writer
-	stderr       io.Writer
-	logger       *slog.Logger
-	store        *config.Store
-	secrets      *config.SecretsStore
-	httpClient   *http.Client
-	openBrowser  func(string) error
-	lookupEnv    func(string) (string, bool)
-	userProvider authProvider
-	botProvider  authProvider
+	stdout         io.Writer
+	stderr         io.Writer
+	logger         *slog.Logger
+	store          *config.Store
+	secrets        *config.SecretsStore
+	httpClient     *http.Client
+	openBrowser    func(string) error
+	lookupEnv      func(string) (string, bool)
+	skillsFS       fs.FS
+	updateURL      string
+	updateVersion  string
+	updateInterval time.Duration
+	now            func() time.Time
+	isTerminal     func(io.Writer) bool
+	userProvider   authProvider
+	botProvider    authProvider
 }
 
 type environmentPreset struct {
@@ -98,16 +115,38 @@ func New(options Options) *App {
 	if lookupEnv == nil {
 		lookupEnv = os.LookupEnv
 	}
+	skillsFS := options.SkillsFS
+	if skillsFS == nil {
+		skillsFS = contractskills.FS
+	}
+	updateInterval := options.UpdateCheckInterval
+	if updateInterval == 0 {
+		updateInterval = updatecheck.DefaultCheckInterval
+	}
+	now := options.Now
+	if now == nil {
+		now = time.Now
+	}
+	isTerminal := options.IsTerminal
+	if isTerminal == nil {
+		isTerminal = defaultIsTerminal
+	}
 
 	app := &App{
-		stdout:      stdout,
-		stderr:      stderr,
-		logger:      logger,
-		store:       store,
-		secrets:     secrets,
-		httpClient:  httpClient,
-		openBrowser: opener,
-		lookupEnv:   lookupEnv,
+		stdout:         stdout,
+		stderr:         stderr,
+		logger:         logger,
+		store:          store,
+		secrets:        secrets,
+		httpClient:     httpClient,
+		openBrowser:    opener,
+		lookupEnv:      lookupEnv,
+		skillsFS:       skillsFS,
+		updateURL:      options.UpdateRegistryURL,
+		updateVersion:  options.UpdateCurrentVersion,
+		updateInterval: updateInterval,
+		now:            now,
+		isTerminal:     isTerminal,
 	}
 	app.userProvider = userAuthProvider{
 		httpClient:  httpClient,
@@ -136,12 +175,17 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	}
 
 	a.logger.Info("run command", "args", strings.Join(args, " "))
+	a.maybePrintUpdateNotice(ctx, args)
 
 	switch args[0] {
 	case "config":
 		return a.runConfig(ctx, args[1:])
 	case "auth":
 		return a.runAuth(ctx, args[1:])
+	case "skills":
+		return a.runSkills(ctx, args[1:])
+	case "update":
+		return a.runUpdate(ctx, args[1:])
 	case "api":
 		return a.runAPI(ctx, args[1:])
 	case "contract":
@@ -161,6 +205,9 @@ func (a *App) printUsage() {
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli auth logout [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli auth use [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli version")
+	_, _ = fmt.Fprintln(a.stdout, "  contract-cli skills list")
+	_, _ = fmt.Fprintln(a.stdout, "  contract-cli skills install [flags]")
+	_, _ = fmt.Fprintln(a.stdout, "  contract-cli update check [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli api call [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli contract <subcommand> [flags]")
 	_, _ = fmt.Fprintln(a.stdout, "  contract-cli mdm vendor <subcommand> [flags]")
@@ -170,6 +217,19 @@ func (a *App) printUsage() {
 
 func (a *App) printVersion() {
 	_, _ = fmt.Fprintln(a.stdout, build.Current().String())
+}
+
+func defaultIsTerminal(writer io.Writer) bool {
+	file, ok := writer.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+func (a *App) updateCachePath() string {
+	return filepath.Join(filepath.Dir(a.store.Path()), "update-check.json")
 }
 
 func (a *App) runConfig(ctx context.Context, args []string) error {
