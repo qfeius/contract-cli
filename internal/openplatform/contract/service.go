@@ -3,10 +3,13 @@ package contract
 import (
 	"context"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/openplatform"
@@ -30,6 +33,12 @@ type ListTemplatesInput struct {
 	CategoryNumber string
 	PageSize       int
 	PageToken      string
+}
+
+type UploadFileInput struct {
+	FileName string
+	FileType string
+	File     io.Reader
 }
 
 func NewService(client *openplatform.Client) *Service {
@@ -221,6 +230,35 @@ func (s *Service) ListEnums(ctx context.Context, requestContext openplatform.Req
 	return s.do(ctx, requestContext, "get-enum-values", nil, query, nil)
 }
 
+func (s *Service) UploadFile(ctx context.Context, requestContext openplatform.RequestContext, input UploadFileInput) (openplatform.Response, error) {
+	fileName := strings.TrimSpace(input.FileName)
+	if fileName == "" {
+		return openplatform.Response{}, fmt.Errorf("file name is required")
+	}
+	fileType := strings.TrimSpace(input.FileType)
+	if fileType == "" {
+		return openplatform.Response{}, fmt.Errorf("file type is required")
+	}
+	if input.File == nil {
+		return openplatform.Response{}, fmt.Errorf("file reader is required")
+	}
+
+	bodyReader, contentType := multipartUploadBody(UploadFileInput{
+		FileName: fileName,
+		FileType: fileType,
+		File:     input.File,
+	})
+	return s.client.Do(ctx, requestContext, openplatform.Request{
+		Method:     http.MethodPost,
+		Path:       "/open-apis/contract/v1/files/upload",
+		BodyReader: bodyReader,
+		Headers: http.Header{
+			"Content-Type": {contentType},
+		},
+		IdentityPolicy: openplatform.IdentityPolicyBotOnly,
+	})
+}
+
 func (s *Service) do(ctx context.Context, requestContext openplatform.RequestContext, toolName string, replacements map[string]string, query url.Values, body []byte) (openplatform.Response, error) {
 	spec, ok := openplatform.ContractMCPToolSpec(toolName)
 	if !ok {
@@ -239,4 +277,62 @@ func (s *Service) do(ctx context.Context, requestContext openplatform.RequestCon
 		Body:           body,
 		IdentityPolicy: spec.IdentityPolicy,
 	})
+}
+
+func multipartUploadBody(input UploadFileInput) (io.Reader, string) {
+	reader, writer := io.Pipe()
+	multipartWriter := multipart.NewWriter(writer)
+	return &lazyMultipartUploadReader{
+		reader:          reader,
+		writer:          writer,
+		multipartWriter: multipartWriter,
+		input:           input,
+	}, multipartWriter.FormDataContentType()
+}
+
+type lazyMultipartUploadReader struct {
+	once            sync.Once
+	reader          *io.PipeReader
+	writer          *io.PipeWriter
+	multipartWriter *multipart.Writer
+	input           UploadFileInput
+}
+
+func (r *lazyMultipartUploadReader) Read(p []byte) (int, error) {
+	r.once.Do(func() {
+		go func() {
+			err := writeUploadMultipart(r.multipartWriter, r.input)
+			if closeErr := r.multipartWriter.Close(); err == nil {
+				err = closeErr
+			}
+			if err != nil {
+				_ = r.writer.CloseWithError(err)
+				return
+			}
+			_ = r.writer.Close()
+		}()
+	})
+	return r.reader.Read(p)
+}
+
+func (r *lazyMultipartUploadReader) Close() error {
+	_ = r.writer.Close()
+	return r.reader.Close()
+}
+
+func writeUploadMultipart(writer *multipart.Writer, input UploadFileInput) error {
+	if err := writer.WriteField("file_name", input.FileName); err != nil {
+		return fmt.Errorf("write file_name field: %w", err)
+	}
+	if err := writer.WriteField("file_type", input.FileType); err != nil {
+		return fmt.Errorf("write file_type field: %w", err)
+	}
+	part, err := writer.CreateFormFile("file", input.FileName)
+	if err != nil {
+		return fmt.Errorf("create file form field: %w", err)
+	}
+	if _, err := io.Copy(part, input.File); err != nil {
+		return fmt.Errorf("copy upload file content: %w", err)
+	}
+	return nil
 }

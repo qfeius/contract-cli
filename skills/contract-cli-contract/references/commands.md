@@ -13,6 +13,8 @@ contract-cli contract search --profile contract-group --as bot --input-file cont
 contract-cli contract create --profile contract-group --input-file contract-create.json
 contract-cli contract create --profile contract-group --data '{"title":"示例合同"}'
 contract-cli contract create --profile contract-group --as bot --data '{"contract_name":"示例合同","create_user_id":"ou_xxx"}'
+contract-cli contract upload-file --profile contract-group --as bot --file ./合同正文.docx --file-type text
+contract-cli contract upload-file --profile contract-group --as bot --file ./附件.pdf --file-type attachment --file-name 附件.pdf
 contract-cli contract category list --profile contract-group --as bot --lang zh-CN
 contract-cli contract template list --profile contract-group --as bot --category-number CAT-1 --page-size 20 --user-id ou_xxx --user-id-type employee_id
 contract-cli contract template get tpl_123 --profile contract-group --as bot --user-id ou_xxx --user-id-type employee_id
@@ -37,7 +39,7 @@ contract-cli contract enum list --profile contract-group --type contract_status
 
 ## 已知限制
 
-- 文件上传链路尚未实现
+- `contract upload-file` 当前仅支持 bot 身份，不支持 user/MCP 三段式上传
 - `contract template fields` 尚未实现
 - `contract create` 不自动帮你补模板信息；当前就是透传请求体
 - `contract create --as bot` 时，`create_user_id` 需要你自己写进 JSON body

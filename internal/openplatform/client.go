@@ -46,6 +46,7 @@ type Request struct {
 	Query          url.Values
 	Headers        http.Header
 	Body           []byte
+	BodyReader     io.Reader
 	Raw            bool
 	IdentityPolicy IdentityPolicy
 }
@@ -108,13 +109,17 @@ func (c *Client) Do(ctx context.Context, requestContext RequestContext, request 
 	if headers.Get("Accept") == "" {
 		headers.Set("Accept", "application/json")
 	}
-	if len(request.Body) > 0 && headers.Get("Content-Type") == "" {
+	if request.BodyReader == nil && len(request.Body) > 0 && headers.Get("Content-Type") == "" {
 		headers.Set("Content-Type", "application/json")
 	}
 
 	c.logger.Info("open platform request started", "method", method, "path", request.Path, "identity", requestContext.Identity)
 
-	httpRequest, err := http.NewRequestWithContext(ctx, method, fullURL, bytes.NewReader(request.Body))
+	bodyReader := io.Reader(bytes.NewReader(request.Body))
+	if request.BodyReader != nil {
+		bodyReader = request.BodyReader
+	}
+	httpRequest, err := http.NewRequestWithContext(ctx, method, fullURL, bodyReader)
 	if err != nil {
 		c.logger.Error("build open platform request failed", "method", method, "path", request.Path, "error", err.Error())
 		return Response{}, fmt.Errorf("build open platform request: %w", err)
@@ -294,6 +299,11 @@ func validateIdentityPolicy(identity config.IdentityKind, policy IdentityPolicy,
 	case IdentityPolicyUserOnly:
 		if identity != config.IdentityUser {
 			return fmt.Errorf("open platform path %q only supports --as user", path)
+		}
+		return nil
+	case IdentityPolicyBotOnly:
+		if identity != config.IdentityBot {
+			return fmt.Errorf("open platform path %q only supports --as bot", path)
 		}
 		return nil
 	default:

@@ -5,6 +5,8 @@
 - profile 配置与 OAuth / bot 双身份登录
 - 开放平台 `/open-apis/...` 原始调用
 - 合同与 MDM 结构化命令
+- Agent skills 通用安装与 CLI 内置兜底安装
+- 版本检查与升级提示
 - 源码构建、预编译二进制发布、npm/npx 薄包装分发
 
 命令清单请看：[docs/cli-command-reference.md](/Users/lyy/contract-cli/docs/cli-command-reference.md)
@@ -45,13 +47,22 @@ contract-cli --version
 
 - 本地源码仓库内执行 `npm install` 时，如果检测到 Go 源码，会回退到本地 `go build`
 - 以后发布到 npm 后，安装脚本会优先下载预编译二进制
-- 发布前只需要把 `package.json` 里的 `config.downloadBaseURLTemplate` 改成真实发布地址模板，或在安装时通过环境变量覆盖
+- npm 发布配置固定为 `https://registry.npmjs.org/` 和 public access
+- 预编译二进制默认从 GitHub Releases 下载：`https://github.com/qfeius/contract-cli/releases/download/v{version}`
 
 示例：
 
 ```bash
-CONTRACT_CLI_DOWNLOAD_BASE_URL_TEMPLATE="https://downloads.example.com/contract-cli/v{version}" npm install
-npx contract-cli --version
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org npm install -g @qfeius/contract-cli@beta
+npx skills add qfeius/contract-cli -y -g
+npx @qfeius/contract-cli --version
+```
+
+`npx skills add qfeius/contract-cli -y -g` 是推荐的 Agent skills 安装方式，会从 GitHub 仓库安装 `skills/` 目录，适配 Codex、Cursor、Trae、Claude Code 等多类 Agent 环境。若该通用安装器不可用，可使用 CLI 内置兜底：
+
+```bash
+contract-cli skills install
+contract-cli skills install --target ~/.codex/skills
 ```
 
 ## 构建与发布
@@ -72,34 +83,58 @@ make release-snapshot
 
 该命令依赖 `goreleaser`，会在 `dist/` 下产出多平台压缩包和 `checksums.txt`。
 
+### 生成 GitHub Release 附件
+
+```bash
+make release-assets
+```
+
+默认会读取 `package.json` 的版本号，生成 `dist/release-assets/contract-cli-<version>-<os>-<arch>` 系列文件和 `checksums.txt`。这些文件需要上传到同名 GitHub Release，例如 `v0.1.0-beta.1`。
+
 ### 正式发版
 
 - 打 tag，例如 `v0.1.0`
-- 运行 `goreleaser release --clean`
-- 将生成的压缩包上传到你的发布源
-- 更新 npm 包版本并发布薄包装
+- 运行 `make release-assets`
+- 将 `dist/release-assets/` 下的压缩包上传到 GitHub Release
+- 发布 npm 薄包装
 
 仓库里额外提供了一个可选的 GitHub Actions workflow：`/.github/workflows/release.yml`。如果后续继续使用 GitLab CI，可以直接复用相同的 `goreleaser release --clean` 命令。
 
 ## 常用命令
 
 ```bash
+contract-cli --help
+contract-cli help contract upload-file
 contract-cli config add --env dev --name contract-group
 contract-cli auth login --profile contract-group --as user
 contract-cli auth login --profile contract-group --as bot --app-id <id> --app-secret <secret>
+contract-cli update check --channel beta
+npx skills add qfeius/contract-cli -y -g
+contract-cli skills list
+contract-cli skills install --target ~/.codex/skills
 contract-cli api call GET /open-apis/contract/v1/mcp/config/config_list --as user
 contract-cli contract get <contract-id> --profile contract-group --as user
+contract-cli contract upload-file --file ./合同正文.docx --file-type text --profile contract-group --as bot
 contract-cli mdm vendor list --profile contract-group --as user
 contract-cli mdm legal get <legal-entity-id> --profile contract-group --as user
 contract-cli mdm fields list --biz-line vendor --profile contract-group --as user
 ```
 
+所有已支持命令都可以通过 `--help` 查看本地帮助，例如 `contract-cli contract search --help`。帮助只渲染本地命令说明，不读取 profile、不发 HTTP，也不会触发自动版本检查。
+
 ## 测试
+
+完整手工测试流程请看：[docs/cli-test-plan.md](/Users/lyy/contract-cli/docs/cli-test-plan.md)
 
 ```bash
 make test
 tests/cli_e2e/smoke.sh
+make release-check
 ```
+
+`make release-check` 会额外验证 npm 包 dry-run、本地 tgz 安装、安装后 `contract-cli --version`、`skills list` 和 `skills install`。
+
+CLI 会在交互终端下最多每 30 分钟自动检查一次 npm 远端版本，并在发现新版本时提示升级命令。也可以手动执行 `contract-cli update check --channel beta`；如需关闭自动检查，可设置 `CONTRACT_CLI_NO_UPDATE_CHECK=1`。
 
 ## 目录说明
 
@@ -108,6 +143,7 @@ tests/cli_e2e/smoke.sh
 - `internal/openplatform`：开放平台统一 client 和领域 service
 - `internal/oauth`：user / bot 鉴权逻辑
 - `internal/build`：版本与构建元信息
+- `skills`：随 CLI 分发并可由通用 installer 安装的 Agent skills
 - `scripts`：npm 安装与运行脚本
 - `tests/cli_e2e`：CLI 端到端冒烟脚本
 

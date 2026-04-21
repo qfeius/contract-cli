@@ -1,5 +1,55 @@
 # AI 变更记录
 
+- 2026-04-21
+  变更摘要：为当前全部已支持命令补齐统一 `--help` / `help <command>` 本地帮助系统。
+  涉及文件/模块：`internal/cli/help.go`、`internal/cli/app.go`、`internal/cli/update_command.go`、`internal/cli/help_command_test.go`、`README.md`、`docs/cli-command-reference.md`、`docs/ai-changes.md`
+  关键逻辑/决策：新增静态 help registry，不引入 Cobra、不改现有业务 parser；`App.Run` 在日志、版本检查和命令分发前拦截 help，支持顶层、命令组、叶子命令和带位置参数的 leaf help；help 只本地渲染，不读取 profile、不发 HTTP、不写 update cache，并保留旧命令别名拒绝行为。
+
+- 2026-04-21
+  变更摘要：补充 CLI 测试文档中的版本升级、Agent skills 单独安装和 bot 文件上传专项验收内容。
+  涉及文件/模块：`docs/cli-test-plan.md`、`docs/ai-changes.md`
+  关键逻辑/决策：新增三个独立专项模块，分别覆盖 `update check` 手动/自动升级提示、`npx skills add qfeius/contract-cli -y -g` 通用安装与 CLI 内置兜底安装、`contract upload-file --as bot` 的 multipart 上传和负向参数校验；同步修正 bot 验收标准不再按旧十四条表述。
+
+- 2026-04-21
+  变更摘要：新增 bot 身份下的 `contract-cli contract upload-file` 文件上传命令。
+  涉及文件/模块：`internal/openplatform`、`internal/openplatform/contract`、`internal/cli/contract_command.go`、`docs/cli-command-reference.md`、`docs/cli-command-design.md`、`docs/cli-test-plan.md`、`README.md`、`skills/contract-cli-*`、`docs/ai-changes.md`
+  关键逻辑/决策：新增 `IdentityPolicyBotOnly` 并扩展 `openplatform.Request.BodyReader` 支持流式上传；合同 service 使用 `multipart/form-data` 发送 `file_name/file_type/file`，CLI 只做本地文件存在、普通文件、`<=200MB` 和必填参数校验；`--file` 正式用于真实二进制上传，JSON 请求体继续使用 `--input-file`。
+
+- 2026-04-21
+  变更摘要：将 Agent skills 推荐安装方式调整为通用 `npx skills add qfeius/contract-cli -y -g`。
+  涉及文件/模块：`README.md`、`docs/cli-command-reference.md`、`docs/cli-test-plan.md`、`internal/cli/command_reference_doc_test.go`、`docs/ai-changes.md`
+  关键逻辑/决策：文档主推通用 `skills` installer 从 GitHub 仓库安装 `skills/` 目录，以覆盖 Codex、Cursor、Trae、Claude Code 等多类 Agent 环境；`contract-cli skills install` 保留为随 npm/二进制分发的离线兜底方式，并补文档契约测试防止推荐安装命令漂移。
+
+- 2026-04-20
+  变更摘要：新增 CLI 版本检查与交互终端升级提示。
+  涉及文件/模块：`internal/update`、`internal/cli/app.go`、`internal/cli/update_command.go`、`README.md`、`docs/cli-command-reference.md`、`docs/cli-test-plan.md`、`docs/ai-changes.md`
+  关键逻辑/决策：通过 npm registry packument 检查 `@qfeius/contract-cli` 的 dist-tag，预发布版本默认看 `beta`、稳定版本默认看 `latest`；新增 `contract-cli update check` 手动入口，普通命令在交互终端下最多每 30 分钟自动检查一次，失败会缓存检查时间且不阻断原命令；`dev`、`unknown` 和 git hash 版本会跳过检查，并支持 `CONTRACT_CLI_NO_UPDATE_CHECK=1` 关闭自动检查。
+
+- 2026-04-20
+  变更摘要：新增面向 QA 和发布验收的 CLI 测试文档。
+  涉及文件/模块：`docs/cli-test-plan.md`、`README.md`、`docs/ai-changes.md`
+  关键逻辑/决策：测试文档按安装、profile 初始化、user/bot 授权与登出切换、bot 全量结构化命令、user 全量结构化命令、`api call` 兜底、输出格式、发布安装回归和常见问题组织；明确 bot 当前十四条结构化业务命令、user-only 枚举命令、MCP 固定 query 保护和 npm beta 安装验收路径。
+
+- 2026-04-20
+  变更摘要：切换 npm beta 发布配置，并新增 GitHub Release 附件构建脚本。
+  涉及文件/模块：`package.json`、`scripts/build-release-assets.sh`、`Makefile`、`README.md`、`internal/cli/package_json_test.go`、`docs/ai-changes.md`
+  关键逻辑/决策：版本固定为 `0.1.0-beta.1`，`publishConfig` 指向 `https://registry.npmjs.org/` 且 public；`downloadBaseURLTemplate` 指向 GitHub Releases 的 `v{version}`；新增 `make release-assets` 生成 npm 安装脚本所需的多平台压缩包和 `checksums.txt`，便于直接上传到 `v0.1.0-beta.1` Release。
+
+- 2026-04-20
+  变更摘要：同步 npm 发布元信息到正式 GitHub 仓库，并校正 scoped 包的 npx 示例。
+  涉及文件/模块：`package.json`、`README.md`、`internal/cli/package_json_test.go`、`docs/ai-changes.md`
+  关键逻辑/决策：`repository.url` 改为 `git+https://github.com/qfeius/contract-cli.git`；新增发布元信息测试，固定包名 `@qfeius/contract-cli` 与正式仓库地址；README 的 npx 示例改为 `npx @qfeius/contract-cli --version`，避免用户按旧非 scoped 包名安装。
+
+- 2026-04-20
+  变更摘要：新增发布链路测试脚本，并接入 `make release-check`。
+  涉及文件/模块：`Makefile`、`tests/release/package-dry-run.sh`、`tests/release/local-install.sh`、`tests/cli_e2e/README.md`、`README.md`、`docs/ai-changes.md`
+  关键逻辑/决策：`package-dry-run.sh` 校验 `node --check`、`npm pack --dry-run` 和包内必须/禁止文件；`local-install.sh` 先构造本地 release archive，再通过 `file://` 模拟 npm postinstall 下载二进制，随后验证 `--version`、`skills list`、`skills install`；脚本统一使用临时 npm/Go cache，避免本机缓存权限污染发布前检查。
+
+- 2026-04-20
+  变更摘要：新增 `contract-cli skills list/install`，支持列出并安装随 CLI 分发的 Codex skills。
+  涉及文件/模块：`cmd/contract-cli`、`internal/cli`、`skills/embed.go`、`package.json`、`README.md`、`docs/cli-command-reference.md`、`tests/cli_e2e/smoke.sh`、`docs/ai-changes.md`
+  关键逻辑/决策：通过 Go embed 将 `skills/*` 打进二进制，`skills list` 读取内置 skill 元数据，`skills install` 默认安装到 `$CODEX_HOME/skills` 或 `~/.codex/skills`，支持 `--target` 和 `--force`；npm 打包清单只包含 skill 文档资源，二进制 smoke 改为捕获输出后匹配，避免 `pipefail + grep -q` 的 SIGPIPE 误失败。
+
 - 2026-04-17
   变更摘要：修复 user-only MCP 请求中固定 query 被通用 `--user-id/--user-id-type` 覆盖的问题。
   涉及文件/模块：`internal/openplatform/client.go`、`internal/openplatform/client_test.go`、`internal/cli/mcp_command_test.go`、`docs/ai-changes.md`

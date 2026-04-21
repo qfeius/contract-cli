@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+GO_CACHE="${GOCACHE:-/tmp/contract-cli-go-build-cache}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -12,9 +13,18 @@ DATE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 LDFLAGS="-s -w -X cn.qfei/contract-cli/internal/build.Version=${VERSION} -X cn.qfei/contract-cli/internal/build.Commit=${COMMIT} -X cn.qfei/contract-cli/internal/build.Date=${DATE}"
 
 cd "$ROOT_DIR"
-go build -ldflags "$LDFLAGS" -o "$TMP_DIR/contract-cli" ./cmd/contract-cli
+mkdir -p "$GO_CACHE"
+env GOCACHE="$GO_CACHE" go build -ldflags "$LDFLAGS" -o "$TMP_DIR/contract-cli" ./cmd/contract-cli
 
-"$TMP_DIR/contract-cli" --version | grep -q "contract-cli version"
-"$TMP_DIR/contract-cli" | grep -q "contract-cli config add"
+version_output="$("$TMP_DIR/contract-cli" --version)"
+[[ "$version_output" == *"contract-cli version"* ]]
+
+usage_output="$("$TMP_DIR/contract-cli")"
+[[ "$usage_output" == *"contract-cli config add"* ]]
+[[ "$usage_output" == *"contract-cli skills install"* ]]
+[[ "$usage_output" == *"contract-cli update check"* ]]
+
+skills_output="$("$TMP_DIR/contract-cli" skills list)"
+[[ "$skills_output" == *"contract-cli-contract"* ]]
 
 echo "smoke ok: $VERSION $COMMIT"

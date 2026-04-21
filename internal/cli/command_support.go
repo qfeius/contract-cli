@@ -226,7 +226,11 @@ func resolveIdentity(profile config.Profile, requested string, path string, poli
 		if policy == openplatform.IdentityPolicyUserOnly {
 			return config.IdentityUser, nil
 		}
-		return defaultIdentity(profile), nil
+		identity := defaultIdentity(profile)
+		if policy == openplatform.IdentityPolicyBotOnly && identity != config.IdentityBot {
+			return "", fmt.Errorf("open platform path %q only supports --as bot", path)
+		}
+		return identity, nil
 	}
 
 	identity, err := config.ParseIdentityKind(requested)
@@ -235,6 +239,9 @@ func resolveIdentity(profile config.Profile, requested string, path string, poli
 	}
 	if policy == openplatform.IdentityPolicyUserOnly && identity != config.IdentityUser {
 		return "", fmt.Errorf("open platform path %q only supports --as user", path)
+	}
+	if policy == openplatform.IdentityPolicyBotOnly && identity != config.IdentityBot {
+		return "", fmt.Errorf("open platform path %q only supports --as bot", path)
 	}
 	return identity, nil
 }

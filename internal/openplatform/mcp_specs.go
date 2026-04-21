@@ -11,6 +11,7 @@ type IdentityPolicy string
 const (
 	IdentityPolicyAny      IdentityPolicy = "any"
 	IdentityPolicyUserOnly IdentityPolicy = "user_only"
+	IdentityPolicyBotOnly  IdentityPolicy = "bot_only"
 )
 
 type ToolSpec struct {

@@ -6,15 +6,43 @@
 
 - 当前只预置 `dev` 环境：`contract-cli config add --env dev`
 - `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是当前仅有的十四个同时支持 `user` 与 `bot` 的结构化业务命令
-- 除这十四条外，当前其他结构化业务命令仍只支持 `--as user`
+- `contract upload-file` 当前仅支持 `--as bot`
+- 除上述 bot 能力外，当前其他结构化业务命令仍只支持 `--as user`
 - `bot` 目前已经支持登录、状态查看、登出、默认身份切换
+- 推荐使用 `npx skills add qfeius/contract-cli -y -g` 安装跨 Agent 平台 skills；`contract-cli skills install` 保留为 CLI 内置兜底
+- `update check` 支持手动检查 npm 远端版本；CLI 在交互终端下会每 30 分钟最多自动检查一次并提示升级
+- 当前全部已支持命令都可以通过 `--help` 查看本地帮助，例如 `contract-cli --help`、`contract-cli contract search --help`、`contract-cli help contract upload-file`
 - `bot` 业务接口后续继续新增时，优先在本文件补充命令矩阵
 
 ## 通用约定
 
+### 通用帮助入口
+
+CLI 内置帮助只做本地渲染，不读取 profile、不发 HTTP、不触发自动版本检查。
+
+常用入口：
+
+```bash
+contract-cli --help
+contract-cli -h
+contract-cli help
+contract-cli help contract upload-file
+contract-cli contract search --help
+contract-cli contract get <contract-id> --help
+```
+
+帮助内容按命令层级展示：
+
+- 命令组展示 `Commands`
+- 叶子命令展示 `Flags`、`Examples`、`Notes`
+- `Notes` 只放身份限制、user/bot 路由差异、请求体或文件上传关键约束
+- 不兼容旧顶层别名，例如 `contract-cli help vendor` 会返回未知 help topic
+
 ### 通用身份规则
 
 - `config` 和 `version` 不需要登录态
+- `skills list/install` 不需要登录态；通用 `npx skills add qfeius/contract-cli -y -g` 也不依赖 contract-cli 登录态
+- `update check` 不需要登录态
 - `auth login --as user` 走 OAuth 用户授权
 - `auth login --as bot` 走 `appId + appSecret -> tenant_access_token/internal`
 - `contract ...`、`mdm ...` 结构化命令大多默认只支持 `--as user`
@@ -71,7 +99,8 @@
 - `--input-file` 与 `--data` 互斥
 - `contract create`、`contract template instantiate` 至少需要其一
 - `contract search` 可以只传查询 flag，也可以显式传空对象 `{}`，不强制要求 body 输入
-- `--file` 目前没有被重新占用，保留给未来真实文件上传命令
+- `--file` 只用于真实二进制文件上传，例如 `contract upload-file`
+- 不要把 `--file` 当 JSON 请求体输入；JSON 请求体始终用 `--input-file`
 
 ### 通用用户标识参数
 
@@ -129,6 +158,96 @@ contract-cli config add --env dev --name contract-group
 contract-cli version
 contract-cli --version
 ```
+
+#### `contract-cli update check`
+
+用途：检查 npm 远端是否存在可升级版本。
+
+命令：
+
+```bash
+contract-cli update check
+contract-cli update check --channel beta
+contract-cli update check --channel latest
+```
+
+支持参数：
+
+- `--channel`：npm dist-tag；不传时根据当前版本推断，预发布版本默认检查 `beta`，稳定版本默认检查 `latest`
+
+执行结果：
+
+- 当前版本是 `dev`、`unknown` 或非语义化版本（例如源码 git hash）时跳过远端检查
+- 有新版本时输出当前版本、远端版本和 `npm install -g @qfeius/contract-cli@<channel> --registry https://registry.npmjs.org`
+- 无新版本时输出当前版本已是最新
+- 手动执行 `update check` 会直接访问 npm registry，并把结果写入本机 update cache
+
+自动提示：
+
+- 普通命令在交互终端下会自动检查远端版本
+- 自动检查最多每 30 分钟触发一次，缓存文件位于当前配置目录的 `update-check.json`
+- 网络失败、registry 失败或当前是 dev 构建时不会阻断原命令；自动检查失败也会按 30 分钟间隔抑制重复探测
+- 设置 `CONTRACT_CLI_NO_UPDATE_CHECK=1` 可以关闭自动检查
+
+#### `contract-cli skills list`
+
+用途：列出当前二进制内置的 Codex skills。
+
+命令：
+
+```bash
+contract-cli skills list
+```
+
+输出内容：
+
+- skill 名称
+- skill 版本
+- skill 描述
+
+#### `npx skills add qfeius/contract-cli -y -g`
+
+用途：使用通用 `skills` installer 从 GitHub 仓库安装 contract-cli 的 Agent skills。
+
+推荐命令：
+
+```bash
+npx skills add qfeius/contract-cli -y -g
+```
+
+适用场景：
+
+- 推荐给 Codex、Cursor、Trae、Claude Code 等多类 Agent 环境使用
+- 从 GitHub 仓库的 `skills/` 目录安装，适合快速获得最新 skill 文档
+- `-g` 表示全局安装，安装位置和平台适配由通用 `skills` installer 决定
+
+注意事项：
+
+- 该命令依赖 npm、npx 和 GitHub 网络访问
+- 安装内容来自远程 `qfeius/contract-cli` 仓库，不读取本地未 push 的改动
+- 若通用 installer 不可用，使用 `contract-cli skills install` 作为兜底
+
+#### `contract-cli skills install`
+
+用途：将当前二进制内置的 Codex skills 安装到本机 Codex skills 目录，作为通用 `npx skills add ...` 不可用时的兜底方案。
+
+命令：
+
+```bash
+contract-cli skills install
+contract-cli skills install --target ~/.codex/skills
+contract-cli skills install --force
+```
+
+支持参数：
+
+- `--target`：安装目标目录；默认优先使用 `$CODEX_HOME/skills`，否则使用 `~/.codex/skills`
+- `--force`：覆盖已存在的同名 skill；默认不覆盖，会跳过已有目录
+
+执行结果：
+
+- 复制内置 `auth`、`contract-cli-shared`、`contract-cli-contract`、`contract-cli-mdm-vendor`、`contract-cli-mdm-legal`、`contract-cli-mdm-fields`、`contract-cli-api-call` 等 skill
+- 保留 `SKILL.md`、`agents/openai.yaml` 和 `references/*.md`
 
 ### 2. 鉴权
 
@@ -270,6 +389,7 @@ contract-cli api call POST /open-apis/xxx --profile contract-group --as bot --da
 - `--output`
 - `--raw`
 - 需要请求体的命令额外支持 `--input-file` / `--data`
+- `contract upload-file` 额外支持 `--file` / `--file-type` / `--file-name`
 
 #### `contract-cli contract search`
 
@@ -421,6 +541,48 @@ contract-cli contract create --profile contract-group --as bot --data '{"contrac
 - [create-contract-fields.md](/Users/lyy/contract-cli/skills/contract-cli-contract/references/create-contract-fields.md)
 - [create-contract-field-tree.md](/Users/lyy/contract-cli/skills/contract-cli-contract/references/create-contract-field-tree.md)
 - [create-contract-enums.md](/Users/lyy/contract-cli/skills/contract-cli-contract/references/create-contract-enums.md)
+
+#### `contract-cli contract upload-file`
+
+用途：上传合同相关文件，返回后端原始 JSON，重点关注 `data.file_id`。
+
+命令：
+
+```bash
+contract-cli contract upload-file --profile contract-group --as bot --file ./合同正文.docx --file-type text
+contract-cli contract upload-file --profile contract-group --as bot --file ./附件.pdf --file-type attachment --file-name 附件.pdf
+```
+
+支持参数：
+
+- `--file`：必填，本地待上传文件路径。
+- `--file-type`：必填，透传后端文件类型。
+- `--file-name`：可选；不传时默认使用本地文件名。
+- `--user-id-type`
+- `--user-id`
+
+身份规则：
+
+- 当前仅支持 `--as bot`。
+- 显式 `--as user` 或 profile 默认身份为 user 时会在发 HTTP 前失败。
+- 走 `POST /open-apis/contract/v1/files/upload`。
+- 请求是 `multipart/form-data`，字段为 `file_name`、`file_type`、`file`。
+- 不接受 `--input-file` / `--data`；这两个参数只用于 JSON 请求体。
+
+本地校验：
+
+- `--file` 必须存在且是普通文件。
+- 文件大小必须小于等于 `200MB`。
+- CLI 不在本地校验扩展名白名单，扩展名和 `file_type` 合法性由后端最终校验。
+
+常用 `file_type`：
+
+- `text`：合同文本。
+- `attachment`：其他附件。
+- `scan`：归档扫描件。
+- `cause`：合同附件。
+- `archiveAttachment`：归档附件。
+- `customPictureAttachment` / `customTableAttachment` / `customFileAttachment`：自定义附件。
 
 #### `contract-cli contract category list`
 

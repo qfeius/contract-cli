@@ -44,7 +44,7 @@ contract-cli contract create \
 - `--as bot` 走 `POST /open-apis/contract/v1/contracts`
 - `--as bot` 时，请求体必须自己带 `create_user_id`
 - `--input-file` 与 `--data` 互斥
-- `--file` 不是请求体参数，它预留给后续真实文件上传命令
+- `--file` 不是 JSON 请求体参数；它只用于 `contract upload-file` 真实二进制上传
 - CLI 只透传请求体，不做字段级本地校验，不自动补默认值
 - `text_file_id`、`contract_cause_file_id_list`、`attachment_file_id_list`、`scan_file_id` 都必须传平台文件 id，不能传本地路径
 - CLI 不自动创建模板实例；模板模式需要你先拿到 `template_instance_id`

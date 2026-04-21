@@ -174,6 +174,102 @@ func TestClientDoCommonQueryOverridesAnyPolicyRequestQuery(t *testing.T) {
 	}
 }
 
+func TestClientDoStreamsBodyReaderWithoutJSONContentType(t *testing.T) {
+	t.Parallel()
+
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if got := req.Header.Get("Content-Type"); got != "" {
+					t.Fatalf("content-type = %q", got)
+				}
+				body, err := io.ReadAll(req.Body)
+				if err != nil {
+					t.Fatalf("ReadAll() error = %v", err)
+				}
+				if string(body) != "streamed body" {
+					t.Fatalf("body = %q", string(body))
+				}
+				return jsonResponse(`{"code":0}`), nil
+			}),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	requestContext, err := client.RequestContext(config.Profile{
+		Name:                "contract-group",
+		Environment:         "dev",
+		OpenPlatformBaseURL: "https://dev-open.qtech.cn",
+		DefaultIdentity:     config.IdentityBot,
+		Identities: config.Identities{
+			Bot: config.BotIdentity{
+				Token: &config.Token{
+					AccessToken: "bot-token",
+					TokenType:   "Bearer",
+					Expiry:      time.Now().Add(time.Hour),
+				},
+			},
+		},
+	}, config.IdentityBot)
+	if err != nil {
+		t.Fatalf("RequestContext() error = %v", err)
+	}
+
+	if _, err := client.Do(context.Background(), requestContext, openplatform.Request{
+		Method:     http.MethodPost,
+		Path:       "/open-apis/contract/v1/files/upload",
+		BodyReader: strings.NewReader("streamed body"),
+	}); err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+}
+
+func TestClientDoPreservesMultipartContentType(t *testing.T) {
+	t.Parallel()
+
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if got := req.Header.Get("Content-Type"); got != "multipart/form-data; boundary=test-boundary" {
+					t.Fatalf("content-type = %q", got)
+				}
+				return jsonResponse(`{"code":0}`), nil
+			}),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	requestContext, err := client.RequestContext(config.Profile{
+		Name:                "contract-group",
+		Environment:         "dev",
+		OpenPlatformBaseURL: "https://dev-open.qtech.cn",
+		DefaultIdentity:     config.IdentityBot,
+		Identities: config.Identities{
+			Bot: config.BotIdentity{
+				Token: &config.Token{
+					AccessToken: "bot-token",
+					TokenType:   "Bearer",
+					Expiry:      time.Now().Add(time.Hour),
+				},
+			},
+		},
+	}, config.IdentityBot)
+	if err != nil {
+		t.Fatalf("RequestContext() error = %v", err)
+	}
+
+	if _, err := client.Do(context.Background(), requestContext, openplatform.Request{
+		Method:     http.MethodPost,
+		Path:       "/open-apis/contract/v1/files/upload",
+		BodyReader: strings.NewReader("multipart body"),
+		Headers: http.Header{
+			"Content-Type": {"multipart/form-data; boundary=test-boundary"},
+		},
+	}); err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+}
+
 func TestClientDoRejectsInvalidPathAndWrapsNon2xx(t *testing.T) {
 	t.Parallel()
 
@@ -217,6 +313,52 @@ func TestClientDoRejectsInvalidPathAndWrapsNon2xx(t *testing.T) {
 		Path:   "/open-apis/mdm/v1/vendors/123",
 	}); err == nil || !strings.Contains(err.Error(), "open platform request failed with status 502") {
 		t.Fatalf("unexpected non-2xx error: %v", err)
+	}
+}
+
+func TestClientDoRejectsBotOnlyRequestForUserIdentity(t *testing.T) {
+	t.Parallel()
+
+	transportUsed := false
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				transportUsed = true
+				return jsonResponse(`{"code":0}`), nil
+			}),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	requestContext, err := client.RequestContext(config.Profile{
+		Name:                "contract-group",
+		Environment:         "dev",
+		OpenPlatformBaseURL: "https://dev-open.qtech.cn",
+		DefaultIdentity:     config.IdentityUser,
+		Identities: config.Identities{
+			User: config.UserIdentity{
+				Token: &config.Token{
+					AccessToken: "user-token",
+					TokenType:   "Bearer",
+					Expiry:      time.Now().Add(time.Hour),
+				},
+			},
+		},
+	}, config.IdentityUser)
+	if err != nil {
+		t.Fatalf("RequestContext() error = %v", err)
+	}
+
+	_, err = client.Do(context.Background(), requestContext, openplatform.Request{
+		Method:         http.MethodPost,
+		Path:           "/open-apis/contract/v1/files/upload",
+		IdentityPolicy: openplatform.IdentityPolicyBotOnly,
+	})
+	if err == nil || !strings.Contains(err.Error(), "only supports --as bot") {
+		t.Fatalf("unexpected bot-only error: %v", err)
+	}
+	if transportUsed {
+		t.Fatalf("request transport should not be used for rejected bot-only requests")
 	}
 }
 
