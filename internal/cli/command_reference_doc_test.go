@@ -19,6 +19,9 @@ func TestCommandReferenceDocumentCoversCurrentSupportedCommands(t *testing.T) {
 	text := string(content)
 	requiredFragments := []string{
 		"# contract-cli 命令文档",
+		"contract-cli --help",
+		"contract-cli help contract upload-file",
+		"contract-cli contract search --help",
 		"contract-cli config add",
 		"contract-cli auth login",
 		"contract-cli auth status",

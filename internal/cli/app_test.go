@@ -18,7 +18,7 @@ import (
 	"cn.qfei/contract-cli/internal/config"
 )
 
-func TestRunWithoutArgsPrintsContractCLIUsage(t *testing.T) {
+func TestRunWithoutArgsPrintsTopLevelHelp(t *testing.T) {
 	t.Parallel()
 
 	stdout := &bytes.Buffer{}
@@ -33,7 +33,9 @@ func TestRunWithoutArgsPrintsContractCLIUsage(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	if !strings.Contains(stdout.String(), "contract-cli config add [flags]") ||
+	if !strings.Contains(stdout.String(), "Name:\n  contract-cli") ||
+		!strings.Contains(stdout.String(), "Usage:") ||
+		!strings.Contains(stdout.String(), "contract-cli config add [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli auth login [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli version") ||
 		!strings.Contains(stdout.String(), "contract-cli skills list") ||

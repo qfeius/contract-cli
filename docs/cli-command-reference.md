@@ -11,9 +11,32 @@
 - `bot` 目前已经支持登录、状态查看、登出、默认身份切换
 - 推荐使用 `npx skills add qfeius/contract-cli -y -g` 安装跨 Agent 平台 skills；`contract-cli skills install` 保留为 CLI 内置兜底
 - `update check` 支持手动检查 npm 远端版本；CLI 在交互终端下会每 30 分钟最多自动检查一次并提示升级
+- 当前全部已支持命令都可以通过 `--help` 查看本地帮助，例如 `contract-cli --help`、`contract-cli contract search --help`、`contract-cli help contract upload-file`
 - `bot` 业务接口后续继续新增时，优先在本文件补充命令矩阵
 
 ## 通用约定
+
+### 通用帮助入口
+
+CLI 内置帮助只做本地渲染，不读取 profile、不发 HTTP、不触发自动版本检查。
+
+常用入口：
+
+```bash
+contract-cli --help
+contract-cli -h
+contract-cli help
+contract-cli help contract upload-file
+contract-cli contract search --help
+contract-cli contract get <contract-id> --help
+```
+
+帮助内容按命令层级展示：
+
+- 命令组展示 `Commands`
+- 叶子命令展示 `Flags`、`Examples`、`Notes`
+- `Notes` 只放身份限制、user/bot 路由差异、请求体或文件上传关键约束
+- 不兼容旧顶层别名，例如 `contract-cli help vendor` 会返回未知 help topic
 
 ### 通用身份规则
 

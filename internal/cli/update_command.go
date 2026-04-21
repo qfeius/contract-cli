@@ -106,6 +106,9 @@ func (a *App) shouldAutoCheckUpdate(args []string) bool {
 	if len(args) == 0 {
 		return false
 	}
+	if isHelpRequest(args) {
+		return false
+	}
 	switch args[0] {
 	case "version", "--version", "-version", "-v", "update":
 		return false

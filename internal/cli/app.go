@@ -168,6 +168,14 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return nil
 	}
 
+	if isHelpRequest(args) {
+		topic, err := resolveHelpTopic(args)
+		if err != nil {
+			return err
+		}
+		return renderHelp(a.stdout, topic)
+	}
+
 	switch args[0] {
 	case "version", "--version", "-version", "-v":
 		a.printVersion()
@@ -198,21 +206,7 @@ func (a *App) Run(ctx context.Context, args []string) error {
 }
 
 func (a *App) printUsage() {
-	_, _ = fmt.Fprintln(a.stdout, "Usage:")
-	_, _ = fmt.Fprintln(a.stdout, "  contract-cli config add [flags]")
-	_, _ = fmt.Fprintln(a.stdout, "  contract-cli auth login [flags]")
-	_, _ = fmt.Fprintln(a.stdout, "  contract-cli auth status [flags]")
-	_, _ = fmt.Fprintln(a.stdout, "  contract-cli auth logout [flags]")
-	_, _ = fmt.Fprintln(a.stdout, "  contract-cli auth use [flags]")
-	_, _ = fmt.Fprintln(a.stdout, "  contract-cli version")
-	_, _ = fmt.Fprintln(a.stdout, "  contract-cli skills list")
-	_, _ = fmt.Fprintln(a.stdout, "  contract-cli skills install [flags]")
-	_, _ = fmt.Fprintln(a.stdout, "  contract-cli update check [flags]")
-	_, _ = fmt.Fprintln(a.stdout, "  contract-cli api call [flags]")
-	_, _ = fmt.Fprintln(a.stdout, "  contract-cli contract <subcommand> [flags]")
-	_, _ = fmt.Fprintln(a.stdout, "  contract-cli mdm vendor <subcommand> [flags]")
-	_, _ = fmt.Fprintln(a.stdout, "  contract-cli mdm legal <subcommand> [flags]")
-	_, _ = fmt.Fprintln(a.stdout, "  contract-cli mdm fields list [flags]")
+	_ = renderHelp(a.stdout, helpRegistry()["contract-cli"])
 }
 
 func (a *App) printVersion() {

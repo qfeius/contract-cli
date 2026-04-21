@@ -1,6 +1,16 @@
 # AI 变更记录
 
 - 2026-04-21
+  变更摘要：为当前全部已支持命令补齐统一 `--help` / `help <command>` 本地帮助系统。
+  涉及文件/模块：`internal/cli/help.go`、`internal/cli/app.go`、`internal/cli/update_command.go`、`internal/cli/help_command_test.go`、`README.md`、`docs/cli-command-reference.md`、`docs/ai-changes.md`
+  关键逻辑/决策：新增静态 help registry，不引入 Cobra、不改现有业务 parser；`App.Run` 在日志、版本检查和命令分发前拦截 help，支持顶层、命令组、叶子命令和带位置参数的 leaf help；help 只本地渲染，不读取 profile、不发 HTTP、不写 update cache，并保留旧命令别名拒绝行为。
+
+- 2026-04-21
+  变更摘要：补充 CLI 测试文档中的版本升级、Agent skills 单独安装和 bot 文件上传专项验收内容。
+  涉及文件/模块：`docs/cli-test-plan.md`、`docs/ai-changes.md`
+  关键逻辑/决策：新增三个独立专项模块，分别覆盖 `update check` 手动/自动升级提示、`npx skills add qfeius/contract-cli -y -g` 通用安装与 CLI 内置兜底安装、`contract upload-file --as bot` 的 multipart 上传和负向参数校验；同步修正 bot 验收标准不再按旧十四条表述。
+
+- 2026-04-21
   变更摘要：新增 bot 身份下的 `contract-cli contract upload-file` 文件上传命令。
   涉及文件/模块：`internal/openplatform`、`internal/openplatform/contract`、`internal/cli/contract_command.go`、`docs/cli-command-reference.md`、`docs/cli-command-design.md`、`docs/cli-test-plan.md`、`README.md`、`skills/contract-cli-*`、`docs/ai-changes.md`
   关键逻辑/决策：新增 `IdentityPolicyBotOnly` 并扩展 `openplatform.Request.BodyReader` 支持流式上传；合同 service 使用 `multipart/form-data` 发送 `file_name/file_type/file`，CLI 只做本地文件存在、普通文件、`<=200MB` 和必填参数校验；`--file` 正式用于真实二进制上传，JSON 请求体继续使用 `--input-file`。

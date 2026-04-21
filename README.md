@@ -103,6 +103,8 @@ make release-assets
 ## 常用命令
 
 ```bash
+contract-cli --help
+contract-cli help contract upload-file
 contract-cli config add --env dev --name contract-group
 contract-cli auth login --profile contract-group --as user
 contract-cli auth login --profile contract-group --as bot --app-id <id> --app-secret <secret>
@@ -117,6 +119,8 @@ contract-cli mdm vendor list --profile contract-group --as user
 contract-cli mdm legal get <legal-entity-id> --profile contract-group --as user
 contract-cli mdm fields list --biz-line vendor --profile contract-group --as user
 ```
+
+所有已支持命令都可以通过 `--help` 查看本地帮助，例如 `contract-cli contract search --help`。帮助只渲染本地命令说明，不读取 profile、不发 HTTP，也不会触发自动版本检查。
 
 ## 测试
 

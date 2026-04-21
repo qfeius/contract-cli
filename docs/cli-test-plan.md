@@ -1178,7 +1178,189 @@ npm publish --dry-run --tag beta
 - `config add --env dev` 成功。
 - user 登录、状态、切换、登出成功。
 - bot 登录、状态、切换、登出成功，且 bot logout 保留凭证。
-- bot 身份下第 5 节十四条结构化业务命令完成正向验证，写操作至少在 dev 环境完成一次可回收数据验证。
+- bot 身份下第 5 节结构化业务命令和 `contract upload-file` 完成正向验证，写操作至少在 dev 环境完成一次可回收数据验证。
 - user 身份下第 6 节十五条结构化业务命令完成正向验证。
 - `api call` 的 user MCP、bot open API、bot MCP 拦截、非法路径四类场景完成验证。
 - `make release-check` 通过。
+
+## 13. 版本升级专项测试
+
+本模块覆盖今天新增的版本管理与升级提示能力。它和安装测试分开验收，避免把“包能安装”和“客户端能发现远端新版本”混在一起。
+
+### 13.1 手动版本检查
+
+```bash
+contract-cli update check
+contract-cli update check --channel beta
+contract-cli update check --channel latest
+```
+
+预期结果：
+
+- 当前版本是预发布版本时，不传 `--channel` 默认检查 npm `beta` dist-tag。
+- 当前版本是稳定版本时，不传 `--channel` 默认检查 npm `latest` dist-tag。
+- 远端版本更新时，输出 `A new contract-cli version is available`。
+- 输出升级命令：`npm install -g @qfeius/contract-cli@<channel> --registry https://registry.npmjs.org`。
+- 远端版本未更新时，输出 `contract-cli is up to date`。
+- 本地是 `dev`、`unknown` 或非语义化版本时，输出 `Update check skipped`。
+
+### 13.2 自动升级提示
+
+在交互终端下执行任意普通命令：
+
+```bash
+contract-cli skills list
+contract-cli auth status --profile "$PROFILE"
+```
+
+预期结果：
+
+- 普通命令执行前最多触发一次自动版本检查。
+- 自动检查间隔为 `30` 分钟，同版本同 channel 在缓存有效期内不重复请求 npm registry。
+- 检查失败不阻断原命令；失败结果也会缓存，避免每条命令都重试。
+- `contract-cli version`、`contract-cli update check` 自身不触发自动检查。
+
+关闭自动检查：
+
+```bash
+CONTRACT_CLI_NO_UPDATE_CHECK=1 contract-cli skills list
+```
+
+预期结果：
+
+- 不访问 npm registry。
+- 原命令正常输出。
+
+### 13.3 发包后升级链路验收
+
+```bash
+npm view @qfeius/contract-cli dist-tags --registry https://registry.npmjs.org
+npm install -g @qfeius/contract-cli@beta --registry https://registry.npmjs.org
+contract-cli --version
+contract-cli update check --channel beta
+```
+
+检查点：
+
+- npm `beta` dist-tag 指向预期版本。
+- GitHub Release 中存在对应版本的多平台二进制附件。
+- 已安装版本落后于远端 beta 时，CLI 能提示升级。
+- 已安装版本等于远端 beta 时，CLI 显示已是最新。
+
+## 14. Agent skills 单独安装专项测试
+
+本模块覆盖今天确认的独立 skill 安装方式。推荐优先使用通用 installer，从 GitHub 仓库安装 `skills/`，适配 Codex、Cursor、Trae、Claude Code 等多类 Agent 环境。
+
+### 14.1 通用 installer 安装
+
+```bash
+npx skills add qfeius/contract-cli -y -g
+```
+
+预期结果：
+
+- 输出 `Installation complete`。
+- 输出 `Installed 7 skills`。
+- 安装内容至少包含：
+  - `auth`
+  - `contract-cli-api-call`
+  - `contract-cli-contract`
+  - `contract-cli-mdm-fields`
+  - `contract-cli-mdm-legal`
+  - `contract-cli-mdm-vendor`
+  - `contract-cli-shared`
+- 输出中能看到 `universal` 或 `symlinked` 的平台适配信息。
+
+### 14.2 CLI 内置兜底安装
+
+当通用 installer 不可用，或需要验证 npm 包内嵌 skills 时，执行：
+
+```bash
+contract-cli skills list
+contract-cli skills install
+contract-cli skills install --target ~/.codex/skills
+contract-cli skills install --force
+```
+
+预期结果：
+
+- `skills list` 能列出内置 skills。
+- `skills install` 默认安装到 `$CODEX_HOME/skills` 或 `~/.codex/skills`。
+- `--target` 可以覆盖安装目标目录。
+- `--force` 可以覆盖已有 skill 目录。
+
+验收注意：
+
+- 通用 installer 依赖 GitHub 仓库内容，因此发版前要确认 skill 文档已经 push。
+- CLI 内置安装依赖 npm 包或二进制内嵌内容，因此发布前要跑 `make release-check`。
+
+## 15. bot 文件上传命令专项测试
+
+本模块覆盖今天新增的 `contract-cli contract upload-file`。当前仅支持 bot 身份，user/MCP 三段式上传不在本期范围内。
+
+### 15.1 正向上传
+
+准备小于等于 `200MB` 的测试文件：
+
+```bash
+printf '%s\n' '%PDF-1.4 contract-cli upload smoke' > /tmp/contract-upload.pdf
+```
+
+执行：
+
+```bash
+contract-cli contract upload-file --profile "$PROFILE" --as bot --file /tmp/contract-upload.pdf --file-type attachment --file-name contract-upload.pdf --output json
+contract-cli contract upload-file --profile "$PROFILE" --as bot --file /tmp/contract-upload.pdf --file-type attachment --raw
+```
+
+预期底层接口：
+
+```text
+POST /open-apis/contract/v1/files/upload
+```
+
+预期请求：
+
+- 使用 `Authorization: Bearer <bot-token>`。
+- 使用 `multipart/form-data`。
+- 表单字段包含 `file_name`、`file_type`、`file`。
+- `--file-name` 不传时默认使用 `filepath.Base(--file)`。
+- `--user-id` / `--user-id-type` 如传入，会继续按通用 query 参数透传。
+
+预期响应：
+
+- 后端返回原始 JSON envelope。
+- 成功时重点检查 `data.file_id`。
+
+### 15.2 参数与身份负向测试
+
+```bash
+contract-cli contract upload-file --profile "$PROFILE" --as user --file /tmp/contract-upload.pdf --file-type attachment
+contract-cli contract upload-file --profile "$PROFILE" --as bot --file /tmp/contract-upload.pdf
+contract-cli contract upload-file --profile "$PROFILE" --as bot --file-type attachment
+contract-cli contract upload-file --profile "$PROFILE" --as bot --file /tmp --file-type attachment
+contract-cli contract upload-file --profile "$PROFILE" --as bot --file /tmp/contract-upload.pdf --file-type attachment --input-file body.json
+```
+
+预期结果：
+
+- `--as user` 或 profile 默认身份为 user 时，在发 HTTP 前失败。
+- 缺少 `--file` 报 `--file is required`。
+- 缺少 `--file-type` 报 `--file-type is required`。
+- 文件不存在、目录路径、超过 `200MB` 均报明确错误。
+- `contract upload-file` 不接受 `--input-file` / `--data`，这两个参数只用于 JSON 请求体。
+
+### 15.3 file_type 取值参考
+
+常用取值：
+
+- `text`：合同文本。
+- `attachment`：其他附件。
+- `scan`：归档扫描件。
+- `cause`：合同附件。
+- `archiveAttachment`：归档附件。
+- `customPictureAttachment`：自定义图片附件。
+- `customTableAttachment`：自定义表格附件。
+- `customFileAttachment`：自定义文件附件。
+
+CLI 不在本地强校验扩展名白名单，扩展名与 `file_type` 的最终合法性以后端校验为准。
