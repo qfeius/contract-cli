@@ -612,7 +612,36 @@ POST /open-apis/contract/v1/template_instances
 - 请求体需要由测试者自行提供 `create_user_id`。
 - CLI 只透传 JSON，不补字段。
 
-### 5.10 交易方列表
+### 5.10 上传合同相关文件
+
+准备一个小于等于 `200MB` 的测试文件：
+
+```bash
+printf '%s\n' '%PDF-1.4 contract-cli upload smoke' > /tmp/contract-upload.pdf
+```
+
+执行：
+
+```bash
+contract-cli contract upload-file --profile "$PROFILE" --as bot --file /tmp/contract-upload.pdf --file-type attachment --file-name contract-upload.pdf --output json
+contract-cli contract upload-file --profile "$PROFILE" --as bot --file /tmp/contract-upload.pdf --file-type attachment --raw
+```
+
+预期底层接口：
+
+```text
+POST /open-apis/contract/v1/files/upload
+```
+
+检查点：
+
+- 请求是 `multipart/form-data`。
+- 表单字段包含 `file_name`、`file_type`、`file`。
+- 响应 JSON 中应包含后端返回的 `data.file_id`。
+- profile 默认身份是 user 或显式 `--as user` 时，CLI 应在发 HTTP 前报错。
+- 超过 `200MB`、目录路径、文件不存在、缺少 `--file`、缺少 `--file-type` 都应报明确错误。
+
+### 5.11 交易方列表
 
 ```bash
 contract-cli mdm vendor list --profile "$PROFILE" --as bot --page-size 10 --output json
@@ -626,7 +655,7 @@ contract-cli mdm vendor list --profile "$PROFILE" --as bot --name "供应商" --
 GET /open-apis/mdm/v1/vendors
 ```
 
-### 5.11 交易方详情
+### 5.12 交易方详情
 
 ```bash
 contract-cli mdm vendor get "$VENDOR_ID" --profile "$PROFILE" --as bot --output json
@@ -639,7 +668,7 @@ contract-cli mdm vendor get "$VENDOR_ID" --profile "$PROFILE" --as bot --user-id
 GET /open-apis/mdm/v1/vendors/{vendor_id}
 ```
 
-### 5.12 法人主体列表
+### 5.13 法人主体列表
 
 ```bash
 contract-cli mdm legal list --profile "$PROFILE" --as bot --page-size 10 --output json
@@ -653,7 +682,7 @@ contract-cli mdm legal list --profile "$PROFILE" --as bot --name "主体A" --pag
 GET /open-apis/mdm/v1/legal_entities/list_all
 ```
 
-### 5.13 法人主体详情
+### 5.14 法人主体详情
 
 ```bash
 contract-cli mdm legal get "$LEGAL_ENTITY_ID" --profile "$PROFILE" --as bot --output json
@@ -670,7 +699,7 @@ GET /open-apis/mdm/v1/legal_entities/{legal_entity_id}
 
 - bot 路由会同时带 path 参数和同名 query `legal_entity_id`。
 
-### 5.14 字段配置
+### 5.15 字段配置
 
 ```bash
 contract-cli mdm fields list --profile "$PROFILE" --as bot --biz-line vendor --output json
@@ -684,7 +713,7 @@ contract-cli mdm fields list --profile "$PROFILE" --as bot --biz-line vendor_ris
 GET /open-apis/mdm/v1/config/config_list
 ```
 
-### 5.15 bot 不支持命令的负向验证
+### 5.16 bot 不支持命令的负向验证
 
 ```bash
 contract-cli contract enum list --profile "$PROFILE" --as bot --type contract_status
@@ -1040,7 +1069,7 @@ contract-cli contract create --profile "$PROFILE" --as bot --input-file /tmp/con
 - CLI 报错。
 - 不发 HTTP 请求。
 
-### 8.5 旧 `--file` 不作为请求体参数
+### 8.5 `--file` 仅用于真实文件上传
 
 ```bash
 contract-cli contract create --profile "$PROFILE" --as bot --file /tmp/contract-create-bot.json
@@ -1048,8 +1077,8 @@ contract-cli contract create --profile "$PROFILE" --as bot --file /tmp/contract-
 
 预期结果：
 
-- CLI 报未知参数或用法错误。
-- `--file` 保留给未来真实文件上传。
+- CLI 报未知参数或用法错误，因为 `contract create` 只接受 `--input-file` / `--data` 作为 JSON 请求体。
+- `--file` 只在 `contract upload-file` 中表示真实二进制文件上传。
 
 ## 9. 发布与安装回归测试
 

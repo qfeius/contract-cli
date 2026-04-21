@@ -112,6 +112,7 @@ contract-cli skills list
 contract-cli skills install --target ~/.codex/skills
 contract-cli api call GET /open-apis/contract/v1/mcp/config/config_list --as user
 contract-cli contract get <contract-id> --profile contract-group --as user
+contract-cli contract upload-file --file ./合同正文.docx --file-type text --profile contract-group --as bot
 contract-cli mdm vendor list --profile contract-group --as user
 contract-cli mdm legal get <legal-entity-id> --profile contract-group --as user
 contract-cli mdm fields list --biz-line vendor --profile contract-group --as user

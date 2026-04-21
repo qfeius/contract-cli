@@ -1,7 +1,7 @@
 ---
 name: contract-cli-contract
 version: 1.0.0
-description: "contract-cli 合同命令技能：支持 user/bot 双身份下的合同详情、合同搜索、合同创建、同步用户组、读取合同文本、查询合同分类、列出模板、查看模板详情、创建模板实例，以及 user 身份下的枚举查询。当用户要使用 `contract-cli contract ...` 操作合同能力时触发。"
+description: "contract-cli 合同命令技能：支持 user/bot 双身份下的合同详情、合同搜索、合同创建、同步用户组、读取合同文本、查询合同分类、列出模板、查看模板详情、创建模板实例，bot 身份下的文件上传，以及 user 身份下的枚举查询。当用户要使用 `contract-cli contract ...` 操作合同能力时触发。"
 ---
 
 # contract-cli Contract
@@ -19,6 +19,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - `contract-cli contract template list`
 - `contract-cli contract template get <template-id>`
 - `contract-cli contract template instantiate`
+- `contract-cli contract upload-file`
 - `contract-cli contract enum list --type <enum_type>`
 
 ## 快速决策
@@ -29,13 +30,15 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - 想拿正文文本：用 `contract text`
 - 想看分类树：用 `contract category list`
 - 想看模板或创建模板实例：用 `contract template ...`
+- 想上传合同正文或附件文件：用 `contract upload-file --as bot`
 - 想查创建合同相关枚举：用 `contract enum list`
-- 若需求是文件上传、审批、授权、付款：当前 skill 不覆盖，别伪造命令
+- 若需求是审批、授权、付款：当前 skill 不覆盖，别伪造命令
 
 ## 关键规则
 
 - `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate` 同时支持 `--as user` 和 `--as bot`
-- 除这九条外，其余命令仍然只支持 `--as user`
+- `contract upload-file` 当前仅支持 `--as bot`
+- 除这九条双身份命令和 `contract upload-file` 外，其余命令仍然只支持 `--as user`
 - `contract create` 当前直接接收原始创建请求体，不额外暴露 `--template`
 - `contract create --as bot` 走 `POST /open-apis/contract/v1/contracts`
 - `contract create --as bot` 的请求体必须自己带 `create_user_id`
@@ -62,6 +65,12 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - 按生产文档，`contract template get --as bot` 的 `user_id`、`user_id_type` 都属于 query 参数；CLI 仍只透传，不做本地必填校验
 - `contract template instantiate --as bot` 走 `POST /open-apis/contract/v1/template_instances`
 - 按生产文档，`contract template instantiate --as bot` 的 query 只有 `user_id_type`，请求体里需要 `create_user_id`；CLI 仍只透传，不做本地必填校验
+- `contract upload-file --as bot` 走 `POST /open-apis/contract/v1/files/upload`
+- `contract upload-file` 使用 `multipart/form-data`，字段是 `file_name`、`file_type`、`file`
+- `contract upload-file` 的 `--file` 是本地真实文件路径，不是 JSON 请求体文件
+- `contract upload-file` 不接受 `--input-file` / `--data`
+- `contract upload-file` 本地限制文件大小小于等于 `200MB`
+- 常用 `file_type`：`text` 合同文本、`attachment` 其他附件、`scan` 归档扫描件、`cause` 合同附件、`archiveAttachment` 归档附件、`customPictureAttachment` 图片附件、`customTableAttachment` 表格附件、`customFileAttachment` 文件附件
 - `contract text` 支持 `--full-text`、`--offset`、`--limit`
 - `contract template instantiate` 只接收请求体，不再接模板 ID 位置参数
 
@@ -78,7 +87,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 - 先确认 profile 已完成目标身份的登录：
   - user 详情、user 搜索、user 创建、user 同步用户组、user 合同文本、user 分类查询、user 模板列表、user 模板详情、user 模板实例和其他 user-only 命令：`auth login --as user`
-  - bot 详情、bot 搜索、bot 创建、bot 同步用户组、bot 合同文本、bot 分类查询、bot 模板列表、bot 模板详情、bot 模板实例：`auth login --as bot`
+  - bot 详情、bot 搜索、bot 创建、bot 同步用户组、bot 合同文本、bot 分类查询、bot 模板列表、bot 模板详情、bot 模板实例、bot 文件上传：`auth login --as bot`
 - 复杂请求体优先用 `--input-file`
 - 需要脚本消费时加 `--output json`
 - 需要对照后端原始 envelope 时加 `--raw`
@@ -90,5 +99,6 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 ## 不要这样做
 
 - 不要对 `contract enum` 传 `--as bot`
-- 不要继续写 `--file contract.json`
-- 不要把 `contract template fields`、`contract file upload` 当成已实现能力
+- 不要继续写 `--file contract.json`；JSON 请求体用 `--input-file`
+- 不要对 `contract upload-file` 传 `--as user`
+- 不要把 `contract template fields` 当成已实现能力

@@ -3,6 +3,9 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"cn.qfei/contract-cli/internal/openplatform"
 	contractsvc "cn.qfei/contract-cli/internal/openplatform/contract"
@@ -10,6 +13,7 @@ import (
 
 const contractMCPPathPrefix = "/open-apis/contract/v1/mcp"
 const contractOpenAPIPathPrefix = "/open-apis/contract/v1"
+const maxContractUploadFileBytes int64 = 200 * 1024 * 1024
 
 func (a *App) runContract(ctx context.Context, args []string) error {
 	if len(args) == 0 {
@@ -33,6 +37,8 @@ func (a *App) runContract(ctx context.Context, args []string) error {
 		return a.runContractTemplate(ctx, args[1:])
 	case "enum":
 		return a.runContractEnum(ctx, args[1:])
+	case "upload-file":
+		return a.runContractUploadFile(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown contract subcommand %q", args[0])
 	}
@@ -326,4 +332,78 @@ func (a *App) runContractEnum(ctx context.Context, args []string) error {
 	default:
 		return fmt.Errorf("unknown contract enum subcommand %q", args[0])
 	}
+}
+
+func (a *App) runContractUploadFile(ctx context.Context, args []string) error {
+	parsed, err := parseArgs(args, structuredValueFlags("--file", "--file-type", "--file-name"), commonBoolFlags())
+	if err != nil {
+		return err
+	}
+	if len(parsed.positionals) != 0 {
+		return fmt.Errorf("usage: contract-cli contract upload-file --file <path> --file-type <type> [flags]")
+	}
+
+	options := parseCommandOptions(parsed)
+	if options.inputFile != "" || options.data != "" {
+		return fmt.Errorf("contract upload-file does not accept --input-file or --data; use --file for binary upload")
+	}
+	uploadPath := strings.TrimSpace(parsed.String("--file"))
+	if uploadPath == "" {
+		return fmt.Errorf("--file is required")
+	}
+	fileType := strings.TrimSpace(parsed.String("--file-type"))
+	if fileType == "" {
+		return fmt.Errorf("--file-type is required")
+	}
+	fileName := strings.TrimSpace(parsed.String("--file-name"))
+	if fileName == "" {
+		fileName = filepath.Base(uploadPath)
+	}
+	if strings.TrimSpace(fileName) == "" {
+		return fmt.Errorf("--file-name must not be empty")
+	}
+	fileInfo, err := validateContractUploadFile(uploadPath)
+	if err != nil {
+		return err
+	}
+
+	a.logger.Info("contract upload-file command started", "profile", emptyFallback(options.profileName, "<current>"), "identity", emptyFallback(options.identity, "<default>"), "file_name", fileName, "file_type", fileType, "size_bytes", fileInfo.Size())
+	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, contractOpenAPIPathPrefix+"/files/upload", openplatform.IdentityPolicyBotOnly)
+	if err != nil {
+		a.logger.Error("contract upload-file context failed", "profile", emptyFallback(options.profileName, "<current>"), "identity", emptyFallback(options.identity, "<default>"), "file_name", fileName, "file_type", fileType, "error", err.Error())
+		return err
+	}
+
+	file, err := os.Open(uploadPath)
+	if err != nil {
+		a.logger.Error("open contract upload file failed", "profile", requestContext.Profile.Name, "identity", requestContext.Identity, "file_name", fileName, "file_type", fileType, "error", err.Error())
+		return fmt.Errorf("open upload file: %w", err)
+	}
+	defer file.Close()
+
+	response, err := contractsvc.NewService(client).UploadFile(ctx, requestContext, contractsvc.UploadFileInput{
+		FileName: fileName,
+		FileType: fileType,
+		File:     file,
+	})
+	if err != nil {
+		a.logger.Error("contract upload-file request failed", "profile", requestContext.Profile.Name, "identity", requestContext.Identity, "file_name", fileName, "file_type", fileType, "error", err.Error())
+		return err
+	}
+	a.logger.Info("contract upload-file command completed", "profile", requestContext.Profile.Name, "identity", requestContext.Identity, "file_name", fileName, "file_type", fileType)
+	return a.renderOpenPlatformResponse(options, response)
+}
+
+func validateContractUploadFile(path string) (os.FileInfo, error) {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("stat upload file: %w", err)
+	}
+	if !fileInfo.Mode().IsRegular() {
+		return nil, fmt.Errorf("upload file %q must be a regular file", path)
+	}
+	if fileInfo.Size() > maxContractUploadFileBytes {
+		return nil, fmt.Errorf("upload file %q size %d bytes must be <= 200MB", path, fileInfo.Size())
+	}
+	return fileInfo, nil
 }

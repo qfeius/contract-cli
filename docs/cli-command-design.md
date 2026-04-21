@@ -18,6 +18,7 @@
 - `contract get/search/create/sync-user-groups/text`
 - `contract category list`
 - `contract template list/get/instantiate`
+- `contract upload-file`
 - `contract enum list`
 - `mdm vendor list/get`
 - `mdm legal list/get`
@@ -29,8 +30,8 @@
 - `contract/v1/mcp` 这批命令和对应的 `api call` 路径只支持 `--as user`
 - 这批命令不暴露 `--operator`
 - 请求体文件输入统一使用 `--input-file`
-- `--file` 预留给后续真实文件上传命令，不再表示 JSON 请求体
-- 文件上传链路本轮尚未实现
+- `--file` 仅用于真实二进制文件上传，不再表示 JSON 请求体
+- 文件上传当前已支持 bot 身份下的 `contract upload-file`
 
 ## 2. 设计目标
 
@@ -125,7 +126,7 @@ CLI 层建议：
 
 说明：
 
-- 当前 `--file` 不再用于请求体输入，预留给后续二进制文件上传命令
+- 当前 `--file` 不再用于请求体输入，仅用于二进制文件上传命令
 
 ## 5. 一级命令树
 
@@ -150,7 +151,7 @@ contract-cli contract template get
 contract-cli contract template fields
 contract-cli contract template instantiate
 
-contract-cli contract file upload
+contract-cli contract upload-file
 contract-cli contract file download
 contract-cli contract file print
 
@@ -349,7 +350,7 @@ contract-cli contract template instantiate --input-file template-instance.json
 #### 上传合同相关文件
 
 ```bash
-contract-cli contract file upload --contract 7023646046559404327 --path ./附件.pdf
+contract-cli contract upload-file --profile contract-group --as bot --file ./附件.pdf --file-type attachment
 ```
 
 #### 下载合同相关文件
@@ -677,7 +678,7 @@ contract-cli api call POST /open-apis/mdm/v1/vendors --input-file vendor.json
 
 - 合同和主数据接口都存在大量动态字段和嵌套结构
 - 如果把所有字段都平铺为 flags，命令会非常脆弱
-- `--file` 将保留给未来真实文件上传命令，避免语义冲突
+- `--file` 只用于真实文件上传命令，避免和 JSON 请求体输入混淆
 
 ### 8.3 主数据命令统一收口到 `mdm`
 

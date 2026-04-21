@@ -6,7 +6,8 @@
 
 - 当前只预置 `dev` 环境：`contract-cli config add --env dev`
 - `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是当前仅有的十四个同时支持 `user` 与 `bot` 的结构化业务命令
-- 除这十四条外，当前其他结构化业务命令仍只支持 `--as user`
+- `contract upload-file` 当前仅支持 `--as bot`
+- 除上述 bot 能力外，当前其他结构化业务命令仍只支持 `--as user`
 - `bot` 目前已经支持登录、状态查看、登出、默认身份切换
 - 推荐使用 `npx skills add qfeius/contract-cli -y -g` 安装跨 Agent 平台 skills；`contract-cli skills install` 保留为 CLI 内置兜底
 - `update check` 支持手动检查 npm 远端版本；CLI 在交互终端下会每 30 分钟最多自动检查一次并提示升级
@@ -75,7 +76,8 @@
 - `--input-file` 与 `--data` 互斥
 - `contract create`、`contract template instantiate` 至少需要其一
 - `contract search` 可以只传查询 flag，也可以显式传空对象 `{}`，不强制要求 body 输入
-- `--file` 目前没有被重新占用，保留给未来真实文件上传命令
+- `--file` 只用于真实二进制文件上传，例如 `contract upload-file`
+- 不要把 `--file` 当 JSON 请求体输入；JSON 请求体始终用 `--input-file`
 
 ### 通用用户标识参数
 
@@ -364,6 +366,7 @@ contract-cli api call POST /open-apis/xxx --profile contract-group --as bot --da
 - `--output`
 - `--raw`
 - 需要请求体的命令额外支持 `--input-file` / `--data`
+- `contract upload-file` 额外支持 `--file` / `--file-type` / `--file-name`
 
 #### `contract-cli contract search`
 
@@ -515,6 +518,48 @@ contract-cli contract create --profile contract-group --as bot --data '{"contrac
 - [create-contract-fields.md](/Users/lyy/contract-cli/skills/contract-cli-contract/references/create-contract-fields.md)
 - [create-contract-field-tree.md](/Users/lyy/contract-cli/skills/contract-cli-contract/references/create-contract-field-tree.md)
 - [create-contract-enums.md](/Users/lyy/contract-cli/skills/contract-cli-contract/references/create-contract-enums.md)
+
+#### `contract-cli contract upload-file`
+
+用途：上传合同相关文件，返回后端原始 JSON，重点关注 `data.file_id`。
+
+命令：
+
+```bash
+contract-cli contract upload-file --profile contract-group --as bot --file ./合同正文.docx --file-type text
+contract-cli contract upload-file --profile contract-group --as bot --file ./附件.pdf --file-type attachment --file-name 附件.pdf
+```
+
+支持参数：
+
+- `--file`：必填，本地待上传文件路径。
+- `--file-type`：必填，透传后端文件类型。
+- `--file-name`：可选；不传时默认使用本地文件名。
+- `--user-id-type`
+- `--user-id`
+
+身份规则：
+
+- 当前仅支持 `--as bot`。
+- 显式 `--as user` 或 profile 默认身份为 user 时会在发 HTTP 前失败。
+- 走 `POST /open-apis/contract/v1/files/upload`。
+- 请求是 `multipart/form-data`，字段为 `file_name`、`file_type`、`file`。
+- 不接受 `--input-file` / `--data`；这两个参数只用于 JSON 请求体。
+
+本地校验：
+
+- `--file` 必须存在且是普通文件。
+- 文件大小必须小于等于 `200MB`。
+- CLI 不在本地校验扩展名白名单，扩展名和 `file_type` 合法性由后端最终校验。
+
+常用 `file_type`：
+
+- `text`：合同文本。
+- `attachment`：其他附件。
+- `scan`：归档扫描件。
+- `cause`：合同附件。
+- `archiveAttachment`：归档附件。
+- `customPictureAttachment` / `customTableAttachment` / `customFileAttachment`：自定义附件。
 
 #### `contract-cli contract category list`
 

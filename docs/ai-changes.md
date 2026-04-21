@@ -1,6 +1,11 @@
 # AI 变更记录
 
 - 2026-04-21
+  变更摘要：新增 bot 身份下的 `contract-cli contract upload-file` 文件上传命令。
+  涉及文件/模块：`internal/openplatform`、`internal/openplatform/contract`、`internal/cli/contract_command.go`、`docs/cli-command-reference.md`、`docs/cli-command-design.md`、`docs/cli-test-plan.md`、`README.md`、`skills/contract-cli-*`、`docs/ai-changes.md`
+  关键逻辑/决策：新增 `IdentityPolicyBotOnly` 并扩展 `openplatform.Request.BodyReader` 支持流式上传；合同 service 使用 `multipart/form-data` 发送 `file_name/file_type/file`，CLI 只做本地文件存在、普通文件、`<=200MB` 和必填参数校验；`--file` 正式用于真实二进制上传，JSON 请求体继续使用 `--input-file`。
+
+- 2026-04-21
   变更摘要：将 Agent skills 推荐安装方式调整为通用 `npx skills add qfeius/contract-cli -y -g`。
   涉及文件/模块：`README.md`、`docs/cli-command-reference.md`、`docs/cli-test-plan.md`、`internal/cli/command_reference_doc_test.go`、`docs/ai-changes.md`
   关键逻辑/决策：文档主推通用 `skills` installer 从 GitHub 仓库安装 `skills/` 目录，以覆盖 Codex、Cursor、Trae、Claude Code 等多类 Agent 环境；`contract-cli skills install` 保留为随 npm/二进制分发的离线兜底方式，并补文档契约测试防止推荐安装命令漂移。
