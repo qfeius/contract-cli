@@ -1,6 +1,11 @@
 # AI 变更记录
 
 - 2026-04-21
+  变更摘要：新增 beta 版本一键发布脚本和 dry-run 发布脚本测试。
+  涉及文件/模块：`scripts/release-beta.sh`、`tests/release/release-beta-script.sh`、`Makefile`、`.gitignore`、`README.md`、`docs/ai-changes.md`
+  关键逻辑/决策：发布脚本要求显式 `--version <x.y.z-beta.n>`，默认只做本地准备，`--dry-run` 不改文件，真正远端发布必须传 `--publish --yes`；远端链路按 GitHub Release 附件先于 `npm publish --tag beta` 的顺序执行；忽略本地 `mcp.yaml` 和 `.DS_Store`，并在 dirty worktree 报错时打印具体文件。
+
+- 2026-04-21
   变更摘要：为当前全部已支持命令补齐统一 `--help` / `help <command>` 本地帮助系统。
   涉及文件/模块：`internal/cli/help.go`、`internal/cli/app.go`、`internal/cli/update_command.go`、`internal/cli/help_command_test.go`、`README.md`、`docs/cli-command-reference.md`、`docs/ai-changes.md`
   关键逻辑/决策：新增静态 help registry，不引入 Cobra、不改现有业务 parser；`App.Run` 在日志、版本检查和命令分发前拦截 help，支持顶层、命令组、叶子命令和带位置参数的 leaf help；help 只本地渲染，不读取 profile、不发 HTTP、不写 update cache，并保留旧命令别名拒绝行为。

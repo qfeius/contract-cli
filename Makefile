@@ -5,7 +5,7 @@ COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w -X cn.qfei/contract-cli/internal/build.Version=$(VERSION) -X cn.qfei/contract-cli/internal/build.Commit=$(COMMIT) -X cn.qfei/contract-cli/internal/build.Date=$(DATE)
 
-.PHONY: test build install release-assets release-check package-dry-run local-install-check release-snapshot clean
+.PHONY: test build install release-assets release-check package-dry-run local-install-check release-script-check release-snapshot clean
 
 test:
 	go test ./...
@@ -25,10 +25,14 @@ package-dry-run:
 local-install-check:
 	tests/release/local-install.sh
 
+release-script-check:
+	tests/release/release-beta-script.sh
+
 release-check: test
 	tests/cli_e2e/smoke.sh
 	tests/release/package-dry-run.sh
 	tests/release/local-install.sh
+	tests/release/release-beta-script.sh
 
 release-snapshot:
 	goreleaser release --snapshot --clean

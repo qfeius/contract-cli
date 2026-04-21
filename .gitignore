@@ -1,7 +1,9 @@
 # Local root build outputs
+/.DS_Store
 /contract-cli
 /bin/
 /dist/
+/mcp.yaml
 *.tar.gz
 *.zip
 /checksums.txt

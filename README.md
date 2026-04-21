@@ -98,6 +98,23 @@ make release-assets
 - 将 `dist/release-assets/` 下的压缩包上传到 GitHub Release
 - 发布 npm 薄包装
 
+### Beta 一键发布脚本
+
+仓库提供安全模式发布脚本：
+
+```bash
+scripts/release-beta.sh --version 0.1.1-beta.1 --dry-run
+scripts/release-beta.sh --version 0.1.1-beta.1
+scripts/release-beta.sh --version 0.1.1-beta.1 --publish --yes
+```
+
+默认模式只更新本地 `package.json`、执行 `make release-check`、生成 `dist/release-assets/`，不会推送 GitHub 或发布 npm。真正发布需要显式传入 `--publish --yes`，脚本会按顺序提交版本、打 `v<version>` tag、推送代码和 tag、创建 GitHub pre-release 并上传附件，最后执行 `npm publish --tag beta`。
+
+远端发布需要满足其中一种授权方式：
+
+- GitHub：本机已执行 `gh auth login`，或设置有仓库 `contents:write` 权限的 `GITHUB_TOKEN`
+- npm：本机已执行 `npm login`，或设置有发布 `@qfeius/contract-cli` 权限的 `NPM_TOKEN`
+
 仓库里额外提供了一个可选的 GitHub Actions workflow：`/.github/workflows/release.yml`。如果后续继续使用 GitLab CI，可以直接复用相同的 `goreleaser release --clean` 命令。
 
 ## 常用命令
