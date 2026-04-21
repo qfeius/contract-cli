@@ -8,7 +8,7 @@
 - 2026-04-21
   变更摘要：新增 beta 版本一键发布脚本和 dry-run 发布脚本测试。
   涉及文件/模块：`scripts/release-beta.sh`、`tests/release/release-beta-script.sh`、`Makefile`、`.gitignore`、`README.md`、`docs/ai-changes.md`
-  关键逻辑/决策：发布脚本要求显式 `--version <x.y.z-beta.n>`，默认只做本地准备，`--dry-run` 不改文件，真正远端发布必须传 `--publish --yes`；远端链路按 GitHub Release 附件先于 `npm publish --tag beta` 的顺序执行；忽略本地 `mcp.yaml` 和 `.DS_Store`，并在 dirty worktree 报错时打印具体文件。
+  关键逻辑/决策：发布脚本要求显式 `--version <x.y.z-beta.n>`，默认只做本地准备，`--dry-run` 不改文件，真正远端发布必须传 `--publish --yes`；远端链路按 GitHub Release 附件先于 `npm publish --tag beta` 的顺序执行；默认推送当前分支，且本地 tag 已存在并指向 HEAD 时允许恢复重跑。
 
 - 2026-04-21
   变更摘要：为当前全部已支持命令补齐统一 `--help` / `help <command>` 本地帮助系统。

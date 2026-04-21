@@ -10,7 +10,8 @@ SKIP_TESTS=0
 YES=0
 
 REMOTE="${REMOTE:-origin}"
-BRANCH="${BRANCH:-main}"
+DEFAULT_BRANCH="$(git -C "$ROOT_DIR" branch --show-current 2>/dev/null || true)"
+BRANCH="${BRANCH:-${DEFAULT_BRANCH:-main}}"
 NPM_TAG="${NPM_TAG:-beta}"
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmjs.org}"
 GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-qfeius/contract-cli}"
@@ -36,7 +37,7 @@ Environment:
   NPM_REGISTRY          npm registry, default https://registry.npmjs.org.
   NPM_TAG               npm dist-tag, default beta.
   REMOTE                Git remote, default origin.
-  BRANCH                Branch to push, default main.
+  BRANCH                Branch to push, default current branch.
 
 Default mode updates package.json, runs release checks, builds release assets,
 and stops before any remote publish. Use --publish --yes for one-command release.
@@ -217,7 +218,7 @@ print_plan() {
   run git add package.json
   run git commit -m "release: prepare $VERSION"
   run git tag "$TAG"
-  run git push "$REMOTE" "$BRANCH"
+  run git push "$REMOTE" "HEAD:$BRANCH"
   run git push "$REMOTE" "$TAG"
   run gh release create "$TAG" "dist/release-assets/*" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "beta release $VERSION" --prerelease --latest=false
   run npm publish --tag "$NPM_TAG" --registry "$NPM_REGISTRY"
@@ -282,10 +283,16 @@ else
 fi
 
 if git rev-parse "$TAG" >/dev/null 2>&1; then
-  die "tag $TAG already exists locally"
+  tag_commit="$(git rev-parse "$TAG^{commit}")"
+  head_commit="$(git rev-parse HEAD)"
+  if [ "$tag_commit" != "$head_commit" ]; then
+    die "tag $TAG already exists at $tag_commit, but HEAD is $head_commit"
+  fi
+  echo "tag $TAG already exists at HEAD"
+else
+  run git tag "$TAG"
 fi
-run git tag "$TAG"
-run git push "$REMOTE" "$BRANCH"
+run git push "$REMOTE" "HEAD:$BRANCH"
 run git push "$REMOTE" "$TAG"
 
 if [ -n "${GITHUB_TOKEN:-}" ] && [ -z "${GH_TOKEN:-}" ]; then
