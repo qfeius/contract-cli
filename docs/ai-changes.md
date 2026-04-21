@@ -1,6 +1,11 @@
 # AI 变更记录
 
 - 2026-04-21
+  变更摘要：增强 beta 发布脚本对已存在 GitHub Release 的幂等修正能力。
+  涉及文件/模块：`scripts/release-beta.sh`、`tests/release/release-beta-script.sh`、`docs/ai-changes.md`
+  关键逻辑/决策：发布脚本在创建或覆盖上传 GitHub Release assets 后，统一执行 `gh release edit --prerelease --latest=false`，确保 beta release 即使被重跑或手动创建过也会保持预发布状态；dry-run 测试新增该命令断言。
+
+- 2026-04-21
   变更摘要：修复 npm 发布元信息测试锁死历史版本号导致新 beta 版本无法发布的问题。
   涉及文件/模块：`internal/cli/package_json_test.go`、`docs/ai-changes.md`
   关键逻辑/决策：`package.json` 的包名、registry、下载地址模板和仓库地址仍保持精确断言；版本号从固定 `0.1.0-beta.1` 改为校验合法 semver，避免每次发版都需要同步修改测试常量。

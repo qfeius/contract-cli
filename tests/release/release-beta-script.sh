@@ -15,6 +15,7 @@ fi
 printf '%s' "$OUTPUT" | grep -q "contract-cli-0.1.1-beta.1-darwin-amd64.tar.gz"
 printf '%s' "$OUTPUT" | grep -q "contract-cli-0.1.1-beta.1-windows-arm64.zip"
 printf '%s' "$OUTPUT" | grep -q "gh release create v0.1.1-beta.1"
+printf '%s' "$OUTPUT" | grep -q "gh release edit v0.1.1-beta.1"
 printf '%s' "$OUTPUT" | grep -q "npm publish --tag beta"
 
 "$ROOT_DIR/scripts/release-beta.sh" --help | grep -q "Usage:"

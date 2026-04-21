@@ -221,6 +221,7 @@ print_plan() {
   run git push "$REMOTE" "HEAD:$BRANCH"
   run git push "$REMOTE" "$TAG"
   run gh release create "$TAG" "dist/release-assets/*" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "beta release $VERSION" --prerelease --latest=false
+  run gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease --latest=false
   run npm publish --tag "$NPM_TAG" --registry "$NPM_REGISTRY"
 }
 
@@ -314,6 +315,7 @@ else
     --prerelease \
     --latest=false
 fi
+run gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease --latest=false
 
 setup_npm_token
 run npm whoami --registry "$NPM_REGISTRY"
