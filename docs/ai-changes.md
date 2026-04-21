@@ -1,6 +1,11 @@
 # AI 变更记录
 
 - 2026-04-21
+  变更摘要：修复 npm 发布元信息测试锁死历史版本号导致新 beta 版本无法发布的问题。
+  涉及文件/模块：`internal/cli/package_json_test.go`、`docs/ai-changes.md`
+  关键逻辑/决策：`package.json` 的包名、registry、下载地址模板和仓库地址仍保持精确断言；版本号从固定 `0.1.0-beta.1` 改为校验合法 semver，避免每次发版都需要同步修改测试常量。
+
+- 2026-04-21
   变更摘要：新增 beta 版本一键发布脚本和 dry-run 发布脚本测试。
   涉及文件/模块：`scripts/release-beta.sh`、`tests/release/release-beta-script.sh`、`Makefile`、`.gitignore`、`README.md`、`docs/ai-changes.md`
   关键逻辑/决策：发布脚本要求显式 `--version <x.y.z-beta.n>`，默认只做本地准备，`--dry-run` 不改文件，真正远端发布必须传 `--publish --yes`；远端链路按 GitHub Release 附件先于 `npm publish --tag beta` 的顺序执行；忽略本地 `mcp.yaml` 和 `.DS_Store`，并在 dirty worktree 报错时打印具体文件。

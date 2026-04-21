@@ -1,6 +1,6 @@
 {
   "name": "@qfeius/contract-cli",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.1-beta.1",
   "description": "CLI for Qfei contract open platform",
   "bin": {
     "contract-cli": "scripts/run.js"
