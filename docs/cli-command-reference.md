@@ -113,9 +113,9 @@ contract-cli contract get <contract-id> --help
 
 - `contract ...`、`mdm ...` 结构化命令会透传到对应底层接口
 - `api call` 也支持这两个参数
-- 传了就拼接到 query string
-- 不传就不带
-- 不做默认值补齐
+- `--user-id-type` 不传时默认拼接 `user_id_type=user_id`
+- 显式传 `--user-id-type <type>` 时会覆盖默认值
+- `--user-id` 传了就拼接到 query string，不传就不带
 - 不区分 `user` / `bot`
 - 不做命令级校验
 

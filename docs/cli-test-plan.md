@@ -430,7 +430,7 @@ contract-cli auth status --profile "$PROFILE" --as bot
 | 身份 | 显式 `--as bot` 或默认身份为 bot |
 | 路径 | 不走 `/open-apis/contract/v1/mcp/...`，除非命令特殊说明 |
 | 输出 | 默认 JSON，可使用 `--output json` 显式校验 |
-| 通用 query | `--user-id`、`--user-id-type` 传了就透传，不传就不带 |
+| 通用 query | `--user-id-type` 不传默认 `user_id`，显式传值则覆盖；`--user-id` 传了就透传，不传就不带 |
 | token | 使用 tenant access token |
 
 ### 5.1 合同搜索
@@ -1003,7 +1003,7 @@ contract-cli api call GET /open-apis/mdm/v1/config/config_list --profile "$PROFI
 预期结果：
 
 - bot 身份成功。
-- `--user-id` 与 `--user-id-type` 被拼到 query。
+- `--user-id` 与 `--user-id-type` 被拼到 query；不传 `--user-id-type` 时应默认拼接 `user_id_type=user_id`。
 
 ### 7.3 bot 禁止调用 MCP 路径
 
@@ -1151,7 +1151,7 @@ npm publish --dry-run --tag beta
 ### 10.4 每次改命令参数后必须覆盖
 
 - `--input-file` 与 `--data` 互斥。
-- `--user-id` 与 `--user-id-type` 透传到 query。
+- `--user-id-type` 默认 `user_id` 且可被显式传值覆盖；`--user-id` 透传到 query。
 - `--output json|yaml|table` 可用。
 - `--raw` 可用。
 - 未知参数报错。

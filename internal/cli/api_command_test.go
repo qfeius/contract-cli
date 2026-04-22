@@ -46,7 +46,7 @@ func TestAPICallUsesDefaultIdentityAndRendersJSON(t *testing.T) {
 		Store:  store,
 		HTTPClient: &http.Client{
 			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				if req.URL.String() != "https://dev-open.qtech.cn/open-apis/mdm/v1/vendors/1063197165850985296" {
+				if req.URL.String() != "https://dev-open.qtech.cn/open-apis/mdm/v1/vendors/1063197165850985296?user_id_type=user_id" {
 					t.Fatalf("unexpected request url: %s", req.URL.String())
 				}
 				if req.Header.Get("Authorization") != "Bearer bot-token" {

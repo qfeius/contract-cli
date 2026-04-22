@@ -49,10 +49,10 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - 这三份文档一起构成 `contract create` 的完整参数主档，不需要再回查旧接口清单
 - `contract get --as bot` 走开放平台标准接口 `/open-apis/contract/v1/contracts/{contract_id}`
 - `--user-id-type` / `--user-id` 是通用 query 参数：
-  - 传了就原样拼到底层接口
-  - 不传就不带
+  - `--user-id-type` 不传时默认拼接 `user_id_type=user_id`
+  - 显式传 `--user-id-type <type>` 时会覆盖默认值
+  - `--user-id` 传了就原样拼到底层接口，不传就不带
   - 不区分 `user` / `bot`
-  - 不做默认值补齐
   - 不做命令级校验
 - `contract search` 会把 `--contract-number`、`--page-size`、`--page-token` 合并进 `--input-file/--data` 里的 JSON 对象
 - `contract search --as bot` 走开放平台标准接口 `/open-apis/contract/v1/contracts/search`

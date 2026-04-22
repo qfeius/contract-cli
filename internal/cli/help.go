@@ -764,7 +764,7 @@ func openPlatformCommonFlags() []helpFlag {
 		{"--as <user|bot>", "请求身份；不传使用 profile default_identity"},
 		{"--output <json|yaml|table>", "输出格式，默认 json"},
 		{"--raw", "原样输出响应 body"},
-		{"--user-id-type <type>", "通用 query 参数 user_id_type；传了就透传，不传就不带"},
+		{"--user-id-type <type>", "通用 query 参数 user_id_type；不传默认 user_id，传了则覆盖默认值"},
 		{"--user-id <id>", "通用 query 参数 user_id；传了就透传，不传就不带"},
 	}
 }

@@ -40,7 +40,7 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 - 若命中 `/open-apis/contract/v1/mcp/` 且未传 `--as`，CLI 会默认按 `user` 解析，不看 `default_identity`
 - 这批命令不暴露 `--operator`
 - 请求体文件输入统一使用 `--input-file`
-- `--user-id-type` / `--user-id` 是开放平台通用 query 参数：结构化命令和 `api call` 都支持，传了就透传，不传就不带，不做默认值和命令级校验
+- `--user-id-type` / `--user-id` 是开放平台通用 query 参数：结构化命令和 `api call` 都支持；`--user-id-type` 不传时默认拼接 `user_id_type=user_id`，显式传值会覆盖默认值；`--user-id` 传了就透传，不传就不带；不做命令级校验
 - `--file` 现在只用于真实二进制文件上传，例如 `contract upload-file`
 - JSON 请求体文件输入始终使用 `--input-file`，不要把 `--file` 当 JSON 请求体参数
 - 默认输出建议用 `json`；需要排障时可加 `--raw`

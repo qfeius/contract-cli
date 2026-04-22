@@ -1,5 +1,10 @@
 # AI 变更记录
 
+- 2026-04-22
+  变更摘要：为开放平台通用 query 参数补齐 `user_id_type=user_id` 默认值。
+  涉及文件/模块：`internal/cli/command_support.go`、`internal/cli/*_test.go`、`docs/cli-command-reference.md`、`docs/cli-test-plan.md`、`skills/contract-cli-*`、`docs/ai-changes.md`
+  关键逻辑/决策：结构化命令和 `api call` 在构造 `RequestContext.CommonQuery` 时默认追加 `user_id_type=user_id`；显式传 `--user-id-type` 时覆盖默认值，`--user-id` 仍保持传了才带；MCP user-only 固定 query 仍由 `IdentityPolicyUserOnly` 保护，不会被通用参数覆盖。
+
 - 2026-04-21
   变更摘要：增强 beta 发布脚本对已存在 GitHub Release 的幂等修正能力。
   涉及文件/模块：`scripts/release-beta.sh`、`tests/release/release-beta-script.sh`、`docs/ai-changes.md`

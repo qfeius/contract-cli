@@ -264,15 +264,12 @@ func resolveRawBody(options commandOptions) ([]byte, error) {
 }
 
 func commandCommonQuery(options commandOptions) url.Values {
-	query := url.Values{}
+	query := url.Values{"user_id_type": {"user_id"}}
 	if value := strings.TrimSpace(options.userIDType); value != "" {
 		query.Set("user_id_type", value)
 	}
 	if value := strings.TrimSpace(options.userID); value != "" {
 		query.Set("user_id", value)
-	}
-	if len(query) == 0 {
-		return nil
 	}
 	return query
 }

@@ -42,7 +42,7 @@ mdm vendor get
 | `--profile` | 本地上下文 | `string` | 可选 | 选择 profile。 | 未传时走默认 profile。 |
 | `--as` | 本地上下文 | `string` | 可选 | 选择身份。 | `user` 走 MCP 路径，`bot` 走开放平台 `mdm/v1/vendors` 路径。 |
 | `--user-id` | `$query.user_id` | `string` | 可选 | 通用用户标识参数。 | 传了就透传，不传就不带。 |
-| `--user-id-type` | `$query.user_id_type` | `string` | 可选 | 通用用户标识类型。 | 传了就透传，不传就不带；bot 文档里常见 `employee_id`。 |
+| `--user-id-type` | `$query.user_id_type` | `string` | 可选 | 通用用户标识类型。 | 不传默认 `user_id`，显式传值会覆盖默认值；bot 文档里常见 `employee_id`。 |
 | `--output` | CLI 输出 | `string` | 可选 | 输出格式。 | 常用 `json` / `yaml` / `table`。 |
 | `--raw` | CLI 输出 | `boolean` | 可选 | 返回原始 envelope。 | 排障时常用。 |
 
