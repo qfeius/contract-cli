@@ -84,7 +84,9 @@ func BuildAuthorizationURL(request AuthorizationRequest) (string, error) {
 	query.Set("code_challenge", request.CodeChallenge)
 	query.Set("code_challenge_method", "S256")
 	query.Set("redirect_uri", request.RedirectURL)
-	query.Set("resource", request.Resource)
+	if strings.TrimSpace(request.Resource) != "" {
+		query.Set("resource", request.Resource)
+	}
 	query.Set("response_type", "code")
 	query.Set("scope", strings.Join(request.Scopes, " "))
 	query.Set("state", request.State)
@@ -106,7 +108,9 @@ func ExchangeAuthorizationCode(ctx context.Context, client *http.Client, logger 
 	form.Set("code_verifier", request.CodeVerifier)
 	form.Set("grant_type", "authorization_code")
 	form.Set("redirect_uri", request.RedirectURL)
-	form.Set("resource", request.Resource)
+	if strings.TrimSpace(request.Resource) != "" {
+		form.Set("resource", request.Resource)
+	}
 
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, request.TokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {

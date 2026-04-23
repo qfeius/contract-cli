@@ -1,6 +1,11 @@
 # AI 变更记录
 
 - 2026-04-22
+  变更摘要：将 user OAuth 的 `resource` 调整为可选，dev 预设不再写入旧 Higress 内网 resource。
+  涉及文件/模块：`internal/cli/app.go`、`internal/cli/app_test.go`、`internal/oauth/login.go`、`internal/oauth/login_test.go`、`docs/ai-changes.md`
+  关键逻辑/决策：`config add --env dev` 现在只依赖公开的 authorization server metadata URL 初始化 user OAuth；`BuildAuthorizationURL` 和 `ExchangeAuthorizationCode` 在 resource 为空时不再发送 `resource=` 参数，保留非空 resource 的兼容行为。
+
+- 2026-04-22
   变更摘要：为开放平台通用 query 参数补齐 `user_id_type=user_id` 默认值。
   涉及文件/模块：`internal/cli/command_support.go`、`internal/cli/*_test.go`、`docs/cli-command-reference.md`、`docs/cli-test-plan.md`、`skills/contract-cli-*`、`docs/ai-changes.md`
   关键逻辑/决策：结构化命令和 `api call` 在构造 `RequestContext.CommonQuery` 时默认追加 `user_id_type=user_id`；显式传 `--user-id-type` 时覆盖默认值，`--user-id` 仍保持传了才带；MCP user-only 固定 query 仍由 `IdentityPolicyUserOnly` 保护，不会被通用参数覆盖。

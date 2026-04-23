@@ -555,7 +555,7 @@ func TestConfigAddUsesPublicDevPresetByDefault(t *testing.T) {
 	if savedProfile.AuthorizationServerMetadataURL != "https://dev-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract" {
 		t.Fatalf("authorization server metadata url = %q", savedProfile.AuthorizationServerMetadataURL)
 	}
-	if savedProfile.Resource != "http://higress-gateway.higress-system/mcp-servers" {
+	if savedProfile.Resource != "" {
 		t.Fatalf("resource = %q", savedProfile.Resource)
 	}
 

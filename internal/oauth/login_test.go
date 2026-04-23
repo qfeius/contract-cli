@@ -45,6 +45,34 @@ func TestBuildAuthorizationURL(t *testing.T) {
 	if query.Get("code_challenge_method") != "S256" {
 		t.Fatalf("code_challenge_method = %q", query.Get("code_challenge_method"))
 	}
+	if query.Get("resource") != "http://higress-gateway.higress-system/mcp-servers" {
+		t.Fatalf("resource = %q", query.Get("resource"))
+	}
+}
+
+func TestBuildAuthorizationURLOmitsEmptyResource(t *testing.T) {
+	t.Parallel()
+
+	got, err := oauth.BuildAuthorizationURL(oauth.AuthorizationRequest{
+		AuthorizationEndpoint: "https://dev-myaccount.qtech.cn/api/public/oauth/authorize/contract",
+		BusinessType:          "contract",
+		ClientID:              "zsdcli_test",
+		RedirectURL:           "http://127.0.0.1:8000/callback",
+		Scopes:                []string{"mcp:tools", "mcp:resources"},
+		State:                 "state-value",
+		CodeChallenge:         "challenge-value",
+	})
+	if err != nil {
+		t.Fatalf("BuildAuthorizationURL() error = %v", err)
+	}
+
+	parsed, err := url.Parse(got)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if _, ok := parsed.Query()["resource"]; ok {
+		t.Fatalf("resource query should be omitted when empty, got url %s", got)
+	}
 }
 
 func TestExchangeAuthorizationCode(t *testing.T) {
@@ -59,6 +87,9 @@ func TestExchangeAuthorizationCode(t *testing.T) {
 		}
 		if r.Form.Get("code_verifier") != "verifier" {
 			t.Fatalf("code_verifier = %q", r.Form.Get("code_verifier"))
+		}
+		if r.Form.Get("resource") != "http://higress-gateway.higress-system/mcp-servers" {
+			t.Fatalf("resource = %q", r.Form.Get("resource"))
 		}
 		return jsonResponse(`{"access_token":"token-value","token_type":"Bearer","expires_in":3600,"scope":"mcp:tools mcp:resources"}`), nil
 	})}
@@ -82,6 +113,31 @@ func TestExchangeAuthorizationCode(t *testing.T) {
 	}
 	if time.Until(token.Expiry) <= 0 {
 		t.Fatalf("expected future expiry, got %v", token.Expiry)
+	}
+}
+
+func TestExchangeAuthorizationCodeOmitsEmptyResource(t *testing.T) {
+	t.Parallel()
+
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm() error = %v", err)
+		}
+		if _, ok := r.Form["resource"]; ok {
+			t.Fatalf("resource form field should be omitted when empty, got form %v", r.Form)
+		}
+		return jsonResponse(`{"access_token":"token-value","token_type":"Bearer","expires_in":3600}`), nil
+	})}
+
+	_, err := oauth.ExchangeAuthorizationCode(context.Background(), client, nil, oauth.TokenExchangeRequest{
+		TokenEndpoint: "https://example.test/oauth/token/contract",
+		ClientID:      "zsdcli_test",
+		Code:          "code-value",
+		CodeVerifier:  "verifier",
+		RedirectURL:   "http://127.0.0.1:8000/callback",
+	})
+	if err != nil {
+		t.Fatalf("ExchangeAuthorizationCode() error = %v", err)
 	}
 }
 

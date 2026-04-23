@@ -286,7 +286,7 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 			a.logger.Error("config add discover failed", "profile", profileName, "protected_resource_url", protectedResourceURL, "error", err.Error())
 			return err
 		}
-	case preset.AuthorizationServerMetadataURL != "" && preset.Resource != "":
+	case preset.AuthorizationServerMetadataURL != "":
 		discovery, err = oauth.DiscoverFromAuthorizationServer(ctx, a.httpClient, a.logger, preset.AuthorizationServerMetadataURL, preset.Resource)
 		if err != nil {
 			a.logger.Error("config add discover from authorization server failed", "profile", profileName, "authorization_server_metadata_url", preset.AuthorizationServerMetadataURL, "error", err.Error())
@@ -544,7 +544,6 @@ func resolveEnvironment(name string) (environmentPreset, error) {
 			BotTokenEndpoint:               "https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal",
 			ProtectedResourceMetadataURL:   "",
 			AuthorizationServerMetadataURL: "https://dev-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract",
-			Resource:                       "http://higress-gateway.higress-system/mcp-servers",
 			RedirectURL:                    "http://127.0.0.1:8000/callback",
 			Scopes:                         []string{"mcp:tools", "mcp:resources"},
 			BusinessType:                   "contract",
