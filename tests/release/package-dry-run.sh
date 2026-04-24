@@ -34,11 +34,13 @@ const required = [
   "skills/contract-cli-mdm-vendor/SKILL.md",
   "skills/contract-cli-mdm-legal/SKILL.md",
   "skills/contract-cli-mdm-fields/SKILL.md",
-  "skills/contract-cli-api-call/SKILL.md",
 ];
 
 const forbidden = [
   "skills/embed.go",
+  "skills/contract-cli-api-call/README.disabled.md",
+  "skills/contract-cli-api-call/agents/openai.yaml",
+  "skills/contract-cli-api-call/references/api-call-guide.md",
   "mcp.yaml",
   ".DS_Store",
   "contract-cli",

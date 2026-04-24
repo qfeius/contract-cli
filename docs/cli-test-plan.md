@@ -183,7 +183,7 @@ npx skills add qfeius/contract-cli -y -g
 
 - 输出 `Installation complete`。
 - 输出 `Installed 6 skills`。
-- 至少包含 `auth`、`contract-cli-api-call`、`contract-cli-contract`、`contract-cli-mdm-fields`、`contract-cli-mdm-legal`、`contract-cli-mdm-vendor`、`contract-cli-shared`。
+- 至少包含 `auth`、`contract-cli-contract`、`contract-cli-mdm-fields`、`contract-cli-mdm-legal`、`contract-cli-mdm-vendor`、`contract-cli-shared`。
 - 输出中能看到 `universal` 或 `symlinked` 的平台适配信息；具体平台列表以 installer 实际输出为准。
 
 注意事项：
@@ -209,7 +209,6 @@ Installed skill: contract-cli-contract
 Installed skill: contract-cli-mdm-vendor
 Installed skill: contract-cli-mdm-legal
 Installed skill: contract-cli-mdm-fields
-Installed skill: contract-cli-api-call
 Installed skill: contract-cli-shared
 ```
 

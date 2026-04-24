@@ -1,6 +1,11 @@
 # AI 变更记录
 
 - 2026-04-24
+  变更摘要：修复 beta 发布前 npm 打包检查仍要求禁用 `api call` skill 的问题。
+  涉及文件/模块：`package.json`、`tests/release/package-dry-run.sh`、`docs/cli-command-reference.md`、`docs/cli-test-plan.md`、`docs/ai-changes.md`
+  关键逻辑/决策：npm 包显式排除 `skills/contract-cli-api-call/**`，release dry-run 测试改为禁止禁用 skill 相关文件进入包内；文档同步移除内置安装会安装 `contract-cli-api-call` 的过期描述。
+
+- 2026-04-24
   变更摘要：暂时封住预留的 `api call` 入口，保留实现代码但不对外暴露。
   涉及文件/模块：`internal/cli/app.go`、`internal/cli/help.go`、`internal/cli/api_command_test.go`、`internal/cli/skills_command.go`、`docs/cli-command-reference.md`、`docs/cli-test-plan.md`、`skills/contract-cli-*`、`docs/ai-changes.md`
   关键逻辑/决策：`contract-cli api ...` 在 profile、HTTP、update check 前直接返回暂未开放错误；help registry 不再注册 `api` 主题；内置 skills 跳过 `contract-cli-api-call`，并移除该目录的 `SKILL.md`，仅保留禁用说明和历史参考。
