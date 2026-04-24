@@ -1,5 +1,7 @@
 # contract-cli 命令设计文档
 
+> 维护说明：本文是阶段性设计记录。`api call` 目前仅作为代码中的预留能力保留，当前不对外开放；公开命令请以 [cli-command-reference.md](/Users/lyy/contract-cli/docs/cli-command-reference.md) 为准。
+
 ## 1. 背景
 
 `contract-cli` 面向开放平台业务能力封装 CLI 命令，但鉴权不直接暴露开放平台原始 `token` 获取流程，而是复用当前本地空间已有的授权体系：
@@ -23,11 +25,10 @@
 - `mdm vendor list/get`
 - `mdm legal list/get`
 - `mdm fields list`
-- `api call`
 
 当前实现约定：
 
-- `contract/v1/mcp` 这批命令和对应的 `api call` 路径只支持 `--as user`
+- `contract/v1/mcp` 这批结构化命令只支持 `--as user`
 - 这批命令不暴露 `--operator`
 - 请求体文件输入统一使用 `--input-file`
 - `--file` 仅用于真实二进制文件上传，不再表示 JSON 请求体

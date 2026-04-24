@@ -39,13 +39,28 @@ func (s *Service) Fields(ctx context.Context, requestContext openplatform.Reques
 			IdentityPolicy: spec.IdentityPolicy,
 		})
 	case config.IdentityBot:
+		botBizLine, err := normalizeBotBizLine(bizLine)
+		if err != nil {
+			return openplatform.Response{}, err
+		}
 		return s.client.Do(ctx, requestContext, openplatform.Request{
 			Method:         http.MethodGet,
 			Path:           "/open-apis/mdm/v1/config/config_list",
-			Query:          url.Values{"biz_line": {bizLine}},
+			Query:          url.Values{"biz_line": {botBizLine}},
 			IdentityPolicy: openplatform.IdentityPolicyAny,
 		})
 	default:
 		return openplatform.Response{}, fmt.Errorf("unsupported identity %q for mdm fields list", requestContext.Identity)
+	}
+}
+
+func normalizeBotBizLine(bizLine string) (string, error) {
+	switch bizLine {
+	case "vendor":
+		return "vendor", nil
+	case "legalEntity", "legal_entity":
+		return "legalEntity", nil
+	default:
+		return "", fmt.Errorf("biz line %q is not supported for bot identity; supported values: vendor, legalEntity", bizLine)
 	}
 }

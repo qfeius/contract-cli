@@ -1,7 +1,7 @@
 interface:
   display_name: "Contract CLI Shared"
   short_description: "Choose the right contract-cli open platform module and follow shared command rules"
-  default_prompt: "Use $contract-cli-shared to choose between contract, mdm vendor, mdm legal, mdm fields, and api-call skills, then follow the shared `--as user`, `--input-file`, and output conventions."
+  default_prompt: "Use $contract-cli-shared to choose between contract, mdm vendor, mdm legal, and mdm fields skills, then follow the shared `--as user`, `--input-file`, and output conventions. Do not recommend api call; it is temporarily unavailable."
 
 policy:
   allow_implicit_invocation: true

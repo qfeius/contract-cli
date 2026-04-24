@@ -41,7 +41,6 @@ func TestRunWithoutArgsPrintsTopLevelHelp(t *testing.T) {
 		!strings.Contains(stdout.String(), "contract-cli skills list") ||
 		!strings.Contains(stdout.String(), "contract-cli skills install [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli update check [flags]") ||
-		!strings.Contains(stdout.String(), "contract-cli api call [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm vendor <subcommand> [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm legal <subcommand> [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm fields list [flags]") {
@@ -50,6 +49,7 @@ func TestRunWithoutArgsPrintsTopLevelHelp(t *testing.T) {
 	if strings.Contains(stdout.String(), "contract-cli vendor <subcommand> [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli entity <subcommand> [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli schema <subcommand> [flags]") ||
+		strings.Contains(stdout.String(), "contract-cli api call [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli mdm-vendor <subcommand> [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli mdm-legal <subcommand> [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli mdm-fields [flags]") {
@@ -329,6 +329,16 @@ description: "contract commands skill"
 		"contract-cli-contract/references/commands.md": {
 			Data: []byte("# Commands\n"),
 		},
+		"contract-cli-api-call/SKILL.md": {
+			Data: []byte(`---
+name: contract-cli-api-call
+version: 1.0.0
+description: "api call skill"
+---
+
+# API Call
+`),
+		},
 	}
 }
 
@@ -357,6 +367,9 @@ func TestSkillsListReadsBundledSkillMetadata(t *testing.T) {
 			t.Fatalf("skills list output missing %q: %s", want, output)
 		}
 	}
+	if strings.Contains(output, "contract-cli-api-call") {
+		t.Fatalf("skills list should hide disabled api call skill: %s", output)
+	}
 }
 
 func TestSkillsInstallCopiesBundledSkillsAndSkipsExisting(t *testing.T) {
@@ -377,6 +390,9 @@ func TestSkillsInstallCopiesBundledSkillsAndSkipsExisting(t *testing.T) {
 	assertFileContent(t, filepath.Join(target, "auth", "SKILL.md"), testAuthSkill)
 	assertFileContent(t, filepath.Join(target, "auth", "agents", "openai.yaml"), "name: auth\n")
 	assertFileContent(t, filepath.Join(target, "contract-cli-contract", "references", "commands.md"), "# Commands\n")
+	if _, err := os.Stat(filepath.Join(target, "contract-cli-api-call")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("api call skill should not be installed, stat error = %v", err)
+	}
 
 	if err := os.WriteFile(filepath.Join(target, "auth", "SKILL.md"), []byte("local custom skill\n"), 0o600); err != nil {
 		t.Fatalf("WriteFile(local custom skill) error = %v", err)

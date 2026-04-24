@@ -198,7 +198,6 @@ func helpRegistry() map[string]helpTopic {
 		{"contract-cli skills list", "列出内置 Agent skills"},
 		{"contract-cli skills install [flags]", "安装内置 Agent skills"},
 		{"contract-cli update check [flags]", "检查 npm 远端版本"},
-		{"contract-cli api call [flags]", "原始开放平台接口调用"},
 		{"contract-cli contract <subcommand> [flags]", "合同结构化命令"},
 		{"contract-cli mdm vendor <subcommand> [flags]", "交易方主数据命令"},
 		{"contract-cli mdm legal <subcommand> [flags]", "法人主体主数据命令"},
@@ -235,7 +234,6 @@ func helpRegistry() map[string]helpTopic {
 	addAuthHelp(registry)
 	addSkillsHelp(registry)
 	addUpdateHelp(registry)
-	addAPIHelp(registry)
 	addContractHelp(registry)
 	addMDMHelp(registry)
 	return registry
@@ -745,15 +743,17 @@ func addMDMHelp(registry map[string]helpTopic) {
 		Summary: "查询字段配置。",
 		Usage:   []string{"contract-cli mdm fields list --biz-line <biz-line> [flags]"},
 		Flags: concatHelpFlags(openPlatformCommonFlags(), []helpFlag{
-			{"--biz-line <biz-line>", "必填，业务线，例如 vendor、legal_entity、vendor_risk"},
+			{"--biz-line <biz-line>", "必填；user 支持 vendor、legal_entity、vendor_risk；bot 支持 vendor、legalEntity，legal_entity 会自动映射为 legalEntity"},
 		}),
 		Examples: []string{
 			"contract-cli mdm fields list --profile contract-group --biz-line vendor",
+			"contract-cli mdm fields list --profile contract-group --as bot --biz-line legal_entity",
 			"contract-cli mdm fields list --profile contract-group --as bot --biz-line vendor --user-id-type employee_id",
 		},
 		Notes: []string{
 			"user: /open-apis/contract/v1/mcp/config/config_list",
 			"bot: /open-apis/mdm/v1/config/config_list",
+			"bot 后端当前只接受 vendor 或 legalEntity；CLI 会把 bot 下的 legal_entity 映射为 legalEntity，vendor_risk 不支持 bot。",
 		},
 	}
 }

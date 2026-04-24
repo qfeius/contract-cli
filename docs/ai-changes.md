@@ -1,5 +1,20 @@
 # AI 变更记录
 
+- 2026-04-24
+  变更摘要：暂时封住预留的 `api call` 入口，保留实现代码但不对外暴露。
+  涉及文件/模块：`internal/cli/app.go`、`internal/cli/help.go`、`internal/cli/api_command_test.go`、`internal/cli/skills_command.go`、`docs/cli-command-reference.md`、`docs/cli-test-plan.md`、`skills/contract-cli-*`、`docs/ai-changes.md`
+  关键逻辑/决策：`contract-cli api ...` 在 profile、HTTP、update check 前直接返回暂未开放错误；help registry 不再注册 `api` 主题；内置 skills 跳过 `contract-cli-api-call`，并移除该目录的 `SKILL.md`，仅保留禁用说明和历史参考。
+
+- 2026-04-24
+  变更摘要：修复 bot 身份下 `mdm fields list` 的 `biz_line` 取值与 help/文档不一致问题。
+  涉及文件/模块：`internal/openplatform/schema`、`internal/cli/mcp_command_test.go`、`internal/cli/help.go`、`docs/cli-command-reference.md`、`docs/cli-test-plan.md`、`skills/contract-cli-mdm-fields/*`、`docs/ai-changes.md`
+  关键逻辑/决策：bot 路由下允许继续传 `legal_entity` 并映射为后端实际值 `legalEntity`；`vendor_risk` 当前仅 user/MCP 支持，bot 下改为本地明确报错且不发 HTTP；同步更新 help、测试计划和 skill 示例。
+
+- 2026-04-24
+  变更摘要：修复 `auth login --as user --no-open-browser` 超时前不输出授权 URL 的问题。
+  涉及文件/模块：`internal/cli/auth_provider.go`、`internal/cli/app.go`、`internal/cli/auth_provider_test.go`、`docs/ai-changes.md`
+  关键逻辑/决策：user OAuth 登录在构造授权 URL 后、等待本地 callback 前立即将 URL 写入 stdout；正常自动打开浏览器的路径保持原有成功输出；新增可注入 callback 等待接口，测试无需真实监听端口即可覆盖超时场景。
+
 - 2026-04-22
   变更摘要：将 user OAuth 的 `resource` 调整为可选，dev 预设不再写入旧 Higress 内网 resource。
   涉及文件/模块：`internal/cli/app.go`、`internal/cli/app_test.go`、`internal/oauth/login.go`、`internal/oauth/login_test.go`、`docs/ai-changes.md`

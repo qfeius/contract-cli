@@ -81,6 +81,64 @@ func TestServiceFieldsUsesBotConfigListEndpoint(t *testing.T) {
 	}
 }
 
+func TestServiceFieldsMapsBotLegalEntityBizLine(t *testing.T) {
+	t.Parallel()
+
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				query := req.URL.Query()
+				if query.Get("biz_line") != "legalEntity" {
+					t.Fatalf("biz_line = %q", query.Get("biz_line"))
+				}
+				return jsonResponse(`{"code":0,"data":{"config":[{"fieldCode":"L00000001"}]}}`), nil
+			}),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	requestContext, err := client.RequestContext(profileWithBotToken(), config.IdentityBot)
+	if err != nil {
+		t.Fatalf("RequestContext() error = %v", err)
+	}
+
+	service := schema.NewService(client)
+	response, err := service.Fields(context.Background(), requestContext, "legal_entity")
+	if err != nil {
+		t.Fatalf("Fields() error = %v", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", response.StatusCode)
+	}
+}
+
+func TestServiceFieldsRejectsBotVendorRiskBeforeRequest(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				called = true
+				return nil, nil
+			}),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	requestContext, err := client.RequestContext(profileWithBotToken(), config.IdentityBot)
+	if err != nil {
+		t.Fatalf("RequestContext() error = %v", err)
+	}
+
+	service := schema.NewService(client)
+	_, err = service.Fields(context.Background(), requestContext, "vendor_risk")
+	if err == nil || !strings.Contains(err.Error(), `biz line "vendor_risk" is not supported for bot identity`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if called {
+		t.Fatal("request should not be sent for unsupported bot biz line")
+	}
+}
+
 func TestServiceFieldsRejectsEmptyBizLine(t *testing.T) {
 	t.Parallel()
 

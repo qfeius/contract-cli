@@ -91,16 +91,6 @@ func TestHelpRequestsRenderExpectedTopics(t *testing.T) {
 			},
 		},
 		{
-			name: "api call path constraint",
-			args: []string{"api", "call", "--help"},
-			contains: []string{
-				"api call",
-				"contract-cli api call <METHOD> <PATH> [flags]",
-				"--header \"Key: Value\"",
-				"/open-apis/",
-			},
-		},
-		{
 			name: "mdm vendor list flags",
 			args: []string{"mdm", "vendor", "list", "--help"},
 			contains: []string{
@@ -211,8 +201,6 @@ func TestAllCurrentHelpTopicsRender(t *testing.T) {
 		"skills install",
 		"update",
 		"update check",
-		"api",
-		"api call",
 		"contract",
 		"contract search",
 		"contract get",
@@ -275,6 +263,10 @@ func TestUnknownHelpTopicReturnsClearError(t *testing.T) {
 		{
 			args:    []string{"contract", "unknown", "--help"},
 			wantErr: `unknown help topic "contract unknown"`,
+		},
+		{
+			args:    []string{"help", "api", "call"},
+			wantErr: `unknown help topic "api call"`,
 		},
 	}
 

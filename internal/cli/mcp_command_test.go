@@ -360,6 +360,16 @@ func TestMCPCommandsUseUserIdentityAndExpectedEndpoints(t *testing.T) {
 			responseBody: `{"code":0,"data":{"config":[{"fieldCode":"V00000001"}]}}`,
 			wantContains: []string{`"fieldCode": "V00000001"`},
 		},
+		{
+			name:         "mdm fields list bot maps legal entity alias",
+			args:         []string{"mdm", "fields", "list", "--profile", "contract-group", "--biz-line", "legal_entity"},
+			wantMethod:   http.MethodGet,
+			wantPath:     "/open-apis/mdm/v1/config/config_list",
+			wantQuery:    map[string]string{"biz_line": "legalEntity", "user_id_type": "user_id"},
+			wantAuth:     "Bearer bot-token",
+			responseBody: `{"code":0,"data":{"config":[{"fieldCode":"L00000001"}]}}`,
+			wantContains: []string{`"fieldCode": "L00000001"`},
+		},
 	}
 
 	for _, tc := range testCases {

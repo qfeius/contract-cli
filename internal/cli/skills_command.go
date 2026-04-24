@@ -20,6 +20,10 @@ type skillMetadata struct {
 	Description string
 }
 
+var hiddenBundledSkillDirs = map[string]struct{}{
+	"contract-cli-api-call": {},
+}
+
 func (a *App) runSkills(_ context.Context, args []string) error {
 	a.logger.Info("skills command started", "args", strings.Join(args, " "))
 
@@ -152,6 +156,9 @@ func loadBundledSkills(source fs.FS) ([]skillMetadata, error) {
 			continue
 		}
 		dir := entry.Name()
+		if isHiddenBundledSkill(dir) {
+			continue
+		}
 		content, err := fs.ReadFile(source, path.Join(dir, "SKILL.md"))
 		if err != nil {
 			continue
@@ -167,6 +174,11 @@ func loadBundledSkills(source fs.FS) ([]skillMetadata, error) {
 		return skills[i].Name < skills[j].Name
 	})
 	return skills, nil
+}
+
+func isHiddenBundledSkill(dir string) bool {
+	_, hidden := hiddenBundledSkillDirs[dir]
+	return hidden
 }
 
 func parseSkillMetadata(dir string, content string) skillMetadata {

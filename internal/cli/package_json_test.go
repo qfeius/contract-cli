@@ -35,6 +35,15 @@ func TestPackageJSONIncludesSkillsInNPMPackage(t *testing.T) {
 	}
 }
 
+func TestAPICallSkillDescriptorIsNotPubliclyInstallable(t *testing.T) {
+	t.Parallel()
+
+	disabledSkillPath := filepath.Join("..", "..", "skills", "contract-cli-api-call", "SKILL.md")
+	if _, err := os.Stat(disabledSkillPath); !os.IsNotExist(err) {
+		t.Fatalf("api call skill descriptor should stay absent while api call is unavailable, stat error = %v", err)
+	}
+}
+
 func TestPackageJSONPublishingMetadata(t *testing.T) {
 	t.Parallel()
 

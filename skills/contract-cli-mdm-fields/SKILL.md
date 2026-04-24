@@ -1,7 +1,7 @@
 ---
 name: contract-cli-mdm-fields
 version: 1.0.0
-description: "contract-cli 字段配置查询技能：查询 vendor、legal_entity、vendor_risk 的字段配置定义。当用户要使用 `contract-cli mdm fields list` 确认主数据字段结构时触发。"
+description: "contract-cli 字段配置查询技能：查询 vendor、legal_entity、vendor_risk 的字段配置定义。当用户要使用 `contract-cli mdm fields list` 确认主数据字段结构时触发。bot 身份当前只支持 vendor/legalEntity。"
 ---
 
 # contract-cli MDM Fields
@@ -16,7 +16,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 - 需要在写入交易方前确认字段定义：`--biz-line vendor`
 - 需要在写入法人实体前确认字段定义：`--biz-line legal_entity`
-- 需要确认交易方风险字段：`--biz-line vendor_risk`
+- 需要确认交易方风险字段：`--biz-line vendor_risk`，仅适用于 user/MCP 路径
 - 如果用户想查合同创建枚举，不要走这里，改用 `contract enum list`
 
 ## 关键规则
@@ -24,6 +24,8 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - `--biz-line` 必填
 - `mdm fields list --as user` 走 `/open-apis/contract/v1/mcp/config/config_list`
 - `mdm fields list --as bot` 走 `/open-apis/mdm/v1/config/config_list`
+- bot 后端当前只接受 `vendor` / `legalEntity`；CLI 会把 bot 下的 `legal_entity` 自动映射为 `legalEntity`
+- `vendor_risk` 在 bot 身份下不支持，会在本地报错
 - `--user-id-type` / `--user-id` 仍按共享规则透传，不做本地校验
 - 当前只封装字段配置查询，不负责本地校验和字段转换
 - 推荐阅读顺序是：
@@ -42,7 +44,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 ## 操作建议
 
 - 未封装写接口前，先用这条命令确认字段结构
-- 需要写交易方或法人实体时，可和 `api call` 搭配使用
+- 需要写交易方或法人实体时，等待对应结构化写命令开放；不要退回 `api call`，该入口当前暂未开放
 - 只想查合同枚举时，不要走这里
 
 ## 不要这样做

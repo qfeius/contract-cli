@@ -8,7 +8,7 @@
 - 验证 profile 初始化、user OAuth、bot token、登出、默认身份切换等鉴权流程。
 - 验证 bot 身份下当前已接入的全部结构化业务命令。
 - 验证 user 身份下当前已接入的全部结构化业务命令。
-- 验证 `api call`、输出格式、通用 Agent skills 安装、CLI 内置 skills 兜底安装、异常拦截等补充能力。
+- 验证输出格式、通用 Agent skills 安装、CLI 内置 skills 兜底安装、`api call` 暂未开放拦截等补充能力。
 
 ## 2. 测试环境准备
 
@@ -110,7 +110,7 @@ Built-in skills:
 | 检查项 | 预期 |
 | --- | --- |
 | npm install | 成功，无 404、无 postinstall 失败 |
-| `npx skills add qfeius/contract-cli -y -g` | 成功安装 7 个 skills，并输出对应 Agent 平台适配信息 |
+| `npx skills add qfeius/contract-cli -y -g` | 成功安装 6 个已开放 skills，并输出对应 Agent 平台适配信息 |
 | `contract-cli --version` | 输出版本号、commit、build date |
 | `contract-cli skills list` | 输出 `auth`、`contract-cli-contract`、`contract-cli-mdm-vendor` 等内置 skill |
 
@@ -182,7 +182,7 @@ npx skills add qfeius/contract-cli -y -g
 预期结果：
 
 - 输出 `Installation complete`。
-- 输出 `Installed 7 skills`。
+- 输出 `Installed 6 skills`。
 - 至少包含 `auth`、`contract-cli-api-call`、`contract-cli-contract`、`contract-cli-mdm-fields`、`contract-cli-mdm-legal`、`contract-cli-mdm-vendor`、`contract-cli-shared`。
 - 输出中能看到 `universal` 或 `symlinked` 的平台适配信息；具体平台列表以 installer 实际输出为准。
 
@@ -704,7 +704,6 @@ GET /open-apis/mdm/v1/legal_entities/{legal_entity_id}
 ```bash
 contract-cli mdm fields list --profile "$PROFILE" --as bot --biz-line vendor --output json
 contract-cli mdm fields list --profile "$PROFILE" --as bot --biz-line legal_entity --output json
-contract-cli mdm fields list --profile "$PROFILE" --as bot --biz-line vendor_risk --output json
 ```
 
 预期底层接口：
@@ -712,6 +711,11 @@ contract-cli mdm fields list --profile "$PROFILE" --as bot --biz-line vendor_ris
 ```text
 GET /open-apis/mdm/v1/config/config_list
 ```
+
+检查点：
+
+- `legal_entity` 会在 bot 路由下映射为 query `biz_line=legalEntity`。
+- `vendor_risk` 当前不支持 bot，执行 `--as bot --biz-line vendor_risk` 应在本地报错且不发 HTTP。
 
 ### 5.16 bot 不支持命令的负向验证
 
@@ -981,50 +985,42 @@ contract-cli mdm fields list --profile "$PROFILE" --as user --biz-line vendor_ri
 GET /open-apis/contract/v1/mcp/config/config_list
 ```
 
-## 7. api call 兜底测试
+## 7. api call 暂未开放拦截测试
 
-### 7.1 user MCP 路径
+### 7.1 命令入口拦截
 
 ```bash
-contract-cli api call GET /open-apis/contract/v1/mcp/config/config_list --profile "$PROFILE" --as user --output json --raw
+contract-cli api call GET /open-apis/contract/v1/mcp/config/config_list --profile "$PROFILE" --as user
 ```
 
 预期结果：
 
-- user 身份成功。
-- 返回原始响应 envelope。
+- 直接报错：`api call 暂未开放使用，请使用已开放的结构化命令`。
+- 不读取 profile，不发 HTTP 请求。
 
-### 7.2 bot 调用非 MCP 路径
+### 7.2 帮助入口不暴露
 
 ```bash
-contract-cli api call GET /open-apis/mdm/v1/config/config_list --profile "$PROFILE" --as bot --user-id "$USER_ID" --user-id-type "$USER_ID_TYPE" --output json --raw
+contract-cli --help
+contract-cli help api call
 ```
 
 预期结果：
 
-- bot 身份成功。
-- `--user-id` 与 `--user-id-type` 被拼到 query；不传 `--user-id-type` 时应默认拼接 `user_id_type=user_id`。
+- `contract-cli --help` 不展示 `contract-cli api call`。
+- `contract-cli help api call` 返回 `unknown help topic`。
 
-### 7.3 bot 禁止调用 MCP 路径
+### 7.3 skills 入口不暴露
 
 ```bash
-contract-cli api call GET /open-apis/contract/v1/mcp/config/config_list --profile "$PROFILE" --as bot
+contract-cli skills list
+contract-cli skills install --target "$SKILLS_TARGET"
 ```
 
 预期结果：
 
-- CLI 本地直接报错。
-- 不应发出 HTTP 请求。
-
-### 7.4 非法路径
-
-```bash
-contract-cli api call GET https://dev-open.qtech.cn/open-apis/mdm/v1/config/config_list --profile "$PROFILE" --as bot
-```
-
-预期结果：
-
-- 报错：开放平台路径必须是相对 `/open-apis/...` 路径。
+- `skills list` 不展示 `contract-cli-api-call`。
+- `skills install` 不安装 `contract-cli-api-call`。
 
 ## 8. 输出格式与参数解析测试
 
@@ -1180,7 +1176,7 @@ npm publish --dry-run --tag beta
 - bot 登录、状态、切换、登出成功，且 bot logout 保留凭证。
 - bot 身份下第 5 节结构化业务命令和 `contract upload-file` 完成正向验证，写操作至少在 dev 环境完成一次可回收数据验证。
 - user 身份下第 6 节十五条结构化业务命令完成正向验证。
-- `api call` 的 user MCP、bot open API、bot MCP 拦截、非法路径四类场景完成验证。
+- `api call` 暂未开放拦截、help 隐藏、skills 隐藏三类场景完成验证。
 - `make release-check` 通过。
 
 ## 13. 版本升级专项测试
@@ -1260,7 +1256,7 @@ npx skills add qfeius/contract-cli -y -g
 预期结果：
 
 - 输出 `Installation complete`。
-- 输出 `Installed 7 skills`。
+- 输出 `Installed 6 skills`。
 - 安装内容至少包含：
   - `auth`
   - `contract-cli-api-call`

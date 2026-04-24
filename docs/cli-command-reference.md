@@ -76,11 +76,11 @@ contract-cli contract get <contract-id> --help
   - `mdm legal get --as bot` 走 `/open-apis/mdm/v1/legal_entities/{legal_entity_id}`，并额外透传同名 query `legal_entity_id`
   - `mdm fields list --as user` 走 `/open-apis/contract/v1/mcp/config/config_list`
   - `mdm fields list --as bot` 走 `/open-apis/mdm/v1/config/config_list`
-- `api call` 对非 `contract/v1/mcp` 路径可以继续按 profile 默认身份或显式 `--as` 发起请求，后续 bot 接口优先从这里开始验证
+- `api call` 是预留能力，当前暂未开放使用；请优先使用已开放的结构化命令
 
 ### 通用输出
 
-结构化业务命令和 `api call` 共享这些输出参数：
+结构化业务命令共享这些输出参数：
 
 - `--output json|yaml|table`
 - `--raw`
@@ -112,7 +112,6 @@ contract-cli contract get <contract-id> --help
 当前行为：
 
 - `contract ...`、`mdm ...` 结构化命令会透传到对应底层接口
-- `api call` 也支持这两个参数
 - `--user-id-type` 不传时默认拼接 `user_id_type=user_id`
 - 显式传 `--user-id-type <type>` 时会覆盖默认值
 - `--user-id` 传了就拼接到 query string，不传就不带
@@ -351,33 +350,16 @@ contract-cli auth use --profile contract-group --as bot
 - `--profile`
 - `--as user|bot`
 
-### 3. 原始开放平台调用
+### 3. 原始开放平台调用（暂未开放）
 
-#### `contract-cli api call`
+`contract-cli api call` 是预留调试入口，当前不对外开放。
 
-用途：对开放平台任意相对路径发起原始调用，是后续验证 bot 业务接口的首选入口。
+当前行为：
 
-命令：
-
-```bash
-contract-cli api call GET /open-apis/contract/v1/mcp/config/config_list --profile contract-group --as user
-contract-cli api call POST /open-apis/xxx --profile contract-group --as bot --data '{"foo":"bar"}'
-```
-
-支持参数：
-
-- `--profile`
-- `--as`
-- `--output`
-- `--raw`
-- `--input-file`
-- `--data`
-- `--header Key: Value`，可重复传入
-
-约束：
-
-- 路径必须是相对路径，且以 `/open-apis/` 开头
-- `/open-apis/contract/v1/mcp/...` 会被强制视为 user-only
+- 执行 `contract-cli api ...` 会直接返回：`api call 暂未开放使用，请使用已开放的结构化命令`
+- 不读取 profile，不发 HTTP 请求
+- 不出现在 `contract-cli --help`、`contract-cli help` 或内置 skills 安装列表中
+- 需要开放平台能力时，请优先使用 `contract ...`、`mdm ...` 等结构化命令
 - 显式 `--as bot` 调用 `contract/v1/mcp` 路径会直接报错
 
 ### 4. 合同命令
@@ -808,21 +790,24 @@ contract-cli mdm fields list --profile contract-group --biz-line vendor
 当前支持的典型值：
 
 - `vendor`
-- `legal_entity`
-- `vendor_risk`
+- `legal_entity`：user 原样透传；bot 会自动映射为 `legalEntity`
+- `vendor_risk`：仅 user/MCP 路径可用，bot 当前不支持
 
 身份规则：
 
 - `--as user`
   - 走 `/open-apis/contract/v1/mcp/config/config_list`
+  - `--biz-line` 可传 `vendor`、`legal_entity`、`vendor_risk`
 - `--as bot`
   - 走 `/open-apis/mdm/v1/config/config_list`
   - 文档显示文本就是这条路径，但超链接目标误指到了 `vendors`
-  - query 表使用的是 `biz_line`，CLI 继续沿用 `--biz-line -> biz_line` 的透传映射
+  - 后端当前只接受 `vendor` 或 `legalEntity`
+  - CLI 允许继续传 `legal_entity`，并在 bot 路由下自动映射为 `legalEntity`
+  - `vendor_risk` 在 bot 身份下会被本地拒绝，不再发送请求
 
 ## 后续扩展 bot 接口时的建议落点
 
-- 新增 bot 业务接口时，先用 `contract-cli api call ... --as bot` 验证开放平台路径和鉴权是否可用
-- 验证稳定后，再决定是否沉淀成新的结构化命令
+- 新增 bot 业务接口时，优先直接沉淀成结构化命令，避免把预留的 `api call` 暴露给最终用户
+- 如需临时验证开放平台路径和鉴权，建议在本地测试或开发工具里完成，不把验证入口写入公开文档
 - 一旦新增结构化 bot 命令，先更新本文档的“命令矩阵”和“身份规则”，再补实现与测试
 - 如果未来同一命令同时支持 user 和 bot，需要在文档里明确写出路径差异、参数差异和默认身份规则

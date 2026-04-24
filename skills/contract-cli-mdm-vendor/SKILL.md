@@ -18,7 +18,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - 已知交易方 ID：直接用 `mdm vendor get`
 - 只知道名称或想拿候选列表：用 `mdm vendor list`
 - 如果用户想在创建前确认字段定义：切到 [../contract-cli-mdm-fields/SKILL.md](../contract-cli-mdm-fields/SKILL.md)
-- 如果用户想创建或更新交易方：当前结构化命令未实现，改走 [../contract-cli-api-call/SKILL.md](../contract-cli-api-call/SKILL.md) 或明确说明未覆盖
+- 如果用户想创建或更新交易方：当前结构化命令未实现，明确说明暂未覆盖；不要退回 `api call`
 
 ## 关键规则
 

@@ -103,6 +103,6 @@ contract-cli mdm legal get 7003410079584092448 --profile contract-group --as bot
 
 ## 3. 什么时候不要走这里
 
-- 想创建或更新法人实体：当前结构化命令未实现，改走 [../../contract-cli-api-call/SKILL.md](../../contract-cli-api-call/SKILL.md)
+- 想创建或更新法人实体：当前结构化命令未实现，明确说明暂未覆盖；不要退回 `api call`
 - 想先确认法人实体字段定义：改看 [../../contract-cli-mdm-fields/SKILL.md](../../contract-cli-mdm-fields/SKILL.md)
 - 想查合同我方主体选择逻辑：回到 [../../contract-cli-contract/SKILL.md](../../contract-cli-contract/SKILL.md)

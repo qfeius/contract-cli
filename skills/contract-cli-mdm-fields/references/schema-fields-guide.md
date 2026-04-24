@@ -24,6 +24,8 @@ contract-cli mdm fields list --profile contract-group --biz-line vendor
 - `--biz-line` 必填
 - 这条命令只查字段配置，不负责本地校验、字段清洗或自动组装写请求
 - `mdm fields list` 同时支持 `user` 和 `bot`
+- bot 后端当前只接受 `vendor` / `legalEntity`；CLI 会把 bot 下的 `legal_entity` 自动映射为 `legalEntity`
+- `vendor_risk` 仅适用于 user/MCP 路径，bot 身份下会本地报错
 - `--user-id-type` / `--user-id` 继续按共享约定透传，不做本地校验
 
 ## 2. 场景配方
@@ -58,6 +60,12 @@ contract-cli mdm fields list --profile contract-group --as bot --biz-line vendor
 contract-cli mdm fields list --profile contract-group --biz-line legal_entity
 ```
 
+bot 示例：
+
+```bash
+contract-cli mdm fields list --profile contract-group --as bot --biz-line legal_entity
+```
+
 ### 2.3 查交易方风险字段定义
 
 适用场景：
@@ -67,18 +75,20 @@ contract-cli mdm fields list --profile contract-group --biz-line legal_entity
 最小命令：
 
 ```bash
-contract-cli mdm fields list --profile contract-group --biz-line vendor_risk
+contract-cli mdm fields list --profile contract-group --as user --biz-line vendor_risk
 ```
+
+注意：`vendor_risk` 当前不支持 bot 身份。
 
 补充说明：
 
 - user 路由走 `/open-apis/contract/v1/mcp/config/config_list`
 - bot 路由走 `/open-apis/mdm/v1/config/config_list`
 - 文档显示文本使用这条 bot 路径，但超链接目标误指到了 `vendors`
-- 文档 query 表使用 `biz_line`，CLI 继续保持 `--biz-line -> biz_line` 的透传映射
+- bot 下 `legal_entity` 会映射为后端实际取值 `legalEntity`
 
 ## 3. 什么时候不要走这里
 
 - 想查合同创建相关枚举：改走 [../../contract-cli-contract/SKILL.md](../../contract-cli-contract/SKILL.md)
-- 想直接调未封装写接口：改走 [../../contract-cli-api-call/SKILL.md](../../contract-cli-api-call/SKILL.md)
+- 想直接调未封装写接口：当前暂未开放；不要退回 `api call`
 - 想查具体交易方/法人实体数据：改走对应 `mdm vendor` / `mdm legal` skill

@@ -23,6 +23,8 @@ import (
 
 const defaultProfileName = "contract-group"
 
+var errAPICommandUnavailable = errors.New("api call 暂未开放使用，请使用已开放的结构化命令")
+
 type Options struct {
 	Stdout      io.Writer
 	Stderr      io.Writer
@@ -149,9 +151,13 @@ func New(options Options) *App {
 		isTerminal:     isTerminal,
 	}
 	app.userProvider = userAuthProvider{
-		httpClient:  httpClient,
-		logger:      logger,
-		openBrowser: opener,
+		httpClient:             httpClient,
+		logger:                 logger,
+		openBrowser:            opener,
+		authorizationURLWriter: stdout,
+		startCallbackServer: func(redirectURL string) (authorizationCallback, error) {
+			return oauth.StartCallbackServer(redirectURL)
+		},
 	}
 	app.botProvider = botAuthProvider{
 		httpClient: httpClient,
@@ -166,6 +172,10 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		a.printUsage()
 		return nil
+	}
+
+	if args[0] == "api" {
+		return errAPICommandUnavailable
 	}
 
 	if isHelpRequest(args) {
