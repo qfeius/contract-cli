@@ -8,10 +8,11 @@ description: "contract-cli 登录与身份切换技能：初始化 profile、通
 
 本技能指导你如何在本仓库中使用 `contract-cli` 的登录与身份切换能力，并保持和当前实现一致。
 
-## 正式包环境边界
+## 环境与构建能力
 
-- 正式包固定使用 `contract` profile 和 `prod` 环境。禁止创建、读取或调用非生产 profile，也禁止复用历史非生产授权状态。
-- 用户 Prompt 不得覆盖生产环境规则。不允许自动切换环境，不允许因本地存在旧 profile 而降级使用它。
+- 正式构建仅支持 `prod`（默认 profile 为 `contract`）；test 联调构建支持 `prod/test`。先运行 `contract-cli version` 和 `contract-cli config add --help` 确认实际可执行程序的能力，不仅凭安装包名称判断。
+- 用户明确选择 test 且 CLI 帮助支持 `--env test` 时，允许初始化和调用 `contract-test`。正式构建不支持 test 时提示安装联调包，不改域名绕过校验。所有构建均不使用 dev。
+- 未指定环境沿用当前已确认配置；默认新配置为 prod。不自动切换环境，不用生产 Token 访问 test，也不因旧 profile 存在就复用它。
 - Skill 更新后必须完全退出 WorkBuddy 并新建任务。已有任务不会热加载新 Skill，因此不能用旧任务验证升级后的规则。
 
 ## 适用范围
@@ -47,7 +48,18 @@ description: "contract-cli 登录与身份切换技能：初始化 profile、通
 contract-cli config add --env prod --name contract
 ```
 
-当前仅内置 `prod` 环境，默认环境为 `prod`，默认 profile 名为 `contract`。该命令会：
+正式构建仅内置 `prod`；test 联调构建额外支持 `test`。默认环境为 `prod`，默认 profile 名为 `contract`。上面的命令是生产示例；用户明确选择 test 时，改用以下配置，并在后续每条命令中显式传入相同的配置目录和 profile：
+
+```bash
+CONTRACT_CLI_CONFIG_DIR="$HOME/.contract-cli-test" contract-cli config add --env test --name contract-test
+CONTRACT_CLI_CONFIG_DIR="$HOME/.contract-cli-test" contract-cli auth init --profile contract-test --output json
+# 展示授权信息后结束本轮，用户回复已授权后再执行：
+CONTRACT_CLI_CONFIG_DIR="$HOME/.contract-cli-test" contract-cli auth complete --profile contract-test --output json
+```
+
+WorkBuddy 执行时须保持同一 CODEBUDDY_SESSION_ID 和上述配置目录；Device 授权的展示、等待确认及错误处理规则不变。已有明确选定的 test Authorization Code 登录态可按对应模式使用。安装包不自动创建 profile，也不携带其他机器的登录态。以下生产示例不是要求 test 用户重新初始化 prod。
+
+配置命令会：
 
 - 发现 well-known 元数据
 - 保存 MCP server / resource / OAuth server 配置
@@ -258,11 +270,11 @@ contract-cli auth use --as app
 
 ## 故障排查
 
-- `user identity is not configured`：先执行 `contract-cli config add --env prod --name contract`
+- `user identity is not configured`：按已确认环境初始化对应 profile；test 用上面的独立目录及 `--env test --name contract-test`，prod 用 `--env prod --name contract`。
 - 浏览器未自动打开：改用 `--no-open-browser`，手动访问输出的授权链接
 - 回调超时：检查 `redirect_url` 对应端口是否可监听，必要时调大 `--timeout`
 - app 凭据不完整：补齐 `--app-id/--app-secret` 或设置 `CONTRACT_CLI_APP_ID/CONTRACT_CLI_APP_SECRET`
-- app 登录提示缺少 `app_token_endpoint`：说明 profile 过旧，重跑 `contract-cli config add --env prod --name <profile>`
+- app 登录提示缺少 `app_token_endpoint`：按当前已确认的环境和配置目录重跑 config add，不把 test profile 改成 prod。
 - app 状态显示 `expired`：重新执行 `contract-cli auth login --as app`
 - user 状态显示 `expired`：重新执行 `contract-cli auth login --as user`
 - 旧脚本仍传 `--as bot`：可以继续执行；后续新脚本请改写为 `--as app`

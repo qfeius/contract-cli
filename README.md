@@ -33,6 +33,30 @@
 
 ## Installation & Quick Start
 
+### Test 联调包
+
+正式构建仍仅支持 prod。独立 `1.8.3-test.1` 联调包通过构建开关增加 test，默认环境仍为 prod。
+
+dev 环境支持已移除；新包拒绝旧 dev profile 和 dev 网络地址。test 使用独立配置并重新授权，不迁移 dev Token 或 App Secret。
+
+```bash
+# 从源码生成联调包，不发布、不覆盖正式包
+bash scripts/build-test-package.sh
+npm install -g ./dist/qfeius-contract-cli-1.8.3-test.1.tgz
+
+# 建议使用独立配置目录及 profile，避免改变现有生产默认配置
+export CONTRACT_CLI_CONFIG_DIR="$HOME/.contract-cli-test"
+contract-cli config add --env test --name contract-test
+```
+
+审批矩阵支持 `--profile contract-test --as user` 或 `--as app`。user 复用浏览器授权登录并需具备合同规则管理权限；app 使用本机安全配置的 test 应用凭据。不要在对话中发送 Token 或 App Secret。此包包含双身份变更，调用仍需部署配套后端及网关配置（见下方说明）。
+
+旧 Authorization Code profile 的用户登录命令：`contract-cli auth login --profile contract-test --as user`；Device profile 使用已有 `auth init` → 浏览器授权 → `auth complete`。审批矩阵接口仍走同一规则 OpenAPI 路径，具体网关要求见 [双身份接入说明](docs/approval-matrix-user-app-auth.md)。
+
+API 地址为 `https://test-open.qtech.cn`，账号地址为 `https://test-myaccount.qtech.cn`。同名 profile 切换环境会清理原有认证，需要重新登录；独立 profile 不受影响。
+
+联调包沿用正式包的内置 Agent Skills（其中仍保留生产使用约束），本节 test 操作面向本地 CLI 操作者。安装联调包会替换全局同名命令；需要回到正式版时可重新安装 `1.8.3` 正式包。结束联调后 `unset CONTRACT_CLI_CONFIG_DIR` 恢复默认配置目录。
+
 ### Requirements
 
 - Go `1.24.3+`
@@ -183,7 +207,7 @@ contract-cli mdm fields list --profile contract --as user --biz-line vendor
 | `contract-cli-mdm-exchange` | 固定汇率查询和更新 |
 | `contract-cli-mdm-file` | 主数据附件下载 |
 | `contract-cli-event` | 事件出口 IP 查询 |
-| `contract-cli-rule` | 审批矩阵规则表查询、行操作、预发布和发布 |
+| `contract-cli-rule` | 审批矩阵规则表查询、行操作、批量导入计划与执行、预发布和发布 |
 
 推荐安装方式：
 
@@ -230,7 +254,7 @@ contract-cli auth logout --profile contract --as app
 - `config`、`version`、`update check`、`skills list/install` 不需要登录态。
 - `contract ...`、`mdm ...` 结构化命令会根据 `--as user|app` 选择对应底层路径。
 - 当前大部分 MCP 路径仍是 user-only；显式用 app 调用 user-only 路径会直接报错。
-- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/download-file/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start/get`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *` 当前仅支持 app 身份。
+- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/download-file/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start/get`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 当前仅支持 app 身份。
 - 兼容旧身份值 `bot`，但新文档和新脚本统一使用 `app`。
 
 ## Command System

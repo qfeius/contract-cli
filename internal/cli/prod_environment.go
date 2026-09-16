@@ -17,18 +17,44 @@ const (
 	productionOpenPlatformURL    = "https://open.qfei.cn"
 	productionAccountOrigin      = "https://myaccount.qfei.cn"
 	productionOpenPlatformOrigin = "https://open.qfei.cn"
+	testOpenPlatformOrigin       = "https://test-open.qtech.cn"
+	testAccountOrigin            = "https://test-myaccount.qtech.cn"
 )
 
-var blockedProductionBuildHosts = map[string]struct{}{
-	"dev-open.qtech.cn":      {},
-	"dev-myaccount.qtech.cn": {},
+// testBuild 仅由联调构建的 ldflags 显式开启，正式构建继续拒绝 test，所有构建均拒绝 dev。
+var testBuild = "false"
+
+/*
+environmentOrigins 按构建能力选择环境域名，避免 test/prod 端点混用。
+入参 environment（string）为环境名；返回 API 域名、账号域名（string）及是否支持（bool）。
+*/
+func environmentOrigins(environment string) (string, string, bool) {
+	if environment == productionEnvironment {
+		return productionOpenPlatformOrigin, productionAccountOrigin, true
+	}
+	if testBuild == "true" && environment == "test" {
+		return testOpenPlatformOrigin, testAccountOrigin, true
+	}
+	return "", "", false
 }
 
+var blockedProductionBuildHosts = map[string]struct{}{
+	"dev-open.qtech.cn":       {},
+	"dev-myaccount.qtech.cn":  {},
+	"test-open.qtech.cn":      {},
+	"test-myaccount.qtech.cn": {},
+}
+
+/*
+validateProductionProfile 校验配置中所有端点属于所选环境；默认保持生产约束。
+入参 profile（config.Profile）为配置；返回 error 表示环境或端点不合法。
+*/
 func validateProductionProfile(profile config.Profile) error {
-	if strings.TrimSpace(profile.Environment) != productionEnvironment {
+	openOrigin, accountOrigin, supported := environmentOrigins(strings.TrimSpace(profile.Environment))
+	if !supported {
 		return productionProfileError(profile.Name)
 	}
-	if !isExactProductionResource(profile.OpenPlatformBaseURL) || !isExactProductionResource(profile.Resource) {
+	if !isExactEnvironmentResource(profile.OpenPlatformBaseURL, openOrigin) || !isExactEnvironmentResource(profile.Resource, openOrigin) {
 		return productionProfileError(profile.Name)
 	}
 	openPlatformURLs := []string{
@@ -36,7 +62,7 @@ func validateProductionProfile(profile config.Profile) error {
 		profile.ProtectedResourceMetadataURL,
 	}
 	for _, rawURL := range openPlatformURLs {
-		if !isProductionOriginURL(rawURL, productionOpenPlatformOrigin, false) {
+		if !isProductionOriginURL(rawURL, openOrigin, false) {
 			return productionProfileError(profile.Name)
 		}
 	}
@@ -49,38 +75,70 @@ func validateProductionProfile(profile config.Profile) error {
 		profile.Identities.User.RegistrationEndpoint,
 	}
 	for _, rawURL := range accountURLs {
-		if !isProductionOriginURL(rawURL, productionAccountOrigin, false) {
+		if !isProductionOriginURL(rawURL, accountOrigin, false) {
 			return productionProfileError(profile.Name)
 		}
 	}
 	return nil
 }
 
-func validateProductionDeviceCredential(profileName string, stored credential.DeviceCredential) error {
+/*
+validateProductionDeviceCredential 校验快照与待授权状态属于当前环境。
+入参 profileName（string）为配置名，stored（credential.DeviceCredential）为凭据，environment（可选 string）默认为 prod；返回校验 error。
+*/
+func validateProductionDeviceCredential(profileName string, stored credential.DeviceCredential, environment ...string) error {
+	env := productionEnvironment
+	if len(environment) > 0 {
+		env = environment[0]
+	}
 	if stored.DeviceProfile != nil {
 		profile, err := restoreDeviceProfile(profileName, stored.DeviceProfile)
-		if err != nil || validateProductionProfile(profile) != nil {
+		if err != nil || profile.Environment != env || validateProductionProfile(profile) != nil {
 			return productionProfileError(profileName)
 		}
 	}
-	return validateProductionPendingTransaction(profileName, stored.Pending)
+	return validateProductionPendingTransaction(profileName, stored.Pending, env)
 }
 
-func validateProductionPendingTransaction(profileName string, pending *credential.PendingTransaction) error {
+/*
+validateProductionPendingTransaction 校验授权中的链接和 token 端点，阻止跨环境续用。
+入参 profileName（string）为配置名，pending（*credential.PendingTransaction）为待授权状态，environment（可选 string）默认为 prod；返回校验 error。
+*/
+func validateProductionPendingTransaction(profileName string, pending *credential.PendingTransaction, environment ...string) error {
+	env := productionEnvironment
+	if len(environment) > 0 {
+		env = environment[0]
+	}
+	_, accountOrigin, supported := environmentOrigins(env)
+	if !supported {
+		return productionProfileError(profileName)
+	}
 	if pending != nil &&
-		(!isProductionOriginURL(pending.TokenEndpoint, productionAccountOrigin, true) ||
-			!isProductionOriginURL(pending.VerificationURIComplete, productionAccountOrigin, false)) {
+		(!isProductionOriginURL(pending.TokenEndpoint, accountOrigin, true) ||
+			!isProductionOriginURL(pending.VerificationURIComplete, accountOrigin, false)) {
 		return productionProfileError(profileName)
 	}
 	return nil
 }
 
+/*
+isExactProductionResource 保持原有生产资源校验入口。
+入参 rawURL（string）为资源地址；返回 bool 表示是否为精确生产资源。
+*/
 func isExactProductionResource(rawURL string) bool {
+	return isExactEnvironmentResource(rawURL, productionOpenPlatformURL)
+}
+
+/*
+isExactEnvironmentResource 拒绝非根路径、查询参数和不同环境的资源地址。
+入参 rawURL、origin（string）为待校验地址和环境域名；返回 bool 表示是否匹配。
+*/
+func isExactEnvironmentResource(rawURL, origin string) bool {
 	parsed, err := parseProductionURL(rawURL)
 	if err != nil {
 		return false
 	}
-	return parsed.Scheme+"://"+parsed.Host == productionOpenPlatformURL &&
+	return parsed.Scheme+"://"+parsed.Host == origin &&
 		(parsed.EscapedPath() == "" || parsed.EscapedPath() == "/") && parsed.RawQuery == ""
 }
 
@@ -107,7 +165,14 @@ func parseProductionURL(rawURL string) (*url.URL, error) {
 	return parsed, nil
 }
 
+/*
+productionProfileError 返回与当前构建能力一致的环境错误，保留正式构建文案。
+入参 profileName（string）为配置名；返回 error。
+*/
 func productionProfileError(profileName string) error {
+	if testBuild == "true" {
+		return fmt.Errorf("profile %q has unsupported or mixed environment endpoints; configure a separate profile with --env prod or --env test and authorize again", profileName)
+	}
 	return fmt.Errorf(
 		"profile %q belongs to a non-production environment and is not allowed in this production build; run `contract-cli config add --env prod --name contract` and authorize again",
 		profileName,
@@ -129,28 +194,43 @@ type productionGuardTransport struct {
 	logger *slog.Logger
 }
 
+/*
+RoundTrip 所有构建拒绝旧 dev 地址，仅 test 联调构建允许已知 test HTTPS 域名。
+入参 request（*http.Request）为请求；返回 HTTP 响应和 error。
+*/
 func (transport productionGuardTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	host := strings.ToLower(strings.TrimSuffix(request.URL.Hostname(), "."))
 	transport.logger.Debug("production network request", "method", request.Method, "host", host)
 	if _, blocked := blockedProductionBuildHosts[host]; blocked {
+		if testBuild == "true" && (isProductionOriginURL(request.URL.String(), testOpenPlatformOrigin, true) || isProductionOriginURL(request.URL.String(), testAccountOrigin, true)) {
+			return transport.next.RoundTrip(request)
+		}
 		transport.logger.Error("production build blocked non-production network request", "method", request.Method, "host", host)
 		return nil, fmt.Errorf("production build blocks non-production host %q", host)
 	}
 	return transport.next.RoundTrip(request)
 }
 
+/*
+loadProductionDeviceCredential 加载并按配置环境校验凭据。
+入参 profile（config.Profile）为配置、store（credential.Store）为凭据库；返回凭据和 error。
+*/
 func (a *App) loadProductionDeviceCredential(profile config.Profile, store credential.Store) (credential.DeviceCredential, error) {
 	stored, err := store.Load(profile.Name)
 	if err != nil {
 		return credential.DeviceCredential{}, err
 	}
-	if err := validateProductionDeviceCredential(profile.Name, stored); err != nil {
+	if err := validateProductionDeviceCredential(profile.Name, stored, profile.Environment); err != nil {
 		a.logger.Error("reject non-production Device credential", "profile", profile.Name, "error", err.Error())
 		return credential.DeviceCredential{}, err
 	}
 	return stored, nil
 }
 
+/*
+validateProductionDeviceCredentialIfAvailable 在凭据库可用时校验环境一致性。
+入参 profile（config.Profile）为配置；返回 error。
+*/
 func (a *App) validateProductionDeviceCredentialIfAvailable(profile config.Profile) error {
 	store, available, err := a.deviceCredentialStoreIfAvailable()
 	if err != nil || !available {
@@ -163,7 +243,7 @@ func (a *App) validateProductionDeviceCredentialIfAvailable(profile config.Profi
 	if err != nil {
 		return err
 	}
-	if err := validateProductionDeviceCredential(profile.Name, stored); err != nil {
+	if err := validateProductionDeviceCredential(profile.Name, stored, profile.Environment); err != nil {
 		a.logger.Error("reject non-production Device credential", "profile", profile.Name, "error", err.Error())
 		return err
 	}
@@ -183,6 +263,10 @@ func (a *App) deviceCredentialStoreIfAvailable() (credential.Store, bool, error)
 	return nil, false, nil
 }
 
+/*
+productionProfileRequiresReset 判断配置或凭据环境不合法时是否需要重置认证。
+入参 profile（config.Profile）为旧配置；返回是否重置（bool）和 error。
+*/
 func (a *App) productionProfileRequiresReset(profile config.Profile) (bool, error) {
 	if validateProductionProfile(profile) != nil {
 		return true, nil
@@ -198,7 +282,7 @@ func (a *App) productionProfileRequiresReset(profile config.Profile) (bool, erro
 	if err != nil {
 		return false, err
 	}
-	return validateProductionDeviceCredential(profile.Name, stored) != nil, nil
+	return validateProductionDeviceCredential(profile.Name, stored, profile.Environment) != nil, nil
 }
 
 func (a *App) clearProfileAuthenticationState(profileName string) error {

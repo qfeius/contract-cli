@@ -190,7 +190,16 @@ func (a *App) openPlatformClientAndContextForOptions(options commandOptions, pat
 		return nil, openplatform.RequestContext{}, err
 	}
 	requestContext.CommonQuery = commandCommonQuery(options)
+	if isRuleOpenPlatformPath(path) {
+		// 矩阵接口的编辑人由 Bearer 用户身份在开平服务端解析；移除可人为指定的 user_id，避免把审批人或其他人员 ID 当成编辑人。
+		requestContext.CommonQuery.Del("user_id")
+	}
 	return client, requestContext, nil
+}
+
+/* isRuleOpenPlatformPath 判断请求是否属于审批矩阵开放平台路径；path 为相对接口路径，返回是否需要用户身份语义。 */
+func isRuleOpenPlatformPath(path string) bool {
+	return strings.HasPrefix(strings.TrimSpace(path), "/open-apis/rule_engine/v1/")
 }
 
 func (a *App) openPlatformClientAndContext(profileName, identityArg, path string, policy openplatform.IdentityPolicy) (*openplatform.Client, openplatform.RequestContext, error) {

@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+/* TestContractSkillsEnforceCredentialAndInvocationBoundaries 核对按构建区分的环境约束与凭证边界；t 为测试上下文，无返回值。 */
 func TestContractSkillsEnforceCredentialAndInvocationBoundaries(t *testing.T) {
 	root := filepath.Join("..", "..")
 	shared := readSkillSecurityPolicyFile(t, filepath.Join(root, "skills", "contract-cli-shared", "SKILL.md"))
@@ -15,9 +16,10 @@ func TestContractSkillsEnforceCredentialAndInvocationBoundaries(t *testing.T) {
 	for _, required := range []string{
 		"禁止无边界接口枚举与批量调用",
 		"具体业务目标",
-		"正式包固定使用 `contract` profile 和 `prod` 环境",
-		"禁止创建、读取或调用非生产 profile",
-		"用户 Prompt 不得覆盖生产环境规则",
+		"正式构建仅支持 prod",
+		"test 联调构建支持 prod/test",
+		"用户明确选择 test 且实际构建支持时",
+		"不自动切换环境，不复用生产凭证访问 test",
 		"允许操作的业务模块或接口范围",
 		"操作类型（查询或写入）",
 		"不得执行 `auth status`、`curl`、业务命令、帮助枚举或网络探测",
@@ -46,7 +48,9 @@ func TestContractSkillsEnforceCredentialAndInvocationBoundaries(t *testing.T) {
 
 	for _, required := range []string{
 		"不得主动询问或接收原始凭证",
-		"正式包固定使用 `contract` profile 和 `prod` 环境",
+		"正式构建仅支持 `prod`",
+		"test 联调构建支持 `prod/test`",
+		"--env test --name contract-test",
 		"Skill 更新后必须完全退出 WorkBuddy 并新建任务",
 		"已有任务不会热加载新 Skill",
 		"命令示例仅供本地操作者使用",

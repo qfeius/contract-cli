@@ -1,5 +1,36 @@
 # AI 变更记录
 
+- 2026-09-16
+  变更摘要：审批矩阵运算符改由 CLI 内置映射提供，`rule symbol query` 全程本地执行。
+  涉及文件/模块：`internal/cli/approval_matrix_extensions.go`、矩阵回归测试、`contract-cli-rule` Skill、审批矩阵命令文档和测试场景。
+  关键逻辑/决策：移除 `/symbols/query` 网络路由，固定维护 STRING、NUMBER、集合类及 BOOLEAN 兼容映射；列配置仍把 `symbol` 交给开平接口做最终校验。已完成全量 Go 测试、Skill 校验，并打包安装 `1.8.3-test.8`。
+
+- 2026-09-14
+  变更摘要：移除 dev 联调环境，替换为 test；默认仍为 prod，正式构建仍仅允许 prod。
+  涉及文件/模块：环境预设、端点白名单、构建开关和脚本、联调测试、README 和双身份接入说明。
+  关键逻辑/决策：test 域名使用 test-open.qtech.cn 与 test-myaccount.qtech.cn，公开账号元数据已确认；不依赖开放平台未提供的资源发现路径。新增 testBuild / ENABLE_TEST 开关，包版本使用 -test.N；所有构建继续拦截已移除的 dev 地址，避免旧凭证被继续使用。新建独立 contract-test 配置，不迁移旧凭证。
+
+- 2026-09-14
+  变更摘要：审批矩阵补齐 user/app 双身份，用户登录复用现有 OAuth 流程，其他模块身份策略不变。
+  涉及文件/模块：规则命令、导入身份绑定、OpenAPI user 选择头、帮助、Skill 和回归测试；配套规则后端增加用户验签、管理员权限与实际操作人审计。
+  关键逻辑/决策：user 不自动降级 app，导入计划持久化凭证摘要而非 Token，app 旧指纹保留；网关需透传 Authorization 并保留/重建身份选择头，禁止将 user 当 app 放行。未打包、未部署、未执行真实业务写入，详见 docs/approval-matrix-user-app-auth.md。
+  验证：CLI 全量 go test、go vet 与相关竞态测试通过；后端以缓存依赖定向编译当前源码，68 个 JUnit 回归测试通过（非完整 Maven 构建）；Skill YAML 使用 ruamel.yaml 校验，自带脚本所需 PyYAML 在当前环境缺失。
+
+- 2026-09-14
+  变更摘要：增加独立 dev 联调构建与打包入口，正式构建仍仅支持 prod，所有构建默认环境仍为 prod。
+  涉及文件/模块：环境预设、配置及 Device 凭据校验、授权链接校验、网络拦截、命令帮助、正式回归测试、构建脚本和 README。
+  关键逻辑/决策：通过 ldflags 显式开启 developmentBuild；dev/prod 配置须分别匹配对应 API 与账号域名；跨环境更新同名 profile 清理旧认证。联调包版本使用 -dev.N，在暂存区构建六平台产物，不覆盖正式 npm 包或 release assets；内置生产 Skills 不变。
+
+- 2026-09-14
+  变更摘要：按 bpm-rule-configuration 的 20260901-zss-approval@c77a6c6 和交互文档第 3 版补齐审批矩阵结构接口。
+  涉及文件/模块：internal/cli 审批矩阵结构路由、兼容别名、导入执行、帮助和正式回归测试；审批矩阵 Skill、参数文档、技术方案。
+  关键逻辑/决策：新增规则组 get/create、矩阵 get/create/update/delete、列 add/update/delete 共 9 个 HTTP 能力；保留原有原子命令和 api call 关闭策略。导入校准 int32/Long DTO，绑定列头和应用环境摘要，写前落盘 running，uncertain 停批，支持局部确认、分批续跑、get/cancel。完整矩阵/行版本锁和跨计划去重仍需后续补齐。
+
+- 2026-09-01
+  变更摘要：基于审批矩阵 Agent CLI 范围文档，为现有 `rule table` 命令组新增批量导入计划与执行链路。
+  涉及文件/模块：`internal/cli` 审批矩阵批量导入、帮助与回归测试，`skills/contract-cli-rule`、CLI 命令文档和技术方案。
+  关键逻辑/决策：保留原有 10 个审批矩阵原子命令的参数和路由；`import plan` 只读列头并做列映射/类型校验，`import apply` 串行逐行写入且持久化每行状态；重试跳过成功行，结果不确定的写入不自动重试。
+
 - 2026-08-12
   变更摘要：将下一版 contract-cli 版本更新为 `1.7.0`。
   涉及文件/模块：`package.json`、发布版本元数据。

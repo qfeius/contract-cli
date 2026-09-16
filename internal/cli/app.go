@@ -168,7 +168,12 @@ func New(options Options) *App {
 	return app
 }
 
+/*
+Run 执行完整 CLI 参数并兼容审批矩阵交互文档别名。
+入参 ctx（context.Context）为运行上下文，args（[]string）为命令参数；返回 error 为执行错误。
+*/
 func (a *App) Run(ctx context.Context, args []string) error {
+	args = normalizeApprovalMatrixArgs(args)
 	a.updateNotice = nil
 	if len(args) == 0 {
 		a.printUsage()
@@ -247,6 +252,10 @@ func (a *App) runConfig(ctx context.Context, args []string) error {
 	}
 }
 
+/*
+runConfigAdd 按指定环境发现并保存配置，切换环境时清理原有认证以免串用。
+入参 ctx（context.Context）为请求上下文，args（[]string）为命令参数；返回 error。
+*/
 func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 	a.logger.Info("config add started")
 
@@ -285,12 +294,15 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
+		// 同名配置跨环境切换必须重新认证；独立 profile 不受影响。
+		resetAuthentication = resetAuthentication || existing.Environment != env
 	}
 
 	if protectedResourceURL == "" {
 		protectedResourceURL = preset.ProtectedResourceMetadataURL
 	}
-	if protectedResourceURL != "" && !isProductionOriginURL(protectedResourceURL, productionOpenPlatformOrigin, true) {
+	openOrigin, _, _ := environmentOrigins(env)
+	if protectedResourceURL != "" && !isProductionOriginURL(protectedResourceURL, openOrigin, true) {
 		err := productionProfileError(profileName)
 		a.logger.Error("config add rejected non-production metadata url", "profile", profileName, "error", err.Error())
 		return err
@@ -580,7 +592,20 @@ func (a *App) providerFor(identity config.IdentityKind) authProvider {
 	}
 }
 
+/*
+resolveEnvironment 提供环境预设，test 仅对显式启用的联调构建开放。
+入参 name（string）为环境名；返回 environmentPreset 和 error。
+*/
 func resolveEnvironment(name string) (environmentPreset, error) {
+	if name == "test" && testBuild == "true" {
+		// 复用认证参数，仅替换环境端点，默认 prod 的预设保持不变。
+		preset, _ := resolveEnvironment("prod")
+		preset.OpenPlatformBaseURL = testOpenPlatformOrigin
+		preset.AppTokenEndpoint = testOpenPlatformOrigin + "/open-apis/auth/v3/tenant_access_token/internal"
+		preset.AuthorizationServerMetadataURL = testAccountOrigin + "/.well-known/oauth-authorization-server/contract"
+		preset.Resource = testOpenPlatformOrigin
+		return preset, nil
+	}
 	switch name {
 	case "prod":
 		return environmentPreset{
@@ -597,6 +622,9 @@ func resolveEnvironment(name string) (environmentPreset, error) {
 			DeviceScope:                    "contract:full contract-review:full",
 		}, nil
 	default:
+		if testBuild == "true" {
+			return environmentPreset{}, fmt.Errorf("unsupported environment %q; supported environments: prod, test", name)
+		}
 		return environmentPreset{}, fmt.Errorf("unsupported environment %q; supported environments: prod", name)
 	}
 }

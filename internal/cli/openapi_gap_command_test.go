@@ -198,20 +198,6 @@ func TestOpenAPIGapCommandsUseExpectedEndpointsAsBot(t *testing.T) {
 			wantQuery:  map[string]string{"page_size": "10", "page_token": "next", "user_id_type": "user_id"},
 		},
 		{
-			name:       "rule table pre release",
-			args:       []string{"rule", "table", "pre-release", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--table-id", "table-1"},
-			wantMethod: http.MethodPatch,
-			wantPath:   "/open-apis/rule_engine/v1/products/prod-1/groups/group-1/rule_tables/table-1/pre_release",
-			wantQuery:  map[string]string{"user_id_type": "user_id"},
-		},
-		{
-			name:       "rule table release",
-			args:       []string{"rule", "table", "release", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--table-id", "table-1"},
-			wantMethod: http.MethodPatch,
-			wantPath:   "/open-apis/rule_engine/v1/products/prod-1/groups/group-1/rule_tables/table-1/release",
-			wantQuery:  map[string]string{"user_id_type": "user_id"},
-		},
-		{
 			name:       "rule table column headers list",
 			args:       []string{"rule", "table", "column-headers", "list", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--table-id", "table-1"},
 			wantMethod: http.MethodGet,
@@ -266,46 +252,60 @@ func TestOpenAPIGapCommandsUseExpectedEndpointsAsBot(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+		identities := []string{"app"}
+		if tc.args[0] == "rule" {
+			identities = append(identities, "user")
+		}
+		for _, identity := range identities {
+			tc := tc
+			identity := identity
+			t.Run(tc.name+"/"+identity, func(t *testing.T) {
+				t.Parallel()
 
-			stdout := &bytes.Buffer{}
-			app := cli.New(cli.Options{
-				Stdout: stdout,
-				Stderr: &bytes.Buffer{},
-				Store:  store,
-				HTTPClient: &http.Client{
-					Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-						if req.Method != tc.wantMethod {
-							t.Fatalf("method = %s, want %s", req.Method, tc.wantMethod)
-						}
-						if req.URL.Path != tc.wantPath {
-							t.Fatalf("path = %s, want %s", req.URL.Path, tc.wantPath)
-						}
-						assertQuery(t, req, tc.wantQuery)
-						if req.Header.Get("Authorization") != "Bearer app-token" {
-							t.Fatalf("authorization = %q", req.Header.Get("Authorization"))
-						}
-						body, err := io.ReadAll(req.Body)
-						if err != nil {
-							t.Fatalf("ReadAll() error = %v", err)
-						}
-						if string(body) != tc.wantBody {
-							t.Fatalf("body = %q, want %q", string(body), tc.wantBody)
-						}
-						return jsonResponse(`{"code":0,"data":{"ok":true}}`), nil
-					}),
-				},
+				stdout := &bytes.Buffer{}
+				app := cli.New(cli.Options{
+					Stdout: stdout,
+					Stderr: &bytes.Buffer{},
+					Store:  store,
+					HTTPClient: &http.Client{
+						Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+							if req.Method != tc.wantMethod {
+								t.Fatalf("method = %s, want %s", req.Method, tc.wantMethod)
+							}
+							if req.URL.Path != tc.wantPath {
+								t.Fatalf("path = %s, want %s", req.URL.Path, tc.wantPath)
+							}
+							assertQuery(t, req, tc.wantQuery)
+							if req.Header.Get("Authorization") != "Bearer "+identity+"-token" {
+								t.Fatalf("authorization = %q", req.Header.Get("Authorization"))
+							}
+							wantMarker := ""
+							if identity == "user" {
+								wantMarker = "user"
+							}
+							if req.Header.Get("X-Qfei-Identity") != wantMarker {
+								t.Fatal("unexpected identity selector")
+							}
+							body, err := io.ReadAll(req.Body)
+							if err != nil {
+								t.Fatalf("ReadAll() error = %v", err)
+							}
+							if string(body) != tc.wantBody {
+								t.Fatalf("body = %q, want %q", string(body), tc.wantBody)
+							}
+							return jsonResponse(`{"code":0,"data":{"ok":true}}`), nil
+						}),
+					},
+				})
+
+				if err := app.Run(context.Background(), slices.Concat(tc.args, []string{"--as", identity})); err != nil {
+					t.Fatalf("Run() error = %v", err)
+				}
+				if !strings.Contains(stdout.String(), `"code": 0`) {
+					t.Fatalf("unexpected output: %s", stdout.String())
+				}
 			})
-
-			if err := app.Run(context.Background(), tc.args); err != nil {
-				t.Fatalf("Run() error = %v", err)
-			}
-			if !strings.Contains(stdout.String(), `"code": 0`) {
-				t.Fatalf("unexpected output: %s", stdout.String())
-			}
-		})
+		}
 	}
 }
 
@@ -407,7 +407,6 @@ func TestOpenAPIGapBotOnlyCommandsRejectUserIdentityBeforeHTTP(t *testing.T) {
 		{"mdm", "legal", "create", "--profile", "contract", "--as", "user", "--data", `{"legal_entity":"L0001"}`},
 		{"mdm", "legal", "get", "--profile", "contract", "--as", "user", "--code", "L0001"},
 		{"event", "outbound-ip", "list", "--profile", "contract", "--as", "user"},
-		{"rule", "table", "list", "--profile", "contract", "--as", "user", "--product-id", "prod-1", "--group-id", "group-1"},
 	}
 
 	for _, args := range testCases {
@@ -533,6 +532,31 @@ func TestOpenAPIGapCommandValidationErrors(t *testing.T) {
 			name:    "rule table list missing product id",
 			args:    []string{"rule", "table", "list", "--profile", "contract", "--group-id", "group-1"},
 			wantErr: "--product-id is required",
+		},
+		{
+			name:    "rule table list missing page size",
+			args:    []string{"rule", "table", "list", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1"},
+			wantErr: "--page-size is required",
+		},
+		{
+			name:    "rule table list rejects page size above maximum",
+			args:    []string{"rule", "table", "list", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--page-size", "101"},
+			wantErr: "--page-size must be between 1 and 100",
+		},
+		{
+			name:    "rule table row search missing page size",
+			args:    []string{"rule", "table", "row", "search", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--table-id", "table-1", "--data", `{"filter_criteria":[]}`},
+			wantErr: "--page-size is required",
+		},
+		{
+			name:    "rule table row search rejects page size below minimum",
+			args:    []string{"rule", "table", "row", "search", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--table-id", "table-1", "--page-size", "0", "--data", `{"filter_criteria":[]}`},
+			wantErr: "--page-size must be between 1 and 100",
+		},
+		{
+			name:    "rule table row search rejects page size above maximum",
+			args:    []string{"rule", "table", "row", "search", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--table-id", "table-1", "--page-size", "101", "--data", `{"filter_criteria":[]}`},
+			wantErr: "--page-size must be between 1 and 100",
 		},
 		{
 			name:    "rule table row create missing body",

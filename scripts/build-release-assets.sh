@@ -9,7 +9,17 @@ OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/release-assets}"
 GO_CACHE="${GOCACHE:-/tmp/contract-cli-go-build-cache}"
 COMMIT="${COMMIT:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 DATE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
-LDFLAGS="-s -w -X cn.qfei/contract-cli/internal/build.Version=${VERSION} -X cn.qfei/contract-cli/internal/build.Commit=${COMMIT} -X cn.qfei/contract-cli/internal/build.Date=${DATE}"
+# 联调能力默认关闭；仅显式构建 test 预发布版本时开启，避免覆盖正式产物。
+ENABLE_TEST="${ENABLE_TEST:-false}"
+if [[ "$ENABLE_TEST" != "true" && "$ENABLE_TEST" != "false" ]]; then
+  echo "ENABLE_TEST must be true or false" >&2
+  exit 1
+fi
+if [[ "$ENABLE_TEST" == "true" && "$VERSION" != *-test.* ]]; then
+  echo "test builds require a prerelease VERSION such as 1.8.3-test.1" >&2
+  exit 1
+fi
+LDFLAGS="-s -w -X cn.qfei/contract-cli/internal/build.Version=${VERSION} -X cn.qfei/contract-cli/internal/build.Commit=${COMMIT} -X cn.qfei/contract-cli/internal/build.Date=${DATE} -X cn.qfei/contract-cli/internal/cli.testBuild=${ENABLE_TEST}"
 
 TARGETS=(
   "darwin/amd64"
