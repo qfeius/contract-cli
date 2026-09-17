@@ -66,20 +66,18 @@ func (p userAuthProvider) Login(ctx context.Context, profile *config.Profile, op
 		return "", fmt.Errorf("user identity is not configured; run `contract-cli config add` first")
 	}
 
-	if user.ClientID == "" {
-		p.logger.Info("register oauth client", "profile", profile.Name, "registration_endpoint", user.RegistrationEndpoint)
-		registration, err := oauth.RegisterClient(ctx, p.httpClient, p.logger, user.RegistrationEndpoint, oauth.ClientRegistrationRequest{
-			ClientName:              profile.ClientName,
-			RedirectURIs:            []string{user.RedirectURL},
-			GrantTypes:              []string{"authorization_code"},
-			ResponseTypes:           []string{"code"},
-			TokenEndpointAuthMethod: "",
-		})
-		if err != nil {
-			return "", err
-		}
-		user.ClientID = registration.ClientID
+	p.logger.Info("register oauth client", "profile", profile.Name, "registration_endpoint", user.RegistrationEndpoint)
+	registration, err := oauth.RegisterClient(ctx, p.httpClient, p.logger, user.RegistrationEndpoint, oauth.ClientRegistrationRequest{
+		ClientName:              profile.ClientName,
+		RedirectURIs:            []string{user.RedirectURL},
+		GrantTypes:              []string{"authorization_code"},
+		ResponseTypes:           []string{"code"},
+		TokenEndpointAuthMethod: "",
+	})
+	if err != nil {
+		return "", err
 	}
+	user.ClientID = registration.ClientID
 
 	verifier, err := oauth.NewCodeVerifier(nil)
 	if err != nil {
