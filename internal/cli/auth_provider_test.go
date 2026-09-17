@@ -231,3 +231,82 @@ func TestUserAuthLoginRegistrationFailureDoesNotReuseClient(t *testing.T) {
 		t.Fatal("registration failure changed existing credentials")
 	}
 }
+
+func TestUserAuthLoginPrintsAuthorizationURLBeforeAuthorization(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		noOpenBrowser bool
+		browserErr    error
+	}{
+		{name: "browser opens"},
+		{name: "browser fails", browserErr: errors.New("browser unavailable")},
+		{name: "manual authorization", noOpenBrowser: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			output := &bytes.Buffer{}
+			browserCalls := 0
+			profile := config.Profile{Name: "test", Identities: config.Identities{User: config.UserIdentity{
+				RegistrationEndpoint:  "https://example.test/register",
+				AuthorizationEndpoint: "https://example.test/authorize",
+				TokenEndpoint:         "https://example.test/token",
+				RedirectURL:           "http://127.0.0.1:8000/callback",
+			}}}
+			provider := userAuthProvider{
+				logger:                 slog.New(slog.NewTextHandler(output, nil)),
+				authorizationURLWriter: output,
+				openBrowser: func(authURL string) error {
+					browserCalls++
+					if !strings.Contains(output.String(), authorizationURLMessage(authURL)) {
+						t.Fatal("authorization URL must be printed before opening browser")
+					}
+					return tc.browserErr
+				},
+				startCallbackServer: func(string) (authorizationCallback, error) {
+					return fakeAuthorizationCallback{wait: func(context.Context, string) (string, error) {
+						if !strings.Contains(output.String(), "Open this URL and finish authorization:\nhttps://example.test/authorize?") {
+							t.Fatal("authorization URL must be printed before waiting for callback")
+						}
+						return "test-code", nil
+					}}, nil
+				},
+				httpClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					switch req.URL.Path {
+					case "/register":
+						return jsonResponse(`{"client_id":"client-new"}`), nil
+					case "/token":
+						return jsonResponse(`{"access_token":"test-token","expires_in":3600}`), nil
+					default:
+						t.Fatalf("unexpected request: %s", req.URL)
+						return nil, errors.New("unexpected request")
+					}
+				})},
+			}
+			message, err := provider.Login(context.Background(), &profile, authCommandOptions{Timeout: time.Second, NoOpenBrowser: tc.noOpenBrowser})
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantBrowserCalls := 1
+			if tc.noOpenBrowser {
+				wantBrowserCalls = 0
+			}
+			if browserCalls != wantBrowserCalls {
+				t.Fatalf("browser calls = %d, want %d", browserCalls, wantBrowserCalls)
+			}
+			if !strings.HasPrefix(message, `Authorization succeeded for profile "test".`) || !strings.Contains(message, "Access token expires at:") {
+				t.Fatalf("unexpected success message: %s", message)
+			}
+			if strings.Contains(message, "https://example.test/authorize") || strings.Contains(message, "Open this URL") {
+				t.Fatalf("success message repeats authorization URL: %s", message)
+			}
+			if strings.Count(output.String(), "Open this URL and finish authorization:") != 1 {
+				t.Fatalf("authorization URL must be printed exactly once: %s", output.String())
+			}
+			urlIndex := strings.Index(output.String(), "Open this URL")
+			completedIndex := strings.Index(output.String(), "user auth login completed")
+			if completedIndex < urlIndex {
+				t.Fatalf("completion log appeared before authorization URL: %s", output.String())
+			}
+		})
+	}
+}
