@@ -12,12 +12,12 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -31,3 +31,71 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  npm-publish:
+    if: ${{ github.repository == 'qfeius/contract-cli' && contains(github.ref_name, '-') }}
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Resolve npm release metadata
+        id: metadata
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG_NAME#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Unsupported release tag: $TAG_NAME" >&2
+            exit 1
+          fi
+
+          npm version "$version" --no-git-tag-version --allow-same-version
+
+          npm_tag=latest
+          if [[ "$version" == *-* ]]; then
+            prerelease="${version#*-}"
+            npm_tag="${prerelease%%.*}"
+          fi
+
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'npm_tag=%s\n' "$npm_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Verify npm package
+        run: tests/release/package-dry-run.sh
+
+      - name: Prevent npm dist-tag rollback
+        env:
+          PACKAGE_VERSION: ${{ steps.metadata.outputs.version }}
+          NPM_TAG: ${{ steps.metadata.outputs.npm_tag }}
+        run: |
+          set -euo pipefail
+          package_name="$(node -p 'require("./package.json").name')"
+          current_version="$(npm view "$package_name@$NPM_TAG" version --json 2>/dev/null || true)"
+          current_version="$(printf '%s' "$current_version" | tr -d '"[:space:]')"
+          if [[ -z "$current_version" || "$current_version" == "null" ]]; then
+            exit 0
+          fi
+
+          newest="$(printf '%s\n%s\n' "$current_version" "$PACKAGE_VERSION" | sort -V | tail -n 1)"
+          if [[ "$current_version" == "$PACKAGE_VERSION" || "$newest" != "$PACKAGE_VERSION" ]]; then
+            echo "Refusing to move npm $NPM_TAG from $current_version to $PACKAGE_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Publish npm package with OIDC
+        env:
+          NPM_TAG: ${{ steps.metadata.outputs.npm_tag }}
+        run: npm publish --provenance --access public --tag "$NPM_TAG"
