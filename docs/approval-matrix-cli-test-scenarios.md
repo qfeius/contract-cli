@@ -119,7 +119,7 @@ HTTP 方法和路径：
 
 | 编号 | 场景 | 命令 / 输入 | 预期 |
 | --- | --- | --- | --- |
-| C-09 | 部门搜索 | `rule department search $COMMON --data '{"param":"<部门关键词>"}'` | 返回部门候选和外部 ID |
+| C-09 | 部门搜索 | `rule department search $COMMON --data '{"param":"<部门关键词>"}'` | 返回部门候选和可用于规则行的 `open_department_id`（`od-...`）；若只有数字 `sys_department.id`，记录为目录接口字段缺失 |
 | C-10 | 部门批量回读 | `rule department batch-get $COMMON --data '{"ids":["<department-id>"]}'` | 返回部门名称和缺失 ID |
 | C-11 | 角色搜索 | `rule role search $COMMON --data '{"param":"<角色关键词>"}'` | 返回角色候选和外部 ID |
 | C-12 | 角色批量回读 | `rule role batch-get $COMMON --data '{"ids":["<role-id>"]}'` | 返回角色名称和缺失 ID |
@@ -198,6 +198,7 @@ HTTP 方法和路径：
 | E-07 | 空值搜索 | 搜索单元格为空 | 返回本地或后端明确校验结果 |
 | E-08 | row search 分页大小 | 缺少、传 0、传 101、传 1/100 | 必填和 1-100 校验生效 |
 | E-09 | 多页搜索 | 使用返回的 page_token | 无重复、无漏行 |
+| E-10 | 备注列 STRING 精确搜索 | 备注列存在多条不同值，搜索不存在的字符串 | 返回空行列表，不返回其他非空备注行 |
 
 ### 5.2 创建和更新
 
@@ -221,7 +222,7 @@ HTTP 方法和路径：
 | E-11 | 创建数字行 | NUMBER 使用整数、小数和最大精度边界 | 精度保持；超 30 位整数或 8 位小数返回校验错误 |
 | E-12 | 创建布尔行 | BOOLEAN 使用 true/false | 创建成功 |
 | E-13 | 创建集合行 | COLLECTION 使用字符串数组 | 创建成功 |
-| E-14 | 创建人员/部门行 | 使用正 int64 外部 ID 数组 | 创建成功；`ou_`/`od_` 字符串进入错误分支 |
+| E-14 | 创建人员/部门行 | 人员使用正 int64 外部 ID，部门使用 `open_department_id`（`od-...`）数组 | 创建成功；部门数字 `sys_department.id` 进入错误分支 |
 | E-15 | 创建角色行 | ROLE_COLLECTION 使用角色 ID 数组 | 按后端角色 ID 契约处理 |
 | E-16 | 局部更新行 | `rule table row update <row-id> $COMMON --table-id "$TABLE_ID" --input-file row.json` | 只更新请求中出现的列 |
 | E-17 | null 清空 | cells 中对应列值为 `null` | 单元格清空 |

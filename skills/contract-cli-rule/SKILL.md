@@ -75,7 +75,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - 新增列先 add（base_table_column_id + direction），取得新列 ID 后再 update-condition/update-result；新增类型与基准列一致。
 - 修改已有列不调用 `column preview`：先读取当前配置和规则行，展示变更并确认，再调用已有 update-condition/update-result 更新接口，回读核验。PUT 需要带齐已确认的配置字段，避免遗漏覆盖；缺少保留字段时先补齐，不猜测。类型或运算符变更仍由服务端校验，不自动清空数据。
 - 有值的列改变类型或导致单元格类型变化的操作符时，服务端阻止更新。先展示影响，另行确认清空，再配置列；确认改类型不等于自动授权清空。
-- 人员/部门使用正整数外部 ID，批量输入接受数字或十进制字符串数组，发往后端为整数数组；禁止用 `ou_`/`od_` 字符串代替该分支 DTO 的 Long ID。角色仍为字符串数组。
+- 人员集合使用正整数外部 ID，批量输入接受数字或十进制字符串数组，发往后端为整数数组；部门集合统一使用 `open_department_id` 字符串（形如 `od-...`），不得把目录返回的 `sys_department.id` 数字直接写入规则行。角色仍为字符串数组。
 - 人员搜索返回的 `employee_id` 是矩阵写入使用的外部 ID；只采用 `selectable=true` 的候选。重名时展示姓名、部门、邮箱和 ID 让用户选；无结果或不可选时说明原因，不使用内部员工编号兜底。查询不需要写入确认，写入仍需先展示计划。
 - 列 ID 只取 `table get` 或 `column-headers list` 的返回值；已有字段绑定信息原样保留，未绑定列不根据列名推测 `value_id`。金额字段仍需核对业务口径及单位。
 - 此处枚举指五种条件类型及其运算符，不需要额外业务选项数据源。用 `rule symbol query` 查询 CLI 内置映射，提交输出中的 `symbol`；切换类型后重新查询，不把“包含”和“在…之内”混用。列更新时由开平接口做最终合法性校验。详细映射见 [配套查询](references/configuration-completion.md)。金额支持整数 30 位、小数 8 位，保持原单位和精度。

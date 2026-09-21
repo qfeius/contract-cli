@@ -5,6 +5,8 @@ import (
 	"io"
 	"strings"
 	"text/tabwriter"
+
+	"cn.qfei/contract-cli/internal/build"
 )
 
 type helpTopic struct {
@@ -238,6 +240,7 @@ func helpRegistry() map[string]helpTopic {
 				"contract-cli version",
 				"contract-cli --version",
 			},
+			Notes: []string{build.FeatureBaseline()},
 		},
 	}
 
@@ -1668,6 +1671,7 @@ func addRuleHelp(registry map[string]helpTopic) {
 		Commands: []helpCommand{
 			{"contract-cli rule table <subcommand> [flags]", "user/app 身份操作审批矩阵规则表"},
 		},
+		Notes: []string{build.FeatureBaseline()},
 	}
 	registry["rule table"] = helpTopic{
 		Name:  "rule table",
@@ -1732,11 +1736,11 @@ func addRuleHelp(registry map[string]helpTopic) {
 			{"contract-cli rule table row delete <row-id> [flags]", "删除规则表行"},
 		},
 	}
-	registry["rule table row create"] = ruleTableHelpTopic("rule table row create", "创建规则表行，请求体必须是 JSON。", "contract-cli rule table row create --product-id <id> --group-id <id> --table-id <id> --input-file <path>|--data <json> [flags]", concatHelpFlags(tableIDHelpFlags(), jsonBodyFlags()), []string{"contract-cli rule table row create --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --input-file row.json"}, []string{"走 POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows。"})
+	registry["rule table row create"] = ruleTableHelpTopic("rule table row create", "创建规则表行，请求体必须是 JSON。", "contract-cli rule table row create --product-id <id> --group-id <id> --table-id <id> --input-file <path>|--data <json> [flags]", concatHelpFlags(tableIDHelpFlags(), jsonBodyFlags()), []string{"contract-cli rule table row create --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --input-file row.json"}, []string{"走 POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows。", "DEPARTMENT_COLLECTION 使用 open_department_id 字符串（od-...）；sys_department.id 数字会在本地拒绝。"})
 	registry["rule table row get"] = ruleTableHelpTopic("rule table row get", "查询规则表单行信息。", "contract-cli rule table row get <row-id> --product-id <id> --group-id <id> --table-id <id> [flags]", tableIDHelpFlags(), []string{"contract-cli rule table row get <row-id> --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id>"}, []string{"走 GET /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/{table_row_id}。", "不接受 --input-file / --data。"})
 	registry["rule table row list"] = ruleTableHelpTopic("rule table row list", "分页查询规则表行。", "contract-cli rule table row list --product-id <id> --group-id <id> --table-id <id> [flags]", concatHelpFlags(tableIDHelpFlags(), pageFlags()), []string{"contract-cli rule table row list --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --page-size 10"}, []string{"走 GET /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows。", "不接受 --input-file / --data。"})
-	registry["rule table row search"] = ruleTableHelpTopic("rule table row search", "按筛选条件分页查询规则表行，请求体必须是 JSON。", "contract-cli rule table row search --product-id <id> --group-id <id> --table-id <id> --input-file <path>|--data <json> [flags]", concatHelpFlags(tableIDHelpFlags(), pageFlags(), jsonBodyFlags()), []string{"contract-cli rule table row search --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --page-size 10 --input-file row-search.json"}, []string{"走 POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/search。", "--page-size 必填且范围为 1-100；--page-size / --page-token 作为 query 参数传递，请求体保持不变。"})
-	registry["rule table row update"] = ruleTableHelpTopic("rule table row update", "修改规则表行，请求体必须是 JSON。", "contract-cli rule table row update <row-id> --product-id <id> --group-id <id> --table-id <id> --input-file <path>|--data <json> [flags]", concatHelpFlags(tableIDHelpFlags(), jsonBodyFlags()), []string{"contract-cli rule table row update <row-id> --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --input-file row.json"}, []string{"走 PUT /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/{table_row_id}。"})
+	registry["rule table row search"] = ruleTableHelpTopic("rule table row search", "按筛选条件分页查询规则表行，请求体必须是 JSON。", "contract-cli rule table row search --product-id <id> --group-id <id> --table-id <id> --input-file <path>|--data <json> [flags]", concatHelpFlags(tableIDHelpFlags(), pageFlags(), jsonBodyFlags()), []string{"contract-cli rule table row search --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --page-size 10 --input-file row-search.json"}, []string{"走 POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/search。", "--page-size 必填且范围为 1-100；--page-size / --page-token 作为 query 参数传递，请求体保持不变。", "DEPARTMENT_COLLECTION 使用 open_department_id 字符串（od-...）；sys_department.id 数字会在本地拒绝。"})
+	registry["rule table row update"] = ruleTableHelpTopic("rule table row update", "修改规则表行，请求体必须是 JSON。", "contract-cli rule table row update <row-id> --product-id <id> --group-id <id> --table-id <id> --input-file <path>|--data <json> [flags]", concatHelpFlags(tableIDHelpFlags(), jsonBodyFlags()), []string{"contract-cli rule table row update <row-id> --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --input-file row.json"}, []string{"走 PUT /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/{table_row_id}。", "DEPARTMENT_COLLECTION 使用 open_department_id 字符串（od-...）；sys_department.id 数字会在本地拒绝。"})
 	registry["rule table row delete"] = ruleTableHelpTopic("rule table row delete", "删除规则表行。", "contract-cli rule table row delete <row-id> --product-id <id> --group-id <id> --table-id <id> [flags]", tableIDHelpFlags(), []string{"contract-cli rule table row delete <row-id> --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id>"}, []string{"走 DELETE /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/{table_row_id}。", "不接受 --input-file / --data。"})
 	registry["rule table import"] = helpTopic{
 		Name:  "rule table import",

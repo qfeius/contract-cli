@@ -19,6 +19,8 @@ if [[ "$ENABLE_TEST" == "true" && "$VERSION" != *-test.* ]]; then
   echo "test builds require a prerelease VERSION such as 1.8.3-test.1" >&2
   exit 1
 fi
+
+bash "$ROOT_DIR/scripts/verify-feature-baseline.sh" "$ROOT_DIR" "$VERSION"
 LDFLAGS="-s -w -X cn.qfei/contract-cli/internal/build.Version=${VERSION} -X cn.qfei/contract-cli/internal/build.Commit=${COMMIT} -X cn.qfei/contract-cli/internal/build.Date=${DATE} -X cn.qfei/contract-cli/internal/cli.testBuild=${ENABLE_TEST}"
 
 TARGETS=(

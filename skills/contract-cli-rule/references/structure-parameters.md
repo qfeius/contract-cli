@@ -42,7 +42,7 @@ group_id 必填，允许 `[A-Za-z_0-9#]{1,30}`；name 必填且最多 100 字符
 
 配置已有列时先调用 `table get` 或 `column-headers list`，以返回的列 `id` 定位更新目标；若返回 `value_id/value_code/value_name/value_type`，更新时原样复用。新增或未绑定列按列名、条件类型和操作符配置并省略 `value_*`，不根据名称猜测业务元素 ID。
 
-结果列 default_value 为字符串，人员/部门为逗号分隔的正整数外部 ID；角色沿用角色 ID 契约。条件/结果更新共用 PUT，update-condition/update-result 提供对应必填字段检查。
+结果列 default_value 为字符串，人员为逗号分隔的正整数外部 ID，部门为逗号分隔的 `open_department_id`（`od-...`）；角色沿用角色 ID 契约。条件/结果更新共用 PUT，update-condition/update-result 提供对应必填字段检查。
 
 已有数据且改变类型或操作符导致内容类型变化时服务端阻止更新；先单独确认清空数据，再修改。优先级列、备注列不参与这些结构操作，删除至少保留同类一列。新增左右插入已有代码依据，移动已有列排序及指定位置插行仍无此接口。
 

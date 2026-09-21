@@ -258,7 +258,7 @@ func addRuleStructureHelp(registry map[string]helpTopic) {
 			case "rule table":
 				notes = append(notes, "写入 JSON：name 必填；rule_table_id、description、match_policy、node_repetition_policy 可选。策略值为 0..2；更新时 rule_table_id 不可改变。", "更新 description 省略会按后端空值语义处理；保留原描述时先 get 并带回。")
 			case "rule table column":
-				notes = append(notes, "add JSON：base_table_column_id 必填，direction 为 -1 左侧或 1 右侧；新列类型继承基准列，随后用 update 配置。", "条件列更新：table_column_name、value_type、symbol；可选 value_id/value_code/value_name/is_department_loop/multi_select_match_mode。", "结果列更新：table_column_name、result_type；可选 result_code/default_value。default_value 是字符串，人员/部门为逗号分隔的数字外部 ID。", "已有值且类型或操作符改变单元格类型时，服务端阻止更新；需要先单独确认清空。优先级列、备注列及最后必要列受服务端保护。")
+				notes = append(notes, "add JSON：base_table_column_id 必填，direction 为 -1 左侧或 1 右侧；新列类型继承基准列，随后用 update 配置。", "条件列更新：table_column_name、value_type、symbol；可选 value_id/value_code/value_name/is_department_loop/multi_select_match_mode。", "结果列更新：table_column_name、result_type；可选 result_code/default_value。default_value 是字符串，人员为逗号分隔的正整数外部 ID，部门为逗号分隔的 open_department_id（od-...）。", "已有值且类型或操作符改变单元格类型时，服务端阻止更新；需要先单独确认清空。优先级列、备注列及最后必要列受服务端保护。")
 			}
 			registry[name] = helpTopic{Name: name, Usage: []string{"contract-cli " + name + " [flags]"}, Flags: concatHelpFlags(openPlatformCommonFlags(), flags), Notes: notes}
 			parent.Commands = append(parent.Commands, helpCommand{"contract-cli " + name + " [flags]", "审批矩阵结构操作"})

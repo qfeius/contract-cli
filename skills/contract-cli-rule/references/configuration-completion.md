@@ -18,8 +18,8 @@
 | `symbol query` | CLI 本地映射 | `{"value_type":"NUMBER"}` |
 | `loop-function query` | POST `/loop_functions/query` | `{"value_type":"DEPARTMENT_COLLECTION"}` |
 
-- group_code 可省略，传入时与路径组编码一致。batch-get 接受 1..100 个字符串 ID；人员/部门为正 int64 外部 ID，角色依租户来源使用对应 ID。
-- 目录回包为 `data.items`（含 id、专用 employee_id/department_id/role_id、name、selectable）及 `missing_ids`。只采用可选候选，缺失 ID 显式提示，不用内部编号兜底。
+- group_code 可省略，传入时与路径组编码一致。batch-get 接受 1..100 个字符串 ID；人员使用正 int64 外部 ID，部门使用 `open_department_id` 字符串（形如 `od-...`），角色依租户来源使用对应 ID。
+- 目录回包为 `data.items`（含 id、专用 employee_id/department_id/role_id、name、selectable）及 `missing_ids`。部门候选必须选择 `open_department_id`/`department_id` 中的 `od-...` 值；若回包只有数字 `id`（对应 `sys_department.id`），该值不能直接用于规则行，CLI 没有从内部主键推导 `open_department_id` 的能力，应由目录接口补充可写入字段或由调用方取得对应 `od-...` 值。只采用可选候选，缺失 ID 显式提示，不用内部编号兜底。
 - 操作符取 CLI 内置映射中的 `symbol`；列更新时仍由开平接口校验合法性。循环配置只使用 `loop-function query` 返回的可用候选。
 - 本页枚举是条件类型及运算符，不是业务字段可选值，不需要另接业务枚举接口。
 

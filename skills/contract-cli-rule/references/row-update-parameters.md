@@ -43,7 +43,7 @@
 | table_cells[].table_cell_content | object | 必填 | 单元格内容，六个字段与六种类型进行映射，每个单元格只能填充与单元格内容类型对应的字段；注意其他字段应为 null |
 | table_cells[].table_cell_content.bool | boolean | 可选 | 布尔值示例值：true |
 | table_cells[].table_cell_content.collection | array<string> | 可选 | 集合示例值：["element1"] |
-| table_cells[].table_cell_content.department_collection | array<int64> | 可选 | 部门正整数外部 ID，例如 [7113921696628736004] |
+| table_cells[].table_cell_content.department_collection | array<string> | 可选 | 部门 `open_department_id`，例如 ["od-1b1b803a7df98989bf457d9ba203c350"]；不要传 `sys_department.id` 数字 |
 | table_cells[].table_cell_content.employee_collection | array<int64> | 可选 | 人员正整数外部 ID，例如 [7113921696628736004] |
 | table_cells[].table_cell_content.role_collection | array<string> | 可选 | 角色集合示例值：["123520234"] |
 | table_cells[].table_cell_content.number | decimal | 可选 | 后端 BigDecimal，整数最多 30 位、小数最多 8 位，示例：1000.50 |
@@ -54,7 +54,7 @@
 ## 枚举与约束
 
 - 可调用此接口修改目标行信息，请求体与创建规则表行 相同，接口只会修改入参中指定的单元格，对其它单元格无效。单元格对应的列 id，单元格内容类型需与对应的规则表列头数据保持一致，列头数据可调用 查询规则表列头信息得到。
-- `table_cells[].table_cell_content`（object，必填）：单元格内容，六个字段与六种类型进行映射，每个单元格只能填充与单元格内容类型对应的字段；注意其他字段应为 null
+- `table_cells[].table_cell_content`（object，必填）：单元格内容，六个字段与六种类型进行映射，每个单元格只能填充与单元格内容类型对应的字段；注意其他字段应为 null。部门集合使用 `open_department_id` 字符串，人员集合使用正整数外部 ID。
 - `table_cells[].table_cell_content_type`（string，必填）：单元格内容类型，需与规则表列头中的单元格内容类型保持一致示例值："EMPLOYEE_COLLECTION"可选值有：STRING：字符串NUMBER：数值BOOLEAN：布尔COLLECTION：集合EMPLOYEE_COLLECTION：人员集合DEPARTMENT_COLLECTION：部门集合ROLE_COLLECTION：角色集合类型
 - 官方参数 `department_id_type`（query，可选）当前没有对应 CLI flag。
 
@@ -95,4 +95,4 @@ contract-cli rule table row update --product-id contract --group-id approve_matr
 - CLI 路径表达：`PUT /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{table_id}/table_rows/{row_id}`；示例 ID 或占位名已统一为 CLI 名称。
 - 本页描述请求参数；响应 envelope 和输出格式遵循共享 Skill。
 
-本次代码校准：`bpm-rule-configuration` 分支 `20260901-zss-approval` 的 `TableCellContentVO` 将人员/部门声明为 `List<Long>`，NUMBER 为 `BigDecimal`（30 位整数、8 位小数）；需部署对应后端。原子命令继续透传 JSON，调用前按后端类型构造数据。
+本次代码校准：人员字段按正整数外部 ID 处理；部门字段按 `open_department_id` 字符串（`od-...`）处理；NUMBER 为 `BigDecimal`（30 位整数、8 位小数）；需部署对应后端。原子命令继续透传 JSON，调用前按后端类型构造数据。

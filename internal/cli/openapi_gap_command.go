@@ -731,6 +731,9 @@ func (a *App) runRuleTableRowCreate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := validateApprovalMatrixDepartmentIDs(body); err != nil {
+		return err
+	}
 	productID, groupID, tableID, err := requiredRuleTable(parsed)
 	if err != nil {
 		return err
@@ -809,6 +812,9 @@ func (a *App) runRuleTableRowSearch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := validateApprovalMatrixDepartmentIDs(body); err != nil {
+		return err
+	}
 	productID, groupID, tableID, err := requiredRuleTable(parsed)
 	if err != nil {
 		return err
@@ -836,6 +842,9 @@ func (a *App) runRuleTableRowUpdate(ctx context.Context, args []string) error {
 	options := parseCommandOptions(parsed)
 	body, err := resolveRequiredRawBody(options)
 	if err != nil {
+		return err
+	}
+	if err := validateApprovalMatrixDepartmentIDs(body); err != nil {
 		return err
 	}
 	productID, groupID, tableID, err := requiredRuleTable(parsed)

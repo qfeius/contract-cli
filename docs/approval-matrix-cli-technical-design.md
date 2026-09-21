@@ -155,7 +155,7 @@ contract-cli rule table import plan \
 - `update` 必须带 `row_id`；
 - `cells` 的 key 可以是列名或列 ID；列名重名时必须改用列 ID；
 - `STRING` 接收 JSON string；`NUMBER` 接收 JSON number；`BOOLEAN` 接收 JSON boolean；
-- `COLLECTION`、`EMPLOYEE_COLLECTION`、`DEPARTMENT_COLLECTION`、`ROLE_COLLECTION` 接收 JSON array；人员、部门和角色值必须已经解析成对应 ID，集合可用空数组清空；
+- `COLLECTION`、`EMPLOYEE_COLLECTION`、`DEPARTMENT_COLLECTION`、`ROLE_COLLECTION` 接收 JSON array；人员值使用正整数外部 ID，部门值使用 `open_department_id`（`od-...`），角色值使用对应角色 ID，集合可用空数组清空；
 - 显式 `null` 清空单元格，省略单元格保持不变。该语义由导入计划转换为行更新请求，并沿用开放平台的局部更新语义。
 
 计划成功输出核心字段：

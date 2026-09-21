@@ -8,6 +8,8 @@ VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo d
 COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 DATE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 
+bash "$(dirname "$0")/scripts/verify-feature-baseline.sh" "$(pwd)" "$VERSION"
+
 LDFLAGS="-s -w \
   -X cn.qfei/contract-cli/internal/build.Version=${VERSION} \
   -X cn.qfei/contract-cli/internal/build.Commit=${COMMIT} \

@@ -46,7 +46,7 @@ type approvalMatrixColumn struct {
 type approvalMatrixCellContent struct {
 	Bool                 *bool        `json:"bool"`
 	Collection           *[]string    `json:"collection"`
-	DepartmentCollection *[]int64     `json:"department_collection"`
+	DepartmentCollection *[]string    `json:"department_collection"`
 	EmployeeCollection   *[]int64     `json:"employee_collection"`
 	RoleCollection       *[]string    `json:"role_collection"`
 	Number               *json.Number `json:"number"`
@@ -271,7 +271,7 @@ func (a *App) renderApprovalMatrixTableCandidates(ctx context.Context, options c
 /*
 runApprovalMatrixImportApply 加载已确认计划并逐行调用现有创建或更新接口，重试时跳过已经成功或结果不确定的行。
 入参 ctx（context.Context）为命令执行上下文，args（[]string）为 apply 命令参数。
-返回值为参数、计划读取、鉴权或状态保存错误；逐行接口失败通过结构化结果返回。
+返回值为参数、计划读取、鉴权或状态保存错误；逐行结果先通过结构化输出保留，批量失败或计划失效时额外返回错误。
 */
 func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) error {
 	parsed, err := parseArgs(args, structuredValueFlags("--plan-id", "--rows", "--batch-size"), commonBoolFlags())
@@ -324,7 +324,7 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 		return fmt.Errorf("approval matrix import plan %q belongs to profile %q", plan.PlanID, plan.Profile)
 	}
 	if plan.Status == "success" || plan.Status == "cancelled" {
-		return a.renderApprovalMatrixImportValue(options, approvalMatrixImportPlanOutput(plan))
+		return a.renderApprovalMatrixImportApplyResult(options, plan)
 	}
 
 	// 停用回执接口后，旧保护计划必须核验已成功的行并重新确认，不静默切换写入模式。
@@ -334,7 +334,7 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 		if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
 			return err
 		}
-		return a.renderApprovalMatrixImportValue(options, approvalMatrixImportPlanOutput(plan))
+		return a.renderApprovalMatrixImportApplyResult(options, plan)
 	}
 
 	// 整个批次复用同一请求上下文，并严格串行写入，避免并发放大开放平台限流。
@@ -350,7 +350,7 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 		if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
 			return err
 		}
-		return a.renderApprovalMatrixImportValue(options, approvalMatrixImportPlanOutput(plan))
+		return a.renderApprovalMatrixImportApplyResult(options, plan)
 	}
 	checkPath := ruleTablePath(plan.ProductID, plan.GroupID, plan.TableID) + "/table_columns/column_headers"
 	columnsResponse, err := client.Do(ctx, requestContext, openplatform.Request{Method: http.MethodGet, Path: checkPath, IdentityPolicy: openplatform.IdentityPolicyAny})
@@ -367,7 +367,7 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 		if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
 			return err
 		}
-		return a.renderApprovalMatrixImportValue(options, approvalMatrixImportPlanOutput(plan))
+		return a.renderApprovalMatrixImportApplyResult(options, plan)
 	}
 	// 请求前落盘的 running 表示上次进程可能在服务端成功后退出，恢复时先核验。
 	for i := range plan.Operations {
@@ -380,7 +380,7 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 			if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
 				return err
 			}
-			return a.renderApprovalMatrixImportValue(options, approvalMatrixImportPlanOutput(plan))
+			return a.renderApprovalMatrixImportApplyResult(options, plan)
 		}
 	}
 	plan.Reason = ""
@@ -482,7 +482,7 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 	if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
 		return err
 	}
-	return a.renderApprovalMatrixImportValue(options, approvalMatrixImportPlanOutput(plan))
+	return a.renderApprovalMatrixImportApplyResult(options, plan)
 }
 
 /*
@@ -747,16 +747,18 @@ func newApprovalMatrixTableCell(column approvalMatrixColumn, rawValue json.RawMe
 			return approvalMatrixTableCell{}, fmt.Errorf("value must be true or false")
 		}
 		cell.TableCellContent.Bool = &value
-	case "EMPLOYEE_COLLECTION", "DEPARTMENT_COLLECTION":
+	case "EMPLOYEE_COLLECTION":
 		ids, err := approvalMatrixResourceIDs(rawValue)
 		if err != nil {
 			return cell, err
 		}
-		if contentType == "EMPLOYEE_COLLECTION" {
-			cell.TableCellContent.EmployeeCollection = &ids
-		} else {
-			cell.TableCellContent.DepartmentCollection = &ids
+		cell.TableCellContent.EmployeeCollection = &ids
+	case "DEPARTMENT_COLLECTION":
+		ids, err := approvalMatrixDepartmentIDs(rawValue)
+		if err != nil {
+			return cell, err
 		}
+		cell.TableCellContent.DepartmentCollection = &ids
 	case "COLLECTION", "ROLE_COLLECTION":
 		var value []string
 		if err := json.Unmarshal(rawValue, &value); err != nil || value == nil {
@@ -949,7 +951,33 @@ func approvalMatrixImportPlanOutput(plan approvalMatrixImportPlan) map[string]an
 }
 
 /*
-approvalMatrixResourceIDs 将人员/部门外部 ID 转为后端 List<Long>，避免浮点精度损失。
+renderApprovalMatrixImportApplyResult 输出批量 apply 的完整结果，并将失败状态映射为命令错误。
+入参 options（commandOptions）为公共输出选项，plan（approvalMatrixImportPlan）为已持久化的执行状态。
+返回值为输出错误，或用于产生非零进程退出码的批量状态错误。
+*/
+func (a *App) renderApprovalMatrixImportApplyResult(options commandOptions, plan approvalMatrixImportPlan) error {
+	// 先写出逐行状态和原因，确保调用方即使收到非零退出码也能拿到可恢复的执行明细。
+	if err := a.renderApprovalMatrixImportValue(options, approvalMatrixImportPlanOutput(plan)); err != nil {
+		return err
+	}
+
+	switch plan.Status {
+	case "partial_success", "failed":
+		summary := summarizeApprovalMatrixImportPlan(plan)
+		return fmt.Errorf("approval matrix import apply returned %s: %d of %d rows failed", plan.Status, summary.Failed, summary.Total)
+	case "invalidated":
+		reason := strings.TrimSpace(plan.Reason)
+		if reason == "" {
+			reason = "generate a new plan before applying"
+		}
+		return fmt.Errorf("approval matrix import apply returned invalidated: %s", reason)
+	default:
+		return nil
+	}
+}
+
+/*
+approvalMatrixResourceIDs 将人员外部 ID 转为后端 List<Long>，避免浮点精度损失。
 入参 raw（json.RawMessage）为数字或十进制字符串数组；返回 []int64 和校验 error。
 */
 func approvalMatrixResourceIDs(raw json.RawMessage) ([]int64, error) {
@@ -968,6 +996,33 @@ func approvalMatrixResourceIDs(raw json.RawMessage) ([]int64, error) {
 		id, err := strconv.ParseInt(value, 10, 64)
 		if err != nil || id <= 0 {
 			return nil, fmt.Errorf("resource id %q must be a positive 64-bit integer external ID", value)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+/*
+approvalMatrixDepartmentIDs 校验并保留部门 open_department_id，避免把 sys_department.id 当成规则值。
+入参 raw（json.RawMessage）为 open_department_id 字符串数组；返回 []string 和校验 error。
+*/
+func approvalMatrixDepartmentIDs(raw json.RawMessage) ([]string, error) {
+	var items []json.RawMessage
+	if json.Unmarshal(raw, &items) != nil || items == nil {
+		return nil, fmt.Errorf("department ids must be an array of open_department_id strings such as \"od-...\"")
+	}
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		var id string
+		if err := json.Unmarshal(item, &id); err != nil {
+			return nil, fmt.Errorf("department ID %s must be an open_department_id such as \"od-...\"; sys_department.id is not accepted", strings.TrimSpace(string(item)))
+		}
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return nil, fmt.Errorf("department ID must not be empty")
+		}
+		if err := validateApprovalMatrixDepartmentID(id); err != nil {
+			return nil, err
 		}
 		ids = append(ids, id)
 	}

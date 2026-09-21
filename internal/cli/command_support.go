@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -181,7 +182,21 @@ func (a *App) executeOpenPlatformCommand(ctx context.Context, options commandOpt
 	if err != nil {
 		return err
 	}
-	return a.renderOpenPlatformResponse(options, response)
+
+	// 先输出原始业务响应，便于调用方读取服务端错误详情；再把矩阵业务码转换为命令错误。
+	outputErr := a.renderOpenPlatformResponse(options, response)
+	if isRuleOpenPlatformPath(request.Path) && len(response.Body) > 0 {
+		var envelope struct {
+			Code *int64 `json:"code"`
+		}
+		if decodeErr := json.Unmarshal(response.Body, &envelope); decodeErr != nil || envelope.Code == nil {
+			return errors.Join(errors.New("invalid rule response envelope"), outputErr)
+		}
+		if *envelope.Code != 0 {
+			return errors.Join(fmt.Errorf("rule request failed with business code %d; see response output for details", *envelope.Code), outputErr)
+		}
+	}
+	return outputErr
 }
 
 func (a *App) openPlatformClientAndContextForOptions(options commandOptions, path string, policy openplatform.IdentityPolicy) (*openplatform.Client, openplatform.RequestContext, error) {

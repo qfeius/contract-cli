@@ -51,7 +51,8 @@ func TestApprovalMatrixImportPlanAndRetryableApply(t *testing.T) {
 				"msg":"success",
 				"data":{"columns_headers":[
 					{"id":"column-amount","name":"合同金额","type":1,"table_cell_content_type":"NUMBER"},
-					{"id":"column-approvers","name":"审批人","type":2,"table_cell_content_type":"EMPLOYEE_COLLECTION"}
+					{"id":"column-approvers","name":"审批人","type":2,"table_cell_content_type":"EMPLOYEE_COLLECTION"},
+					{"id":"column-department","name":"部门","type":3,"table_cell_content_type":"DEPARTMENT_COLLECTION"}
 				]}
 			}`), nil
 		case req.Method == http.MethodPost && req.URL.Path == rowsPath:
@@ -61,7 +62,7 @@ func TestApprovalMatrixImportPlanAndRetryableApply(t *testing.T) {
 				t.Fatalf("ReadAll(create body) error = %v", err)
 			}
 			bodyText := string(body)
-			for _, fragment := range []string{`"table_column_id":"column-amount"`, `"number":1000000`, `"table_column_id":"column-approvers"`, `"employee_collection":[7113921696628736004]`} {
+			for _, fragment := range []string{`"table_column_id":"column-amount"`, `"number":1000000`, `"table_column_id":"column-approvers"`, `"employee_collection":[7113921696628736004]`, `"table_column_id":"column-department"`, `"department_collection":["od-1b1b803a7df98989bf457d9ba203c350"]`} {
 				if !strings.Contains(bodyText, fragment) {
 					t.Fatalf("create body missing %q: %s", fragment, bodyText)
 				}
@@ -88,7 +89,7 @@ func TestApprovalMatrixImportPlanAndRetryableApply(t *testing.T) {
 
 	input := `{
 		"rows":[
-			{"operation":"create","cells":{"合同金额":1000000,"审批人":["7113921696628736004"]}},
+		{"operation":"create","cells":{"合同金额":1000000,"审批人":["7113921696628736004"],"部门":["od-1b1b803a7df98989bf457d9ba203c350"]}},
 			{"operation":"update","row_id":"row-existing","cells":{"column-amount":1200000}}
 		]
 	}`
@@ -120,8 +121,8 @@ func TestApprovalMatrixImportPlanAndRetryableApply(t *testing.T) {
 
 	stdout.Reset()
 	applyArgs := []string{"rule", "table", "import", "apply", "--plan-id", planID, "--profile", "contract", "--as", "app"}
-	if err := app.Run(context.Background(), applyArgs); err != nil {
-		t.Fatalf("Run(first apply) error = %v", err)
+	if err := app.Run(context.Background(), applyArgs); err == nil {
+		t.Fatal("Run(first apply) error = nil, want partial_success error")
 	}
 	firstApplyOutput := decodeApprovalMatrixOutput(t, stdout.Bytes())
 	if firstApplyOutput["status"] != "partial_success" {
@@ -346,8 +347,12 @@ func TestApprovalMatrixImportUserIdentity(t *testing.T) {
 				}
 			}
 			stdout.Reset()
-			if err := app.Run(context.Background(), []string{"rule", "table", "import", "apply", "--as", identity, "--plan-id", id}); err != nil {
+			err = app.Run(context.Background(), []string{"rule", "table", "import", "apply", "--as", identity, "--plan-id", id})
+			if mode == "user" && err != nil {
 				t.Fatal(err)
+			}
+			if mode != "user" && err == nil {
+				t.Fatal("cross-identity plan apply error = nil, want invalidated error")
 			}
 			result := decodeJSONObject(t, stdout.Bytes())
 			if mode == "user" {
@@ -411,7 +416,11 @@ func TestApprovalMatrixImportStopsAndInvalidates(t *testing.T) {
 				}
 			}
 			stdout.Reset()
-			if err := app.Run(context.Background(), apply); err != nil {
+			err := app.Run(context.Background(), apply)
+			if scenario == "changed_columns" && err == nil {
+				t.Fatal("Run(apply) error = nil, want invalidated error")
+			}
+			if scenario != "changed_columns" && err != nil {
 				t.Fatal(err)
 			}
 			result := decodeApprovalMatrixOutput(t, stdout.Bytes())
@@ -452,7 +461,9 @@ func TestApprovalMatrixImportBackendValueTypes(t *testing.T) {
 		{"NUMBER", "0.123456789", false}, {"NUMBER", "1e30", false}, {"NUMBER", "1e-9", false},
 		{"BOOLEAN", "null", true}, {"STRING", "null", true},
 		{"EMPLOYEE_COLLECTION", `["7113921696628736004"]`, true},
-		{"DEPARTMENT_COLLECTION", `[7113921696628736004]`, true},
+		{"DEPARTMENT_COLLECTION", `["od-1b1b803a7df98989bf457d9ba203c350"]`, true},
+		{"DEPARTMENT_COLLECTION", `[1018399484738012242]`, false},
+		{"DEPARTMENT_COLLECTION", `["1018399484738012242"]`, false},
 		{"EMPLOYEE_COLLECTION", `["ou_zhangsan"]`, false},
 		{"EMPLOYEE_COLLECTION", `[]`, true},
 	} {

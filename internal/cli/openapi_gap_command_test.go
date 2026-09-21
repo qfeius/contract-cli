@@ -228,11 +228,11 @@ func TestOpenAPIGapCommandsUseExpectedEndpointsAsBot(t *testing.T) {
 		},
 		{
 			name:       "rule table row search",
-			args:       []string{"rule", "table", "row", "search", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--table-id", "table-1", "--page-size", "5", "--page-token", "next", "--data", `{"filter_criteria":[]}`},
+			args:       []string{"rule", "table", "row", "search", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--table-id", "table-1", "--page-size", "5", "--page-token", "next", "--data", `{"table_cell":{"table_column_id":"column-1","table_cell_content_type":"STRING","table_cell_content":{"string":"value"}}}`},
 			wantMethod: http.MethodPost,
 			wantPath:   "/open-apis/rule_engine/v1/products/prod-1/groups/group-1/rule_tables/table-1/table_rows/search",
 			wantQuery:  map[string]string{"page_size": "5", "page_token": "next", "user_id_type": "user_id"},
-			wantBody:   `{"filter_criteria":[]}`,
+			wantBody:   `{"table_cell":{"table_column_id":"column-1","table_cell_content_type":"STRING","table_cell_content":{"string":"value"}}}`,
 		},
 		{
 			name:       "rule table row update",
@@ -545,17 +545,17 @@ func TestOpenAPIGapCommandValidationErrors(t *testing.T) {
 		},
 		{
 			name:    "rule table row search missing page size",
-			args:    []string{"rule", "table", "row", "search", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--table-id", "table-1", "--data", `{"filter_criteria":[]}`},
+			args:    []string{"rule", "table", "row", "search", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--table-id", "table-1", "--data", `{"table_cell":{"table_column_id":"column-1","table_cell_content_type":"STRING","table_cell_content":{"string":"value"}}}`},
 			wantErr: "--page-size is required",
 		},
 		{
 			name:    "rule table row search rejects page size below minimum",
-			args:    []string{"rule", "table", "row", "search", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--table-id", "table-1", "--page-size", "0", "--data", `{"filter_criteria":[]}`},
+			args:    []string{"rule", "table", "row", "search", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--table-id", "table-1", "--page-size", "0", "--data", `{"table_cell":{"table_column_id":"column-1","table_cell_content_type":"STRING","table_cell_content":{"string":"value"}}}`},
 			wantErr: "--page-size must be between 1 and 100",
 		},
 		{
 			name:    "rule table row search rejects page size above maximum",
-			args:    []string{"rule", "table", "row", "search", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--table-id", "table-1", "--page-size", "101", "--data", `{"filter_criteria":[]}`},
+			args:    []string{"rule", "table", "row", "search", "--profile", "contract", "--product-id", "prod-1", "--group-id", "group-1", "--table-id", "table-1", "--page-size", "101", "--data", `{"table_cell":{"table_column_id":"column-1","table_cell_content_type":"STRING","table_cell_content":{"string":"value"}}}`},
 			wantErr: "--page-size must be between 1 and 100",
 		},
 		{

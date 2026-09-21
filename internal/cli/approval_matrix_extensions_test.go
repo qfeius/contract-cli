@@ -53,6 +53,19 @@ func TestRemovedMatrixCapabilitiesCommand(t *testing.T) {
 	}
 }
 
+/* TestMatrixHelpDeclaresFeatureBaseline 验证审批矩阵帮助明确声明命令集的版本基线；t 为测试上下文，无返回值。 */
+func TestMatrixHelpDeclaresFeatureBaseline(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	app := cli.New(cli.Options{Store: config.NewStore(t.TempDir()), Stdout: &output, Stderr: &bytes.Buffer{}})
+	if err := app.Run(context.Background(), []string{"help", "rule"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "feature baseline approval-matrix-extensions since 1.8.3-test.13 (commit 61d8aa6)") {
+		t.Fatalf("matrix help must declare feature baseline: %s", output.String())
+	}
+}
+
 /* TestMatrixSymbolQueryUsesBuiltinMapping 验证运算符查询读取 CLI 内置映射且不发网络请求；t 为上下文，返回 void。 */
 func TestMatrixSymbolQueryUsesBuiltinMapping(t *testing.T) {
 	cases := []struct {
@@ -153,8 +166,8 @@ func TestRetiredGuardedPlanDoesNotFallBackToRowWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	output.Reset()
-	if err := app.Run(context.Background(), []string{"rule", "table", "import", "apply", "--plan-id", id, "--as", "app"}); err != nil {
-		t.Fatal(err)
+	if err := app.Run(context.Background(), []string{"rule", "table", "import", "apply", "--plan-id", id, "--as", "app"}); err == nil {
+		t.Fatal("invalidated plan apply error = nil")
 	}
 	if decodeApprovalMatrixOutput(t, output.Bytes())["status"] != "invalidated" || calls != 1 {
 		t.Fatalf("legacy plan executed: %s", output.String())

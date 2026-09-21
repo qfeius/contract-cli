@@ -46,7 +46,7 @@ contract-cli rule table import apply --profile contract --as app --plan-id <plan
 - `operation` 默认 `create`，也可为 `update`；`update` 必须有 `row_id`。
 - `cells` 的 key 可以是列名或列 ID；重名列必须使用列 ID。
 - 值类型必须与列头 `table_cell_content_type` 一致。
-- 人员、部门、角色集合必须先解析成 ID 数组。
+- 人员集合使用正整数外部 ID；部门集合使用 `open_department_id` 字符串数组（形如 `od-...`）；角色集合使用角色 ID 字符串数组。目录返回的数字 `sys_department.id` 不可直接导入，CLI 不负责从内部主键推导 `open_department_id`。
 - 计划阶段只查询列头，不写矩阵；成功返回 `needs_confirmation` 和 `plan_id`，校验问题返回 `needs_input`。
 
 ## apply 参数
@@ -59,13 +59,18 @@ contract-cli rule table import apply --profile contract --as app --plan-id <plan
 
 - `apply` 串行调用现有创建或更新行接口，不依赖新增表。
 - 每行结果落盘；重试同一计划会跳过成功行。
+- `partial_success`、`failed` 和 `invalidated` 会在输出完整逐行结果后返回非零退出码。
 - 结果不确定立即停批，先用 `row get/list/search` 查询确认，不自动重试。
 - 输出状态为 `success`、`partial_success`、`failed` 或 `needs_input`。
 - `plan` 和 `apply` 都不支持 `--raw`。
 
+## 2026-09-21 部门 ID 约定
+
+- `DEPARTMENT_COLLECTION` 在 `import plan` 中按 `open_department_id` 字符串校验并原样发往行接口；例如 `["od-1b1b803a7df98989bf457d9ba203c350"]`。数字部门主键会返回明确的本地校验错误，不再提示使用正整数 ID。
+
 ## 2026-09-14 实现更新
 
-- 人员/部门接收正 int64 数字或十进制字符串数组，输出数字数组；角色、普通集合仍用字符串数组。NUMBER 支持整数 30 位、小数 8 位的精确 JSON 数字，不经 float64；保留金额单位，不自动换算。显式 null 清空该单元格，省略单元格不修改；集合也可用 [] 清空。
+- 人员接收正 int64 数字或十进制字符串数组并输出数字数组；部门接收 `open_department_id` 字符串数组并原样输出；角色、普通集合仍用字符串数组。NUMBER 支持整数 30 位、小数 8 位的精确 JSON 数字，不经 float64；保留金额单位，不自动换算。显式 null 清空该单元格，省略单元格不修改；集合也可用 [] 清空。
 - apply 执行前重读列头，计划 24 小时有效；身份/应用/环境指纹或列头变化返回 invalidated。旧版未完成计划需重新生成。user 计划还绑定凭证摘要，重新授权或 Token 轮换后需重新生成并确认；app Token 轮换仍保持兼容。
 - --rows 1,3 只执行指定计划行；--batch-size 10 限定本次写入数。剩余进度为 paused，再次 apply 继续。
 - import get --plan-id 查看进度；import cancel --plan-id 取消后续操作，已成功数据保留。

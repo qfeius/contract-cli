@@ -155,7 +155,7 @@ contract-cli config add --env prod --name contract
 
 #### `contract-cli version`
 
-用途：查看当前 CLI 版本、commit 和构建时间。
+用途：查看当前 CLI 版本、commit、构建时间和功能基线。审批矩阵扩展基线为 `approval-matrix-extensions`，自 `1.8.3-test.13`（提交 `61d8aa6`）起包含新增矩阵命令。
 
 命令：
 
@@ -1604,6 +1604,8 @@ contract-cli event outbound-ip list --profile contract --as app --page-size 10 -
 
 ### 8. 审批矩阵规则表命令
 
+矩阵接口返回 HTTP 200 但 JSON 业务 `code` 非 `0` 时，CLI 保留服务端响应并返回非零退出码；`code: 0` 时返回成功。
+
 完整的人工验收步骤见 [审批矩阵 CLI 业务场景测试清单](approval-matrix-cli-test-scenarios.md)。
 
 这一组命令支持 `--as user` / `--as app`；user 当前用于 contract 产品，须具备合同规则管理权限，不会自动降级为 app。公共定位参数是 `--product-id`、`--group-id`，涉及单表时再传 `--table-id`。`approval-matrix publish` 和 `approval-matrix table publish` 是 `rule table release` 的兼容入口。
@@ -1650,11 +1652,11 @@ contract-cli rule table import apply --profile contract --as app --plan-id <plan
 - 人员姓名先通过 `rule employee search` 解析；请求 `{"param":"赵少帅","group_code":"approve_matrix"}`，可选 `group_code` 必须与 `--group-id` 一致，省略或 null 兼容旧请求；返回候选 `employee_id/name/email/department_name/status/selectable`。仅采用 `selectable=true`，重名先确认。ID 是十进制字符串形式的矩阵外部人员 ID，固定 `user_id_type=user_id`；不直接复用页面内部编号。详见 [人员搜索参数](../skills/contract-cli-rule/references/employee-search-parameters.md)。
 
 - 新增结构命令字段见 [结构接口参数](../skills/contract-cli-rule/references/structure-parameters.md)。`approval-matrix` 是对应 `rule` 命令的兼容入口，支持 user/app。
-- 人员/部门批量值使用正 int64 外部 ID（数字或十进制字符串输入，发送为数字）；NUMBER 支持整数 30 位、小数 8 位，导入显式 null 清空单元格，省略字段保持不变。
+- 人员批量值使用正 int64 外部 ID（数字或十进制字符串输入，发送为数字）；部门批量值统一使用 `open_department_id` 字符串（形如 `od-...`）并原样发送，目录返回的 `sys_department.id` 数字不可直接用于规则行；NUMBER 支持整数 30 位、小数 8 位，导入显式 null 清空单元格，省略字段保持不变。
 - `apply --rows 1,3 --batch-size 10` 支持局部确认和分批执行；get 查询本地进度，cancel 取消后续操作。列头变化或 24 小时过期返回 invalidated，结果不确定立即停止后续行。
 - `import plan` 的输入顶层为 `rows`；每行包含可选 `operation`、更新所需的 `row_id`，以及以列名或列 ID 为键的 `cells`。未传 `--table-id` 时返回已有矩阵候选项和 `status=needs_input`。
 - `plan` 只查询列头并在本地做映射检查，不写矩阵。校验通过返回 `status=needs_confirmation` 与 `plan_id`；校验失败返回 `status=needs_input`。
-- `import apply` 将 `plan_id` 作为确认令牌，串行逐行写入；部分失败返回 `partial_success`，再次执行同一计划时跳过成功行。
+- `import apply` 将 `plan_id` 作为确认令牌，串行逐行写入；部分失败返回 `partial_success`，再次执行同一计划时跳过成功行。`partial_success`、`failed` 和 `invalidated` 会在保留结构化结果后返回非零退出码。
 - 矩阵写请求的编辑人由开平服务端从当前 Bearer 用户身份解析。使用 `--as user` 时，CLI 发送 `X-Qfei-Identity: user` 并移除 `--user-id` 对应的 query，避免把审批人 ID 或其他人员 ID 作为编辑人；`--as app` 记录应用/系统身份。
 - 写入结果不确定先用 `row get/list/search` 核对，停止后续写入，不自动重试。
 - 两个批量命令固定返回结构化状态，不支持 `--raw`。

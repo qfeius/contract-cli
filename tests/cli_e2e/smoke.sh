@@ -13,6 +13,7 @@ DATE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 LDFLAGS="-s -w -X cn.qfei/contract-cli/internal/build.Version=${VERSION} -X cn.qfei/contract-cli/internal/build.Commit=${COMMIT} -X cn.qfei/contract-cli/internal/build.Date=${DATE}"
 
 cd "$ROOT_DIR"
+bash "$ROOT_DIR/scripts/verify-feature-baseline.sh" "$ROOT_DIR" "$VERSION"
 mkdir -p "$GO_CACHE"
 env GOCACHE="$GO_CACHE" go build -trimpath -ldflags "$LDFLAGS" -o "$TMP_DIR/contract-cli" ./cmd/contract-cli
 

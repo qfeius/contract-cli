@@ -44,7 +44,7 @@
 | table_cell.table_cell_content | object | 必填 | 单元格内容，六个字段与六种类型进行映射，每个单元格只能填充与单元格内容类型对应的字段；注意其他字段应为 null |
 | table_cell.table_cell_content.bool | boolean | 可选 | 布尔值示例值：true |
 | table_cell.table_cell_content.collection | array<string> | 可选 | 集合示例值：["element1"] |
-| table_cell.table_cell_content.department_collection | array<string> | 可选 | 部门集合示例值：["od-sdwerdfvdc"] |
+| table_cell.table_cell_content.department_collection | array<string> | 可选 | 部门 `open_department_id` 集合，例如 ["od-1b1b803a7df98989bf457d9ba203c350"]；不要传 `sys_department.id` 数字 |
 | table_cell.table_cell_content.employee_collection | array<string> | 可选 | 人员集合示例值：["ou-sdwerdfvdc"] |
 | table_cell.table_cell_content.role_collection | array<string> | 可选 | 角色集合示例值：["123520234"] |
 | table_cell.table_cell_content.number | number | 可选 | 数值示例值：1 |
@@ -55,8 +55,10 @@
 ## 枚举与约束
 
 - 可调用此接口搜索规则表中的某些行信息，若单元格内容类型为字符串、数值和布尔时，支持精确查找；当类型为集合、人员集合和部门集合时，支持模糊搜索，当集合包含入参中的值时即返回。<br>- 不支持以行 ID 为条件进行查找，如果需要，请调用根据行ID查询规则表单行信息。<br>- 不支持空值查找，即单元格内容不能为空。<br>- 搜索时需指定列，系统会按指定列去搜索对应的行信息。
+- 备注列的请求单元格类型固定使用 `STRING`；搜索不存在的备注字符串时应返回空行列表，不应退化为该备注列所有非空行。
 - `table_cell.table_cell_content`（object，必填）：单元格内容，六个字段与六种类型进行映射，每个单元格只能填充与单元格内容类型对应的字段；注意其他字段应为 null
 - `table_cell.table_cell_content_type`（string，必填）：单元格内容类型，需与规则表列头中的单元格内容类型保持一致示例值："EMPLOYEE_COLLECTION"可选值有：STRING：字符串NUMBER：数值BOOLEAN：布尔COLLECTION：集合EMPLOYEE_COLLECTION：人员集合
+- 部门集合搜索使用 `open_department_id`（`od-...`）；目录返回的 `sys_department.id` 数字不是规则行/搜索条件可用的部门 ID。
 - 官方参数 `department_id_type`（query，可选）当前没有对应 CLI flag。
 
 ## 示例
