@@ -34,6 +34,18 @@
 
 ## Installation & Quick Start
 
+### 环境与本地预发布包
+
+当前源码构建和正式构建都只支持 `prod`，默认 profile 为 `contract`；将 `--env` 指定为 `test`、`blue` 或 `dev` 会在发请求前拒绝，历史非 prod profile 也不会自动迁移或复用凭据。API 地址为 `https://open.qfei.cn`，账号地址为 `https://myaccount.qfei.cn`。
+
+若需验证 npm 包构建流程，仍可生成独立的本地预发布包；版本中的 `-test` 只是包标记，不开放 test 环境，也不发布到 npm：
+
+```bash
+VERSION=1.8.4-test.20260923.6 bash scripts/build-test-package.sh
+```
+
+历史 `.5` 及更早联调包仍含旧环境能力，不能用它们判断当前分支的新构建行为。审批矩阵的 user/app 双身份和规则 OpenAPI 命令保持不变；真实环境验证仍需对应后端及网关配置，见 [双身份接入说明](docs/approval-matrix-user-app-auth.md)。不要在对话中发送 Token 或 App Secret。
+
 ### Requirements
 
 - Go `1.24.3+`
@@ -193,7 +205,7 @@ contract-cli mdm fields list --profile contract --as user --biz-line vendor
 | `contract-cli-mdm-exchange` | 固定汇率查询和更新 |
 | `contract-cli-mdm-file` | 主数据附件下载 |
 | `contract-cli-event` | 事件出口 IP 查询 |
-| `contract-cli-rule` | 审批矩阵规则表查询、行操作、预发布和发布 |
+| `contract-cli-rule` | 审批矩阵规则表查询、行操作、批量导入计划与执行、预发布和发布 |
 
 推荐安装方式：
 
@@ -205,6 +217,8 @@ npx skills add qfeius/contract-cli -y -g
 
 ```bash
 contract-cli skills install --target ~/.codex/skills
+# CLI 升级后定向刷新已有的规则 Skill，避免旧指令清单滞留
+contract-cli skills install --name contract-cli-rule --force
 ```
 
 ## Authentication
@@ -240,8 +254,9 @@ contract-cli auth logout --profile contract --as app
 - `config`、`version`、`update check`、`skills list/install` 不需要登录态。
 - `contract ...`、`mdm ...` 结构化命令会根据 `--as user|app` 选择对应底层路径。
 - 当前大部分 MCP 路径仍是 user-only；显式用 app 调用 user-only 路径会直接报错。
-- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *` 当前仅支持 app 身份。
+- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 当前仅支持 app 身份。
 - `contract download-file`、`contract approval get` 支持 user/app；`contract search-fields`、`contract approval comment list/create` 与 `contract approval task list/approve/reject` 仅支持 user。
+- `rule *`（包括 `approval-matrix` 别名）支持 user/app；user 需要相应合同规则管理权限。
 - 兼容旧身份值 `bot`，但新文档和新脚本统一使用 `app`。
 
 ## Command System
@@ -439,7 +454,7 @@ make build
 go build ./cmd/contract-cli
 ```
 
-默认会把版本、commit、构建时间注入到二进制里。
+默认会把版本、commit、构建时间和审批矩阵功能基线注入到二进制里。`1.8.4` 及以上版本的构建会检查矩阵扩展命令是否存在，避免版本号升高但命令集回退。
 
 ### Test
 

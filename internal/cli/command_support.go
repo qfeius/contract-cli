@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"strconv"
@@ -175,6 +177,10 @@ func commonBoolFlags(extra ...string) map[string]struct{} {
 	return flags
 }
 
+/*
+executeOpenPlatformCommand 调用结构化开放平台接口，并在输出后保留矩阵业务错误语义。
+入参 ctx（context.Context）为请求上下文，options（commandOptions）为输出和身份选项，request（openplatform.Request）为接口请求；返回 error 为调用、输出或业务错误。
+*/
 func (a *App) executeOpenPlatformCommand(ctx context.Context, options commandOptions, request openplatform.Request) error {
 	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, request.Path, request.IdentityPolicy)
 	if err != nil {
@@ -185,7 +191,57 @@ func (a *App) executeOpenPlatformCommand(ctx context.Context, options commandOpt
 	if err != nil {
 		return err
 	}
-	return a.renderOpenPlatformResponse(options, response)
+	// 只规范规则行搜索的成功空结果；--raw 始终保留服务端原文，其余命令不改变响应结构。
+	if !options.raw && request.Method == http.MethodPost && isRuleOpenPlatformPath(request.Path) && strings.HasSuffix(request.Path, "/table_rows/search") {
+		response.Body = normalizeEmptyRuleTableRowSearchResponse(response.Body)
+	}
+
+	// 先输出原始业务响应，便于调用方读取服务端错误详情；再把矩阵业务码转换为命令错误。
+	outputErr := a.renderOpenPlatformResponse(options, response)
+	if isRuleOpenPlatformPath(request.Path) && len(response.Body) > 0 {
+		var envelope struct {
+			Code *int64 `json:"code"`
+		}
+		if decodeErr := json.Unmarshal(response.Body, &envelope); decodeErr != nil || envelope.Code == nil {
+			return errors.Join(errors.New("invalid rule response envelope"), outputErr)
+		}
+		if *envelope.Code != 0 {
+			return errors.Join(fmt.Errorf("rule request failed with business code %d; see response output for details", *envelope.Code), outputErr)
+		}
+	}
+	return outputErr
+}
+
+/*
+normalizeEmptyRuleTableRowSearchResponse 将搜索成功时的空 data 对象转换为稳定的空行分页结构。
+入参 body（[]byte）为服务端响应；返回 []byte 为仅在 code=0 且 data={} 时规范化的响应，否则原样返回。
+*/
+func normalizeEmptyRuleTableRowSearchResponse(body []byte) []byte {
+	var envelope struct {
+		Code *int64          `json:"code"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil || envelope.Code == nil || *envelope.Code != 0 {
+		return body
+	}
+	dataText := strings.TrimSpace(string(envelope.Data))
+	if len(dataText) == 0 || dataText[0] != '{' {
+		return body
+	}
+	var data map[string]json.RawMessage
+	if err := json.Unmarshal(envelope.Data, &data); err != nil || len(data) != 0 {
+		return body
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		return body
+	}
+	fields["data"] = json.RawMessage(`{"table_rows":[],"has_more":false}`)
+	normalized, err := json.Marshal(fields)
+	if err != nil {
+		return body
+	}
+	return normalized
 }
 
 func (a *App) openPlatformClientAndContextForOptions(options commandOptions, path string, policy openplatform.IdentityPolicy) (*openplatform.Client, openplatform.RequestContext, error) {
@@ -194,7 +250,16 @@ func (a *App) openPlatformClientAndContextForOptions(options commandOptions, pat
 		return nil, openplatform.RequestContext{}, err
 	}
 	requestContext.CommonQuery = commandCommonQuery(options)
+	if isRuleOpenPlatformPath(path) {
+		// 矩阵接口的编辑人由 Bearer 用户身份在开平服务端解析；移除可人为指定的 user_id，避免把审批人或其他人员 ID 当成编辑人。
+		requestContext.CommonQuery.Del("user_id")
+	}
 	return client, requestContext, nil
+}
+
+/* isRuleOpenPlatformPath 判断请求是否属于审批矩阵开放平台路径；path 为相对接口路径，返回是否需要用户身份语义。 */
+func isRuleOpenPlatformPath(path string) bool {
+	return strings.HasPrefix(strings.TrimSpace(path), "/open-apis/rule_engine/v1/")
 }
 
 func (a *App) openPlatformClientAndContext(profileName, identityArg, path string, policy openplatform.IdentityPolicy) (*openplatform.Client, openplatform.RequestContext, error) {

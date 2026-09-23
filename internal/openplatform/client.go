@@ -145,6 +145,11 @@ func (c *Client) RequestContext(profile config.Profile, identity config.Identity
 	return c.authProvider.Resolve(profile, identity)
 }
 
+/*
+Do 验证所选身份并发送请求；规则 user 请求附加验证分支标记，其他模块行为保持不变。
+入参 ctx（context.Context）为执行上下文、requestContext（RequestContext）为已解析身份凭证、request（Request）为接口参数。
+返回 Response 为远端响应，error 为校验或网络错误。
+*/
 func (c *Client) Do(ctx context.Context, requestContext RequestContext, request Request) (Response, error) {
 	method := strings.ToUpper(strings.TrimSpace(request.Method))
 	if method == "" {
@@ -174,6 +179,13 @@ func (c *Client) Do(ctx context.Context, requestContext RequestContext, request 
 	}
 
 	headers := cloneHeaders(request.Headers)
+	// 审批矩阵 user 显式选择用户验签分支；此标记不授予权限，后端仍须验证 Bearer。
+	if strings.HasPrefix(request.Path, "/open-apis/rule_engine/v1/") {
+		headers.Del("X-Qfei-Identity")
+		if requestContext.Identity == config.IdentityUser {
+			headers.Set("X-Qfei-Identity", "user")
+		}
+	}
 	if headers.Get("Authorization") == "" {
 		headers.Set("Authorization", "Bearer "+requestContext.AccessToken)
 	}

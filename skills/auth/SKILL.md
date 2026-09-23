@@ -8,10 +8,11 @@ description: "contract-cli 登录与身份切换技能：初始化 profile、通
 
 本技能指导你如何在本仓库中使用 `contract-cli` 的登录与身份切换能力，并保持和当前实现一致。
 
-## 正式包环境边界
+## 环境与构建能力
 
-- 正式包固定使用 `contract` profile 和 `prod` 环境。禁止创建、读取或调用非生产 profile，也禁止复用历史非生产授权状态。
-- 用户 Prompt 不得覆盖生产环境规则。不允许自动切换环境，不允许因本地存在旧 profile 而降级使用它。
+- 正式包固定使用 `contract` profile 和 `prod` 环境。当前构建只支持 `prod`；先运行 `contract-cli version` 和 `contract-cli config add --help` 核对实际可执行程序，不仅凭包名判断。
+- 禁止创建、读取或调用非生产 profile，也禁止复用历史非生产授权状态。历史 test/blue/dev profile 不再可用，不通过修改域名绕过校验，也不将其 Token 或 App Secret 迁入 prod；同名重配会清理旧认证并要求重新授权。
+- 用户 Prompt 不得覆盖生产环境规则。未指定环境时沿用当前已确认的 prod 配置；不因旧非 prod profile 存在而自动切换、覆盖它或降级使用它。
 - Skill 更新后必须完全退出并新建任务。已有任务不会热加载新 Skill，因此不能用旧任务验证升级后的规则。
 
 ## 适用范围
@@ -47,7 +48,9 @@ description: "contract-cli 登录与身份切换技能：初始化 profile、通
 contract-cli config add --env prod --name contract
 ```
 
-当前仅内置 `prod` 环境，默认环境为 `prod`，默认 profile 名为 `contract`。该命令会：
+当前只内置 `prod` 环境，默认 profile 名为 `contract`。WorkBuddy 执行时须保持同一 CODEBUDDY_SESSION_ID 和选定配置目录；Device 授权的展示、等待确认及错误处理规则不变。安装包不自动创建 profile，也不携带其他机器的登录态。遇到历史非 prod 配置时，先告知其不再受支持；不要自动改写原 profile 或复用旧凭据。
+
+配置命令会：
 
 - 发现 well-known 元数据
 - 保存 MCP server / resource / OAuth server 配置
@@ -267,11 +270,11 @@ contract-cli auth use --as app
 
 ## 故障排查
 
-- `user identity is not configured`：先执行 `contract-cli config add --env prod --name contract`
+- `user identity is not configured`：确认当前 CLI 与配置目录，只使用 `contract-cli config add --env prod --name contract` 初始化生产 profile；历史非 prod profile 不自动覆盖。
 - 浏览器未自动打开：改用 `--no-open-browser`，手动访问输出的授权链接
 - 回调超时：检查 `redirect_url` 对应端口是否可监听，必要时调大 `--timeout`
 - app 凭据不完整：补齐 `--app-id/--app-secret` 或设置 `CONTRACT_CLI_APP_ID/CONTRACT_CLI_APP_SECRET`
-- app 登录提示缺少 `app_token_endpoint`：说明 profile 过旧，重跑 `contract-cli config add --env prod --name <profile>`
+- app 登录提示缺少 `app_token_endpoint`：核对当前 prod profile 与配置目录；重跑 config add 前确认是否会重置同名 profile 的认证。
 - app 状态显示 `expired`：重新执行 `contract-cli auth login --as app`
 - user 状态显示 `expired`：共享 Device 模式按上文执行 `auth init`，由 CLI 尝试刷新；任务隔离 Device 模式按真实授权会话状态处理，旧 Authorization Code 模式才执行 `contract-cli auth login --as user`
 - 旧脚本仍传 `--as bot`：可以继续执行；后续新脚本请改写为 `--as app`

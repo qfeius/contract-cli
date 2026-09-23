@@ -188,7 +188,12 @@ func New(options Options) *App {
 	return app
 }
 
+/*
+Run 执行完整 CLI 参数并兼容审批矩阵交互文档别名。
+入参 ctx（context.Context）为运行上下文，args（[]string）为命令参数；返回 error 为执行错误。
+*/
 func (a *App) Run(ctx context.Context, args []string) error {
+	args = normalizeApprovalMatrixArgs(args)
 	a.updateNotice = nil
 	a.commandContext = ctx
 	a.runtimeEvidence = nil
@@ -275,6 +280,10 @@ func (a *App) runConfig(ctx context.Context, args []string) error {
 	}
 }
 
+/*
+runConfigAdd 按指定环境发现并保存配置，切换环境时清理原有认证以免串用。
+入参 ctx（context.Context）为请求上下文，args（[]string）为命令参数；返回 error。
+*/
 func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 	a.logger.Info("config add started")
 
@@ -313,12 +322,15 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
+		// 同名配置跨环境切换必须重新认证；独立 profile 不受影响。
+		resetAuthentication = resetAuthentication || existing.Environment != env
 	}
 
 	if protectedResourceURL == "" {
 		protectedResourceURL = preset.ProtectedResourceMetadataURL
 	}
-	if protectedResourceURL != "" && !isProductionOriginURL(protectedResourceURL, productionOpenPlatformOrigin, true) {
+	openOrigin, _, _ := environmentOrigins(env)
+	if protectedResourceURL != "" && !isProductionOriginURL(protectedResourceURL, openOrigin, true) {
 		err := productionProfileError(profileName)
 		a.logger.Error("config add rejected non-production metadata url", "profile", profileName, "error", err.Error())
 		return err
@@ -608,6 +620,10 @@ func (a *App) providerFor(identity config.IdentityKind) authProvider {
 	}
 }
 
+/*
+resolveEnvironment 只提供线上 prod 环境预设，非生产环境在任何网络请求前被拒绝。
+入参 name（string）为环境名；返回 environmentPreset 和 error。
+*/
 func resolveEnvironment(name string) (environmentPreset, error) {
 	switch name {
 	case "prod":

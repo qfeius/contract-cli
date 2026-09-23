@@ -63,13 +63,19 @@ func (a *App) runSkillsList(args []string) error {
 	return nil
 }
 
+/*
+runSkillsInstall 将包内 Skill 安装到目标目录，并可限定只更新一个命名 Skill。
+入参 args（[]string）为 install 参数；返回 error 为参数、选择或文件安装错误。
+*/
 func (a *App) runSkillsInstall(args []string) error {
 	flags := flag.NewFlagSet("skills install", flag.ContinueOnError)
 	flags.SetOutput(a.stderr)
 
 	var target string
+	var selectedName string
 	var force bool
 	flags.StringVar(&target, "target", "", "Codex skills target directory")
+	flags.StringVar(&selectedName, "name", "", "install only the named bundled skill")
 	flags.BoolVar(&force, "force", false, "overwrite existing installed skills")
 
 	if err := flags.Parse(args); err != nil {
@@ -84,12 +90,26 @@ func (a *App) runSkillsInstall(args []string) error {
 		a.logger.Error("resolve skills install target failed", "target", target, "error", err.Error())
 		return err
 	}
-	a.logger.Info("skills install started", "target", resolvedTarget, "force", force)
+	a.logger.Info("skills install started", "target", resolvedTarget, "name", selectedName, "force", force)
 
 	skills, err := loadBundledSkills(a.skillsFS)
 	if err != nil {
 		a.logger.Error("load bundled skills failed", "target", resolvedTarget, "error", err.Error())
 		return err
+	}
+	if selectedName != "" {
+		// 只接受包内目录名，避免把用户提供的名称直接拼接进目标路径。
+		selected := make([]skillMetadata, 0, 1)
+		for _, skill := range skills {
+			if skill.Dir == selectedName {
+				selected = append(selected, skill)
+				break
+			}
+		}
+		if len(selected) == 0 {
+			return fmt.Errorf("bundled skill %q not found", selectedName)
+		}
+		skills = selected
 	}
 	if err := os.MkdirAll(resolvedTarget, 0o755); err != nil {
 		a.logger.Error("create skills target failed", "target", resolvedTarget, "error", err.Error())

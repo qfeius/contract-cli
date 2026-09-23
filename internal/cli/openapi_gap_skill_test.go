@@ -6,6 +6,11 @@ import (
 	"testing"
 )
 
+/*
+TestOpenAPIGapSkillsCoverNewCommands 验证内置 Skills 覆盖当前结构化开放平台命令。
+入参 t（*testing.T）为 Go 测试上下文。
+返回值为空；失败通过 t.Fatalf 报告。
+*/
 func TestOpenAPIGapSkillsCoverNewCommands(t *testing.T) {
 	t.Parallel()
 
@@ -79,6 +84,8 @@ func TestOpenAPIGapSkillsCoverNewCommands(t *testing.T) {
 			fragments: []string{
 				"contract-cli rule table list",
 				"contract-cli rule table row create",
+				"contract-cli rule table import plan",
+				"contract-cli rule table import apply",
 				"`--page-size` / `--page-token` 作为 query 参数",
 				"/open-apis/rule_engine/v1",
 			},
@@ -90,8 +97,8 @@ func TestOpenAPIGapSkillsCoverNewCommands(t *testing.T) {
 				"contract-cli-event",
 				"contract-cli-rule",
 				"mdm legal list/get/create/update",
-				"rule table *",
 				"例外：`mdm vendor create/update/patch --as app` 与 `mdm legal create/update` 写接口会本地要求 `--user-id`",
+				"`rule *`（含 `approval-matrix` 别名）",
 			},
 		},
 	}
@@ -155,8 +162,9 @@ func TestOpenAPIGapSkillsDoNotKeepObsoleteCoverageClaims(t *testing.T) {
 				"`mdm legal get --code/create/update`",
 				"`mdm fixed-exchange-rate get/update`",
 				"`mdm file download`",
-				"`event outbound-ip list` 和 `rule table *`",
 				"例外：`mdm vendor create/update/patch --as app` 与 `mdm legal create/update` 写接口会本地要求 `--user-id`",
+				"`event outbound-ip list`",
+				"`rule *`（含 `approval-matrix` 别名）",
 			},
 		},
 		{

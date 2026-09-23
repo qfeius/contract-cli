@@ -20,6 +20,7 @@ assert_contains() {
 }
 
 cd "$ROOT_DIR"
+bash "$ROOT_DIR/scripts/verify-feature-baseline.sh" "$ROOT_DIR" "$VERSION"
 mkdir -p "$GO_CACHE"
 env GOCACHE="$GO_CACHE" go build -trimpath -ldflags "$LDFLAGS" -o "$TMP_DIR/contract-cli" ./cmd/contract-cli
 

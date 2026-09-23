@@ -39,6 +39,10 @@ type authorizationQRCode struct {
 	DataURI string
 }
 
+/*
+runAuthDeviceInit 发起 Device 授权并保存状态，授权链接须匹配配置环境。
+入参 ctx（context.Context）为上下文，args（[]string）为命令参数；返回 error。
+*/
 func (a *App) runAuthDeviceInit(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("auth init", flag.ContinueOnError)
 	flags.SetOutput(a.stderr)
@@ -115,7 +119,9 @@ func (a *App) runAuthDeviceInit(ctx context.Context, args []string) error {
 		a.logger.Error("device authorization init failed", "profile", profile.Name, "error", err.Error())
 		return err
 	}
-	if !isProductionOriginURL(response.VerificationURIComplete, productionAccountOrigin, true) {
+	// 授权链接必须属于 profile 所选环境，防止跨环境登录。
+	_, accountOrigin, _ := environmentOrigins(profile.Environment)
+	if !isProductionOriginURL(response.VerificationURIComplete, accountOrigin, true) {
 		return productionProfileError(profile.Name)
 	}
 	expiresAt := a.now().Add(time.Duration(response.ExpiresIn) * time.Second)

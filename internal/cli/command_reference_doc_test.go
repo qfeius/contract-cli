@@ -7,6 +7,11 @@ import (
 	"testing"
 )
 
+/*
+TestCommandReferenceDocumentCoversCurrentSupportedCommands 验证命令参考覆盖当前所有公开结构化命令。
+入参 t（*testing.T）为 Go 测试上下文。
+返回值为空；失败通过 t.Fatalf 报告。
+*/
 func TestCommandReferenceDocumentCoversCurrentSupportedCommands(t *testing.T) {
 	t.Parallel()
 
@@ -112,10 +117,13 @@ func TestCommandReferenceDocumentCoversCurrentSupportedCommands(t *testing.T) {
 		"contract-cli event outbound-ip list",
 		"contract-cli rule table list",
 		"contract-cli rule table row create",
+		"contract-cli rule table import plan",
+		"contract-cli rule table import apply",
 		"`contract approval comment list/create` 与 `contract approval task list/approve/reject` 仅支持 `--as user`",
+		"`rule *`（包括 `approval-matrix` 别名）支持 `--as user` / `--as app`",
 		"`contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`",
 		"`contract share get/batch-create`、`contract cooperation link/record/search/file`",
-		"`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *` 当前仅支持 `--as app`",
+		"`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 当前仅支持 `--as app`",
 		"`--user-id-type`",
 		"`--user-id`",
 		"传了就拼接到 query string",
@@ -215,7 +223,7 @@ func TestREADMECoversBundledSkillsAndNewAppOnlyCommands(t *testing.T) {
 		"`mdm legal get --code/create/update`",
 		"`mdm fixed-exchange-rate get/update`",
 		"`mdm file download`",
-		"`event outbound-ip list` 和 `rule table *`",
+		"`event outbound-ip list`",
 		"`mdm vendor create/update` 和 `mdm legal create/update` 会要求 `--user-id`",
 	}
 	for _, fragment := range requiredFragments {

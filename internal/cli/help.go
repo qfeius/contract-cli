@@ -5,6 +5,8 @@ import (
 	"io"
 	"strings"
 	"text/tabwriter"
+
+	"cn.qfei/contract-cli/internal/build"
 )
 
 type helpTopic struct {
@@ -187,6 +189,10 @@ func renderHelpFlags(writer io.Writer, flags []helpFlag) error {
 	return table.Flush()
 }
 
+/*
+helpRegistry 构造本地命令帮助，环境入口始终只展示 prod。
+无入参；返回 map[string]helpTopic 为命令路径到帮助主题的映射。
+*/
 func helpRegistry() map[string]helpTopic {
 	topCommands := []helpCommand{
 		{"contract-cli config add [flags]", "初始化或更新 profile"},
@@ -237,6 +243,7 @@ func helpRegistry() map[string]helpTopic {
 				"contract-cli version",
 				"contract-cli --version",
 			},
+			Notes: []string{build.FeatureBaseline()},
 		},
 	}
 
@@ -251,6 +258,7 @@ func helpRegistry() map[string]helpTopic {
 	addMDMHelp(registry)
 	addEventHelp(registry)
 	addRuleHelp(registry)
+	addRuleStructureHelp(registry)
 	return registry
 }
 
@@ -415,6 +423,10 @@ func addAuthHelp(registry map[string]helpTopic) {
 	}
 }
 
+/*
+addSkillsHelp 注册内置 Skill 命令及安装参数的帮助主题。
+入参 registry（map[string]helpTopic）为待填充的帮助索引；返回值为空。
+*/
 func addSkillsHelp(registry map[string]helpTopic) {
 	registry["skills"] = helpTopic{
 		Name:  "skills",
@@ -441,11 +453,13 @@ func addSkillsHelp(registry map[string]helpTopic) {
 		Usage:   []string{"contract-cli skills install [flags]"},
 		Flags: []helpFlag{
 			{"--target <dir>", "安装目标目录；默认 $CODEX_HOME/skills 或 ~/.codex/skills"},
+			{"--name <skill>", "只安装指定的内置 skill；默认安装全部"},
 			{"--force", "覆盖已存在的同名 skill；默认跳过"},
 		},
 		Examples: []string{
 			"contract-cli skills install",
 			"contract-cli skills install --target ~/.codex/skills",
+			"contract-cli skills install --name contract-cli-rule --force",
 			"contract-cli skills install --force",
 		},
 	}
@@ -1792,13 +1806,19 @@ func addEventHelp(registry map[string]helpTopic) {
 	}
 }
 
+/*
+addRuleHelp 注册审批矩阵原子命令与批量导入命令的纯本地帮助主题。
+入参 registry（map[string]helpTopic）为帮助主题注册表，函数会就地追加 rule table 相关条目。
+返回值为空。
+*/
 func addRuleHelp(registry map[string]helpTopic) {
 	registry["rule"] = helpTopic{
 		Name:  "rule",
 		Usage: []string{"contract-cli rule <resource> <subcommand> [flags]"},
 		Commands: []helpCommand{
-			{"contract-cli rule table <subcommand> [flags]", "app 身份操作审批矩阵规则表"},
+			{"contract-cli rule table <subcommand> [flags]", "user/app 身份操作审批矩阵规则表"},
 		},
+		Notes: []string{build.FeatureBaseline()},
 	}
 	registry["rule table"] = helpTopic{
 		Name:  "rule table",
@@ -1809,6 +1829,7 @@ func addRuleHelp(registry map[string]helpTopic) {
 			{"contract-cli rule table release [flags]", "发布规则表配置"},
 			{"contract-cli rule table column-headers list [flags]", "查询规则表列头"},
 			{"contract-cli rule table row <subcommand> [flags]", "操作规则表行"},
+			{"contract-cli rule table import <subcommand> [flags]", "生成并执行批量行导入计划"},
 		},
 	}
 	registry["rule table list"] = ruleTableHelpTopic(
@@ -1817,23 +1838,23 @@ func addRuleHelp(registry map[string]helpTopic) {
 		"contract-cli rule table list --product-id <id> --group-id <id> [flags]",
 		pageFlags(),
 		[]string{"contract-cli rule table list --profile contract --as app --product-id <product-id> --group-id <group-id> --page-size 10"},
-		[]string{"走 GET /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables。", "不接受 --input-file / --data。"},
+		[]string{"走 GET /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables。", "--page-size 必填，范围 1-100；不接受 --input-file / --data。"},
 	)
 	registry["rule table pre-release"] = ruleTableHelpTopic(
 		"rule table pre-release",
-		"预发布规则表配置。",
+		"全量读取规则行建立本地基准，再预发布并回读核验。",
 		"contract-cli rule table pre-release --product-id <id> --group-id <id> --table-id <id> [flags]",
 		concatHelpFlags(tableIDHelpFlags(), jsonBodyFlags()),
 		[]string{"contract-cli rule table pre-release --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id>"},
-		[]string{"走 PATCH /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/pre_release。", "--input-file / --data 可选；自动化样例不发送请求体。"},
+		[]string{"草稿状态走 PATCH /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/pre_release。", "服务端已为 status=0 待发布状态时，双读版本与规则行后只恢复本地基准并返回 baseline_recovered=true，不重复预发布、不改写规则行。", "--input-file / --data 可选；自动化样例不发送请求体。"},
 	)
 	registry["rule table release"] = ruleTableHelpTopic(
 		"rule table release",
-		"发布规则表配置。",
+		"要求本地预发布基准；核对版本和全量规则行无变化后发布，异常时停止并要求重新预发布确认。",
 		"contract-cli rule table release --product-id <id> --group-id <id> --table-id <id> [flags]",
 		concatHelpFlags(tableIDHelpFlags(), jsonBodyFlags()),
 		[]string{"contract-cli rule table release --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id>"},
-		[]string{"走 PATCH /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/release。", "--input-file / --data 可选；自动化样例不发送请求体。"},
+		[]string{"走 PATCH /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/release。", "本地基准丢失时先执行 pre-release；服务端仍待发布会只读恢复基准并返回 baseline_recovered=true，不改写规则行。", "--input-file / --data 可选；自动化样例不发送请求体。"},
 	)
 	registry["rule table column-headers"] = helpTopic{
 		Name:  "rule table column-headers",
@@ -1862,12 +1883,43 @@ func addRuleHelp(registry map[string]helpTopic) {
 			{"contract-cli rule table row delete <row-id> [flags]", "删除规则表行"},
 		},
 	}
-	registry["rule table row create"] = ruleTableHelpTopic("rule table row create", "创建规则表行，请求体必须是 JSON。", "contract-cli rule table row create --product-id <id> --group-id <id> --table-id <id> --input-file <path>|--data <json> [flags]", concatHelpFlags(tableIDHelpFlags(), jsonBodyFlags()), []string{"contract-cli rule table row create --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --input-file row.json"}, []string{"走 POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows。"})
+	registry["rule table row create"] = ruleTableHelpTopic("rule table row create", "创建规则表行，请求体必须是 JSON。", "contract-cli rule table row create --product-id <id> --group-id <id> --table-id <id> --input-file <path>|--data <json> [flags]", concatHelpFlags(tableIDHelpFlags(), jsonBodyFlags()), []string{"contract-cli rule table row create --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --input-file row.json"}, []string{"走 POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows。", "DEPARTMENT_COLLECTION 使用 open_department_id 字符串（od-...）；sys_department.id 数字会在本地拒绝。"})
 	registry["rule table row get"] = ruleTableHelpTopic("rule table row get", "查询规则表单行信息。", "contract-cli rule table row get <row-id> --product-id <id> --group-id <id> --table-id <id> [flags]", tableIDHelpFlags(), []string{"contract-cli rule table row get <row-id> --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id>"}, []string{"走 GET /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/{table_row_id}。", "不接受 --input-file / --data。"})
 	registry["rule table row list"] = ruleTableHelpTopic("rule table row list", "分页查询规则表行。", "contract-cli rule table row list --product-id <id> --group-id <id> --table-id <id> [flags]", concatHelpFlags(tableIDHelpFlags(), pageFlags()), []string{"contract-cli rule table row list --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --page-size 10"}, []string{"走 GET /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows。", "不接受 --input-file / --data。"})
-	registry["rule table row search"] = ruleTableHelpTopic("rule table row search", "按筛选条件分页查询规则表行，请求体必须是 JSON。", "contract-cli rule table row search --product-id <id> --group-id <id> --table-id <id> --input-file <path>|--data <json> [flags]", concatHelpFlags(tableIDHelpFlags(), pageFlags(), jsonBodyFlags()), []string{"contract-cli rule table row search --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --page-size 10 --input-file row-search.json"}, []string{"走 POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/search。", "--page-size / --page-token 作为 query 参数传递，请求体保持不变。"})
-	registry["rule table row update"] = ruleTableHelpTopic("rule table row update", "修改规则表行，请求体必须是 JSON。", "contract-cli rule table row update <row-id> --product-id <id> --group-id <id> --table-id <id> --input-file <path>|--data <json> [flags]", concatHelpFlags(tableIDHelpFlags(), jsonBodyFlags()), []string{"contract-cli rule table row update <row-id> --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --input-file row.json"}, []string{"走 PUT /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/{table_row_id}。"})
+	registry["rule table row search"] = ruleTableHelpTopic("rule table row search", "按筛选条件分页查询规则表行，请求体必须是 JSON。", "contract-cli rule table row search --product-id <id> --group-id <id> --table-id <id> --input-file <path>|--data <json> [flags]", concatHelpFlags(tableIDHelpFlags(), pageFlags(), jsonBodyFlags()), []string{"contract-cli rule table row search --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --page-size 10 --input-file row-search.json"}, []string{"走 POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/search。", "--page-size 必填且范围为 1-100；--page-size / --page-token 作为 query 参数传递，请求体保持不变。", "DEPARTMENT_COLLECTION 使用 open_department_id 字符串（od-...）；sys_department.id 数字会在本地拒绝。"})
+	registry["rule table row update"] = ruleTableHelpTopic("rule table row update", "修改规则表行，请求体必须是 JSON。", "contract-cli rule table row update <row-id> --product-id <id> --group-id <id> --table-id <id> --input-file <path>|--data <json> [flags]", concatHelpFlags(tableIDHelpFlags(), jsonBodyFlags()), []string{"contract-cli rule table row update <row-id> --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --input-file row.json"}, []string{"走 PUT /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/{table_row_id}。", "DEPARTMENT_COLLECTION 使用 open_department_id 字符串（od-...）；sys_department.id 数字会在本地拒绝。"})
 	registry["rule table row delete"] = ruleTableHelpTopic("rule table row delete", "删除规则表行。", "contract-cli rule table row delete <row-id> --product-id <id> --group-id <id> --table-id <id> [flags]", tableIDHelpFlags(), []string{"contract-cli rule table row delete <row-id> --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id>"}, []string{"走 DELETE /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/{table_row_id}。", "不接受 --input-file / --data。"})
+	registry["rule table import"] = helpTopic{
+		Name:  "rule table import",
+		Usage: []string{"contract-cli rule table import <subcommand> [flags]"},
+		Commands: []helpCommand{
+			{"contract-cli rule table import plan [flags]", "校验输入并生成不写数据的导入计划"},
+			{"contract-cli rule table import apply [flags]", "按计划逐行创建或更新矩阵行"},
+		},
+	}
+	registry["rule table import plan"] = ruleTableHelpTopic(
+		"rule table import plan",
+		"读取当前列头和全量规则行，将多行输入转换为待确认计划并校验 2000 行上限；本命令不写矩阵数据。",
+		"contract-cli rule table import plan --product-id <id> --group-id <id> [--table-id <id>] --input-file <path>|--data <json> [flags]",
+		concatHelpFlags(approvalMatrixImportPlanHelpFlags(), jsonBodyFlags()),
+		[]string{"contract-cli rule table import plan --profile contract --as app --product-id contract --group-id approve_matrix --table-id <table-id> --input-file import.json"},
+		[]string{"输入顶层为 rows；每行包含 operation(create|update)、update 所需的 row_id，以及以列名或列 ID 为键的 cells。", "未传 --table-id 时返回 status=needs_input 和候选矩阵；成功返回 status=needs_confirmation 和 plan_id。", "缺列、重名列、类型错误、目标行不存在或现有行加新增行超过 2000 时返回 status=needs_input。", "不支持 --raw。"},
+	)
+	registry["rule table import apply"] = helpTopic{
+		Name:    "rule table import apply",
+		Summary: "使用 plan_id 串行执行；写入成功后逐行回读，重试跳过已验证成功的行。",
+		Usage:   []string{"contract-cli rule table import apply --plan-id <id> [flags]"},
+		Flags:   concatHelpFlags(ruleOpenPlatformCommonFlags(), []helpFlag{{"--plan-id <id>", "必填，plan 命令返回的确认令牌"}}),
+		Examples: []string{
+			"contract-cli rule table import apply --profile contract --as app --plan-id <plan-id>",
+		},
+		Notes: []string{
+			"支持 --as user / --as app；user 需具备合同规则管理权限。",
+			"返回 success、paused、needs_verification、partial_success、failed、invalidated 或 needs_input，并附逐行结果。",
+			"结果不确定的写入不会自动重试，请先用行查询命令核对。",
+			"不接受 --input-file / --data，也不支持 --raw。",
+		},
+	}
 }
 
 func ruleTableHelpTopic(name string, summary string, usage string, extraFlags []helpFlag, examples []string, notes []string) helpTopic {
@@ -1875,15 +1927,27 @@ func ruleTableHelpTopic(name string, summary string, usage string, extraFlags []
 		Name:    name,
 		Summary: summary,
 		Usage:   []string{usage},
-		Flags: concatHelpFlags(openPlatformCommonFlags(), []helpFlag{
+		Flags: concatHelpFlags(ruleOpenPlatformCommonFlags(), []helpFlag{
 			{"--product-id <id>", "必填，规则引擎产品 ID"},
 			{"--group-id <id>", "必填，规则组 ID"},
 		}, extraFlags),
 		Examples: examples,
 		Notes: append([]string{
-			"app-only: 当前仅支持 --as app。",
+			"支持 --as user / --as app；user 需具备合同规则管理权限。",
+			"矩阵路径由开平服务端从当前用户令牌确定编辑人；--user-id 不会覆盖编辑人。",
 		}, notes...),
 	}
+}
+
+/* ruleOpenPlatformCommonFlags 返回矩阵命令的通用参数；user_id 只保留兼容解析，实际规则请求由当前令牌确定编辑人。 */
+func ruleOpenPlatformCommonFlags() []helpFlag {
+	flags := openPlatformCommonFlags()
+	for index := range flags {
+		if flags[index].Name == "--user-id <id>" {
+			flags[index].Description = "兼容解析但不发送到矩阵路径；编辑人由当前用户令牌确定"
+		}
+	}
+	return flags
 }
 
 func tableIDHelpFlags() []helpFlag {
@@ -1900,6 +1964,17 @@ func contractSearchCommonFlags() []helpFlag {
 		}
 	}
 	return flags
+}
+
+/*
+approvalMatrixImportPlanHelpFlags 返回批量计划特有的目标矩阵参数说明。
+入参为空。
+返回值（[]helpFlag）为帮助渲染使用的 flag 列表；table-id 未传时命令会返回候选矩阵。
+*/
+func approvalMatrixImportPlanHelpFlags() []helpFlag {
+	return []helpFlag{
+		{"--table-id <id>", "目标规则表 ID；未传时返回候选矩阵"},
+	}
 }
 
 func openPlatformCommonFlags() []helpFlag {

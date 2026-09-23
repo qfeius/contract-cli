@@ -194,7 +194,7 @@ contract-cli rule table query
 contract-cli rule table create-row
 contract-cli rule table update-row
 contract-cli rule table delete-row
-contract-cli rule table publish
+contract-cli rule table release
 
 contract-cli api call
 ```
@@ -619,7 +619,7 @@ contract-cli rule table query TABLE001 --input-file query.json
 contract-cli rule table create-row TABLE001 --input-file row.json
 contract-cli rule table update-row TABLE001 ROW001 --input-file row-update.json
 contract-cli rule table delete-row TABLE001 ROW001
-contract-cli rule table publish TABLE001
+contract-cli rule table release TABLE001
 ```
 
 ### 6.11 原始接口兜底命令

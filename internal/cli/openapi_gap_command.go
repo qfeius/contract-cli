@@ -539,9 +539,22 @@ func (a *App) runEvent(ctx context.Context, args []string) error {
 	return a.executeAppOpenPlatformRequest(ctx, options, http.MethodGet, "/open-apis/event/v1/outbound_ip", query, nil)
 }
 
+/*
+runRule 分发规则组、人员搜索和规则表命令，保留既有 user/app 路由。
+入参 ctx（context.Context）为请求上下文，args（[]string）为 rule 后的参数；返回 error 表示解析或调用失败。
+*/
 func (a *App) runRule(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("missing rule resource")
+	}
+	if isMatrixLookup(args[0]) || (args[0] == "employee" && len(args) > 1 && args[1] == "batch-get") {
+		return a.runMatrixExtension(ctx, args[0], args[1:])
+	}
+	if args[0] == "group" {
+		return a.runRuleStructure(ctx, "group", args[1:])
+	}
+	if args[0] == "employee" {
+		return a.runRuleStructure(ctx, "employee", args[1:])
 	}
 	if args[0] != "table" {
 		return fmt.Errorf("unknown rule resource %q", args[0])
@@ -549,11 +562,23 @@ func (a *App) runRule(ctx context.Context, args []string) error {
 	return a.runRuleTable(ctx, args[1:])
 }
 
+/*
+runRuleTable 分发审批矩阵规则表命令，并保持既有原子命令的路由不变。
+入参 ctx（context.Context）为命令执行上下文，args（[]string）为 rule table 后的命令参数。
+返回值为命令解析或执行错误；命令成功时返回 nil。
+*/
 func (a *App) runRuleTable(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("missing rule table subcommand")
 	}
 	switch args[0] {
+	case "get", "create", "update", "delete":
+		return a.runRuleStructure(ctx, "table", args)
+	case "column":
+		if len(args) > 1 && (args[1] == "patch" || args[1] == "preview") {
+			return a.runMatrixExtension(ctx, "column", args[1:])
+		}
+		return a.runRuleStructure(ctx, "column", args[1:])
 	case "list":
 		return a.runRuleTableList(ctx, args[1:])
 	case "pre-release", "release":
@@ -562,11 +587,18 @@ func (a *App) runRuleTable(ctx context.Context, args []string) error {
 		return a.runRuleTableColumnHeaders(ctx, args[1:])
 	case "row":
 		return a.runRuleTableRow(ctx, args[1:])
+	case "import":
+		return a.runApprovalMatrixImport(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown rule table subcommand %q", args[0])
 	}
 }
 
+/*
+runRuleTableList 校验审批矩阵参数并以所选 user/app 身份调用既有规则接口。
+入参 ctx（context.Context）为执行上下文、args（[]string）为命令参数。
+返回 error 为参数校验、身份解析、调用或输出错误。
+*/
 func (a *App) runRuleTableList(ctx context.Context, args []string) error {
 	parsed, err := parseArgs(args, structuredValueFlags("--product-id", "--group-id", "--page-size", "--page-token"), commonBoolFlags())
 	if err != nil {
@@ -583,13 +615,18 @@ func (a *App) runRuleTableList(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	query, err := pageQuery(parsed)
+	query, err := requiredPageQueryWithPageSizeRange(parsed, 1, 100)
 	if err != nil {
 		return err
 	}
-	return a.executeAppOpenPlatformRequest(ctx, options, http.MethodGet, ruleTableBasePath(productID, groupID), query, nil)
+	return a.executeRuleOpenPlatformRequest(ctx, options, http.MethodGet, ruleTableBasePath(productID, groupID), query, nil)
 }
 
+/*
+runRuleTablePublish 校验审批矩阵参数并以所选 user/app 身份调用既有规则接口。
+入参 ctx（context.Context）为执行上下文、args（[]string）为命令参数、action（string）为预发布或发布动作。
+返回 error 为参数校验、身份解析、调用或输出错误。
+*/
 func (a *App) runRuleTablePublish(ctx context.Context, action string, args []string) error {
 	parsed, err := parseArgs(args, structuredValueFlags("--product-id", "--group-id", "--table-id"), commonBoolFlags())
 	if err != nil {
@@ -607,11 +644,14 @@ func (a *App) runRuleTablePublish(ctx context.Context, action string, args []str
 	if err != nil {
 		return err
 	}
-	suffix := strings.ReplaceAll(action, "-", "_")
-	path := ruleTablePath(productID, groupID, tableID) + "/" + suffix
-	return a.executeAppOpenPlatformRequest(ctx, options, http.MethodPatch, path, nil, body)
+	return a.publishMatrixWithRowBaseline(ctx, options, action, ruleTablePath(productID, groupID, tableID), body)
 }
 
+/*
+runRuleTableColumnHeaders 校验审批矩阵参数并以所选 user/app 身份调用既有规则接口。
+入参 ctx（context.Context）为执行上下文、args（[]string）为命令参数。
+返回 error 为参数校验、身份解析、调用或输出错误。
+*/
 func (a *App) runRuleTableColumnHeaders(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("missing rule table column-headers subcommand")
@@ -635,7 +675,7 @@ func (a *App) runRuleTableColumnHeaders(ctx context.Context, args []string) erro
 		return err
 	}
 	path := ruleTablePath(productID, groupID, tableID) + "/table_columns/column_headers"
-	return a.executeAppOpenPlatformRequest(ctx, options, http.MethodGet, path, nil, nil)
+	return a.executeRuleOpenPlatformRequest(ctx, options, http.MethodGet, path, nil, nil)
 }
 
 func (a *App) runRuleTableRow(ctx context.Context, args []string) error {
@@ -660,6 +700,11 @@ func (a *App) runRuleTableRow(ctx context.Context, args []string) error {
 	}
 }
 
+/*
+runRuleTableRowCreate 校验审批矩阵参数并以所选 user/app 身份调用既有规则接口。
+入参 ctx（context.Context）为执行上下文、args（[]string）为命令参数。
+返回 error 为参数校验、身份解析、调用或输出错误。
+*/
 func (a *App) runRuleTableRowCreate(ctx context.Context, args []string) error {
 	parsed, err := parseArgs(args, structuredValueFlags("--product-id", "--group-id", "--table-id"), commonBoolFlags())
 	if err != nil {
@@ -673,13 +718,21 @@ func (a *App) runRuleTableRowCreate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := validateApprovalMatrixDepartmentIDs(body); err != nil {
+		return err
+	}
 	productID, groupID, tableID, err := requiredRuleTable(parsed)
 	if err != nil {
 		return err
 	}
-	return a.executeAppOpenPlatformRequest(ctx, options, http.MethodPost, ruleTablePath(productID, groupID, tableID)+"/table_rows", nil, body)
+	return a.executeRuleOpenPlatformRequest(ctx, options, http.MethodPost, ruleTablePath(productID, groupID, tableID)+"/table_rows", nil, body)
 }
 
+/*
+runRuleTableRowGet 校验审批矩阵参数并以所选 user/app 身份调用既有规则接口。
+入参 ctx（context.Context）为执行上下文、args（[]string）为命令参数。
+返回 error 为参数校验、身份解析、调用或输出错误。
+*/
 func (a *App) runRuleTableRowGet(ctx context.Context, args []string) error {
 	parsed, err := parseArgs(args, structuredValueFlags("--product-id", "--group-id", "--table-id"), commonBoolFlags())
 	if err != nil {
@@ -697,9 +750,14 @@ func (a *App) runRuleTableRowGet(ctx context.Context, args []string) error {
 		return err
 	}
 	path := ruleTablePath(productID, groupID, tableID) + "/table_rows/" + escapePathSegment(parsed.positionals[0])
-	return a.executeAppOpenPlatformRequest(ctx, options, http.MethodGet, path, nil, nil)
+	return a.executeRuleOpenPlatformRequest(ctx, options, http.MethodGet, path, nil, nil)
 }
 
+/*
+runRuleTableRowList 校验审批矩阵参数并以所选 user/app 身份调用既有规则接口。
+入参 ctx（context.Context）为执行上下文、args（[]string）为命令参数。
+返回 error 为参数校验、身份解析、调用或输出错误。
+*/
 func (a *App) runRuleTableRowList(ctx context.Context, args []string) error {
 	parsed, err := parseArgs(args, structuredValueFlags("--product-id", "--group-id", "--table-id", "--page-size", "--page-token"), commonBoolFlags())
 	if err != nil {
@@ -720,9 +778,14 @@ func (a *App) runRuleTableRowList(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return a.executeAppOpenPlatformRequest(ctx, options, http.MethodGet, ruleTablePath(productID, groupID, tableID)+"/table_rows", query, nil)
+	return a.executeRuleOpenPlatformRequest(ctx, options, http.MethodGet, ruleTablePath(productID, groupID, tableID)+"/table_rows", query, nil)
 }
 
+/*
+runRuleTableRowSearch 校验审批矩阵参数并以所选 user/app 身份调用既有规则接口。
+入参 ctx（context.Context）为执行上下文、args（[]string）为命令参数。
+返回 error 为参数校验、身份解析、调用或输出错误。
+*/
 func (a *App) runRuleTableRowSearch(ctx context.Context, args []string) error {
 	parsed, err := parseArgs(args, structuredValueFlags("--product-id", "--group-id", "--table-id", "--page-size", "--page-token"), commonBoolFlags())
 	if err != nil {
@@ -736,17 +799,25 @@ func (a *App) runRuleTableRowSearch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := validateApprovalMatrixDepartmentIDs(body); err != nil {
+		return err
+	}
 	productID, groupID, tableID, err := requiredRuleTable(parsed)
 	if err != nil {
 		return err
 	}
-	query, err := pageQuery(parsed)
+	query, err := requiredPageQueryWithPageSizeRange(parsed, 1, 100)
 	if err != nil {
 		return err
 	}
-	return a.executeAppOpenPlatformRequest(ctx, options, http.MethodPost, ruleTablePath(productID, groupID, tableID)+"/table_rows/search", query, body)
+	return a.executeRuleOpenPlatformRequest(ctx, options, http.MethodPost, ruleTablePath(productID, groupID, tableID)+"/table_rows/search", query, body)
 }
 
+/*
+runRuleTableRowUpdate 校验审批矩阵参数并以所选 user/app 身份调用既有规则接口。
+入参 ctx（context.Context）为执行上下文、args（[]string）为命令参数。
+返回 error 为参数校验、身份解析、调用或输出错误。
+*/
 func (a *App) runRuleTableRowUpdate(ctx context.Context, args []string) error {
 	parsed, err := parseArgs(args, structuredValueFlags("--product-id", "--group-id", "--table-id"), commonBoolFlags())
 	if err != nil {
@@ -760,14 +831,22 @@ func (a *App) runRuleTableRowUpdate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := validateApprovalMatrixDepartmentIDs(body); err != nil {
+		return err
+	}
 	productID, groupID, tableID, err := requiredRuleTable(parsed)
 	if err != nil {
 		return err
 	}
 	path := ruleTablePath(productID, groupID, tableID) + "/table_rows/" + escapePathSegment(parsed.positionals[0])
-	return a.executeAppOpenPlatformRequest(ctx, options, http.MethodPut, path, nil, body)
+	return a.executeRuleOpenPlatformRequest(ctx, options, http.MethodPut, path, nil, body)
 }
 
+/*
+runRuleTableRowDelete 校验审批矩阵参数并以所选 user/app 身份调用既有规则接口。
+入参 ctx（context.Context）为执行上下文、args（[]string）为命令参数。
+返回 error 为参数校验、身份解析、调用或输出错误。
+*/
 func (a *App) runRuleTableRowDelete(ctx context.Context, args []string) error {
 	parsed, err := parseArgs(args, structuredValueFlags("--product-id", "--group-id", "--table-id"), commonBoolFlags())
 	if err != nil {
@@ -785,7 +864,18 @@ func (a *App) runRuleTableRowDelete(ctx context.Context, args []string) error {
 		return err
 	}
 	path := ruleTablePath(productID, groupID, tableID) + "/table_rows/" + escapePathSegment(parsed.positionals[0])
-	return a.executeAppOpenPlatformRequest(ctx, options, http.MethodDelete, path, nil, nil)
+	return a.executeRuleOpenPlatformRequest(ctx, options, http.MethodDelete, path, nil, nil)
+}
+
+/*
+executeRuleOpenPlatformRequest 仅为审批矩阵开放双身份，其他模块继续沿用原身份策略。
+入参 ctx 为执行上下文、options 为命令选项、method/path 为接口方法和路径、query/body 为请求参数。
+返回 error 为鉴权、调用或输出错误。
+*/
+func (a *App) executeRuleOpenPlatformRequest(ctx context.Context, options commandOptions, method string, path string, query url.Values, body []byte) error {
+	return a.executeOpenPlatformCommand(ctx, options, openplatform.Request{
+		Method: method, Path: path, Query: query, Body: body, IdentityPolicy: openplatform.IdentityPolicyAny,
+	})
 }
 
 func (a *App) executeAppOpenPlatformRequest(ctx context.Context, options commandOptions, method string, path string, query url.Values, body []byte) error {
@@ -851,13 +941,18 @@ func pageQuery(parsed parsedArgs) (url.Values, error) {
 	return query, nil
 }
 
+/*
+pageQueryWithPageSizeRange 构造可选分页 query，并在传入 page-size 时校验服务端范围。
+入参 parsed（parsedArgs）为命令参数，minValue/maxValue（int）为允许的分页范围。
+返回值为包含 page_size/page_token 的 query 参数和校验错误；未传 page-size 时保留可选语义。
+*/
 func pageQueryWithPageSizeRange(parsed parsedArgs, minValue, maxValue int) (url.Values, error) {
 	query := url.Values{}
 	pageSize, err := parsed.Int("--page-size")
 	if err != nil {
 		return nil, err
 	}
-	if pageSize > 0 {
+	if parsed.HasValue("--page-size") {
 		if pageSize < minValue || pageSize > maxValue {
 			return nil, fmt.Errorf("--page-size must be between %d and %d", minValue, maxValue)
 		}
@@ -867,6 +962,18 @@ func pageQueryWithPageSizeRange(parsed parsedArgs, minValue, maxValue int) (url.
 		query.Set("page_token", value)
 	}
 	return query, nil
+}
+
+/*
+requiredPageQueryWithPageSizeRange 校验必须提供的分页大小并构造分页 query。
+入参 parsed（parsedArgs）为命令参数，minValue/maxValue（int）为服务端允许的分页范围。
+返回值为包含 page_size/page_token 的 query 参数和校验错误。
+*/
+func requiredPageQueryWithPageSizeRange(parsed parsedArgs, minValue, maxValue int) (url.Values, error) {
+	if _, err := requiredParsedValue(parsed, "--page-size"); err != nil {
+		return nil, err
+	}
+	return pageQueryWithPageSizeRange(parsed, minValue, maxValue)
 }
 
 func rejectExplicitNonAppIdentity(options commandOptions, path string) error {

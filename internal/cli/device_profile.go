@@ -9,6 +9,10 @@ import (
 	"cn.qfei/contract-cli/internal/credential"
 )
 
+/*
+loadDeviceAwareProfile 加载配置或从加密快照恢复，并校验待授权状态的环境。
+入参 profileName（string）为配置名；返回 config.Profile 和 error。
+*/
 func (a *App) loadDeviceAwareProfile(profileName string) (config.Profile, error) {
 	profile, found, err := a.store.LookupProfile(profileName)
 	if err != nil {
@@ -67,7 +71,7 @@ func (a *App) loadDeviceAwareProfile(profileName string) (config.Profile, error)
 		a.logger.Error("reject non-production Device profile snapshot", "profile", normalizedProfileName, "error", err.Error())
 		return config.Profile{}, err
 	}
-	if err := validateProductionPendingTransaction(normalizedProfileName, stored.Pending); err != nil {
+	if err := validateProductionPendingTransaction(normalizedProfileName, stored.Pending, profile.Environment); err != nil {
 		a.logger.Error("reject non-production Device pending state during profile restore", "profile", normalizedProfileName, "error", err.Error())
 		return config.Profile{}, err
 	}

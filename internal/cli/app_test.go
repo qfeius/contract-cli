@@ -666,6 +666,10 @@ description: "contract-cli auth skill"
 # Auth
 `
 
+/*
+testSkillsFS 构造安装测试使用的包内 Skill 文件集合，覆盖普通规则技能和被隐藏的接口技能。
+入参为空；返回 fstest.MapFS 为无需访问真实文件系统的 Skill 测试源。
+*/
 func testSkillsFS() fstest.MapFS {
 	return fstest.MapFS{
 		"auth/SKILL.md": {
@@ -689,6 +693,18 @@ description: "contract commands skill"
 		},
 		"contract-cli-contract/references/commands.md": {
 			Data: []byte("# Commands\n"),
+		},
+		"contract-cli-rule/SKILL.md": {
+			Data: []byte(`---
+name: contract-cli-rule
+version: 1.0.0
+description: "rule commands skill"
+---
+
+# Rule
+
+contract-cli rule table import get|pause|resume|verify|cancel
+`),
 		},
 		"contract-cli-api-call/SKILL.md": {
 			Data: []byte(`---
@@ -805,6 +821,57 @@ func TestSkillsInstallForceOverwritesExistingSkill(t *testing.T) {
 		t.Fatalf("skills install --force error = %v", err)
 	}
 	assertFileContent(t, filepath.Join(target, "auth", "SKILL.md"), skillWithVersion(testAuthSkill, "1.2.3"))
+}
+
+/*
+TestSkillsInstallForceOnlySelectedSkill 验证定向更新规则技能时仅替换目标目录并写入当前 CLI 版本。
+入参 t（*testing.T）为测试上下文；返回值为空，断言失败时报告测试错误。
+*/
+func TestSkillsInstallForceOnlySelectedSkill(t *testing.T) {
+	originalVersion := build.Version
+	build.Version = "1.2.3"
+	t.Cleanup(func() { build.Version = originalVersion })
+
+	target := filepath.Join(t.TempDir(), "skills")
+	for name, content := range map[string]string{"auth": "local custom auth\n", "contract-cli-rule": "stale rule skill\n"} {
+		dir := filepath.Join(target, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stdout := &bytes.Buffer{}
+	app := cli.New(cli.Options{Stdout: stdout, Stderr: &bytes.Buffer{}, Store: config.NewStore(t.TempDir()), SkillsFS: testSkillsFS()})
+	if err := app.Run(context.Background(), []string{"skills", "install", "--target", target, "--name", "contract-cli-rule", "--force"}); err != nil {
+		t.Fatal(err)
+	}
+	assertFileContent(t, filepath.Join(target, "auth", "SKILL.md"), "local custom auth\n")
+	assertFileContent(t, filepath.Join(target, "contract-cli-rule", "SKILL.md"), "---\nname: contract-cli-rule\nversion: 1.2.3\ndescription: \"rule commands skill\"\n---\n\n# Rule\n\ncontract-cli rule table import get|pause|resume|verify|cancel\n")
+	if strings.Contains(stdout.String(), "Installed skill: auth") || !strings.Contains(stdout.String(), "Installed skill: contract-cli-rule") {
+		t.Fatalf("unexpected install output: %s", stdout.String())
+	}
+}
+
+/*
+TestSkillsInstallRejectsUnknownNameWithoutCreatingTarget 验证未知或路径型 Skill 名称会在创建目标目录前被拒绝。
+入参 t（*testing.T）为测试上下文；返回值为空，断言失败时报告测试错误。
+*/
+func TestSkillsInstallRejectsUnknownNameWithoutCreatingTarget(t *testing.T) {
+	for _, name := range []string{"missing-skill", "../auth"} {
+		t.Run(name, func(t *testing.T) {
+			target := filepath.Join(t.TempDir(), "skills")
+			app := cli.New(cli.Options{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, Store: config.NewStore(t.TempDir()), SkillsFS: testSkillsFS()})
+			err := app.Run(context.Background(), []string{"skills", "install", "--target", target, "--name", name, "--force"})
+			if err == nil || !strings.Contains(err.Error(), "not found") {
+				t.Fatalf("unknown skill error=%v", err)
+			}
+			if _, statErr := os.Stat(target); !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("unknown skill created target: %v", statErr)
+			}
+		})
+	}
 }
 
 func TestSkillsInstallDefaultsToCodexHome(t *testing.T) {

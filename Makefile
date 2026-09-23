@@ -15,6 +15,7 @@ build:
 	./build.sh
 
 install:
+	scripts/verify-feature-baseline.sh "$(CURDIR)" "$(VERSION)"
 	go install -trimpath -ldflags "$(LDFLAGS)" $(MAIN_PACKAGE)
 
 release-assets:
@@ -30,6 +31,7 @@ release-script-check:
 	tests/release/release-beta-script.sh
 	tests/release/release-script.sh
 	tests/release/build-flags.sh
+	tests/release/feature-baseline.sh
 
 release-check: test
 	tests/cli_e2e/smoke.sh
@@ -37,6 +39,7 @@ release-check: test
 	tests/release/local-install.sh
 	tests/release/release-beta-script.sh
 	tests/release/build-flags.sh
+	tests/release/feature-baseline.sh
 
 release-snapshot:
 	goreleaser release --snapshot --clean

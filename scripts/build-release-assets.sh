@@ -9,6 +9,13 @@ OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/release-assets}"
 GO_CACHE="${GOCACHE:-/tmp/contract-cli-go-build-cache}"
 COMMIT="${COMMIT:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 DATE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+# 历史联调开关不再开放；所有版本（包括预发布包）只构建 prod 能力。
+if [[ "${ENABLE_TEST:-false}" != "false" ]]; then
+  echo "ENABLE_TEST is no longer supported; builds only support prod" >&2
+  exit 1
+fi
+
+bash "$ROOT_DIR/scripts/verify-feature-baseline.sh" "$ROOT_DIR" "$VERSION"
 LDFLAGS="-s -w -X cn.qfei/contract-cli/internal/build.Version=${VERSION} -X cn.qfei/contract-cli/internal/build.Commit=${COMMIT} -X cn.qfei/contract-cli/internal/build.Date=${DATE}"
 
 TARGETS=(

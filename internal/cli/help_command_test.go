@@ -14,6 +14,11 @@ import (
 	"cn.qfei/contract-cli/internal/config"
 )
 
+/*
+TestHelpRequestsRenderExpectedTopics 验证各级帮助请求展示当前命令参数与关键约束。
+入参 t（*testing.T）为 Go 测试上下文。
+返回值为空；失败通过 t.Fatalf 报告。
+*/
 func TestHelpRequestsRenderExpectedTopics(t *testing.T) {
 	t.Parallel()
 
@@ -179,6 +184,43 @@ func TestHelpRequestsRenderExpectedTopics(t *testing.T) {
 			},
 		},
 		{
+			name: "approval matrix import plan help",
+			args: []string{"rule", "table", "import", "plan", "--help"},
+			contains: []string{
+				"rule table import plan",
+				"--product-id <id>",
+				"--table-id <id>",
+				"--input-file <path>",
+				"status=needs_confirmation",
+				"不支持 --raw",
+			},
+		},
+		{
+			name:        "contract rule group help hides create",
+			args:        []string{"rule", "group", "--help"},
+			contains:    []string{"rule group get", "approve_matrix"},
+			notContains: []string{"rule group create"},
+		},
+		{
+			name:     "contract table create help names visible group",
+			args:     []string{"rule", "table", "create", "--help"},
+			contains: []string{"--group-id approve_matrix"},
+		},
+		{
+			name: "approval matrix import apply help",
+			args: []string{"rule", "table", "import", "apply", "--help"},
+			contains: []string{
+				"rule table import apply",
+				"--plan-id <id>",
+				"partial_success",
+				"支持 --as user / --as app",
+			},
+			notContains: []string{
+				"--product-id <id>",
+				"--input-file <path>",
+			},
+		},
+		{
 			name: "mdm fixed exchange rate help",
 			args: []string{"mdm", "fixed-exchange-rate", "get", "--help"},
 			contains: []string{
@@ -334,7 +376,9 @@ func TestHelpRequestsRenderExpectedTopics(t *testing.T) {
 			contains: []string{
 				"skills install",
 				"--target <dir>",
+				"--name <skill>",
 				"--force",
+				"contract-cli skills install --name contract-cli-rule --force",
 			},
 		},
 	}
@@ -406,6 +450,11 @@ func TestHelpDoesNotTriggerProfilesHTTPUpdateOrLogs(t *testing.T) {
 	}
 }
 
+/*
+TestAllCurrentHelpTopicsRender 验证注册表中的现有帮助主题都能离线渲染。
+入参 t（*testing.T）为 Go 测试上下文。
+返回值为空；失败通过 t.Fatalf 报告。
+*/
 func TestAllCurrentHelpTopicsRender(t *testing.T) {
 	t.Parallel()
 
@@ -526,6 +575,9 @@ func TestAllCurrentHelpTopicsRender(t *testing.T) {
 		"rule table row search",
 		"rule table row update",
 		"rule table row delete",
+		"rule table import",
+		"rule table import plan",
+		"rule table import apply",
 	}
 
 	for _, topic := range topics {

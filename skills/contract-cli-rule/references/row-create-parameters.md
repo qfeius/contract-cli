@@ -3,7 +3,7 @@
 本页专用于 `contract-cli rule table row create`。
 
 - 接口：`POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{table_id}/table_rows`
-- 身份：仅 `app`
+- 身份：`user` / `app`（user 用于 contract 产品，需规则管理权限）
 - 请求体：JSON 必填，`--input-file` 与 `--data` 二选一
 - 官方 OpenAPI：[矩阵-创建规则表行](https://docs.qfei.cn/375916617e0.md)
 - 校验基线：`contract-cli` 当前分支；CLM `master@334c18fc2e` 存在对应实现时，以 Controller、DTO 和业务校验补充官方规格。
@@ -27,8 +27,8 @@
 | --input-file | $body | JSON file | 二选一必填 | 从文件读取 JSON；与 `--data` 互斥。 |
 | --data | $body | JSON string | 二选一必填 | 内联 JSON；与 `--input-file` 互斥。 |
 | --profile | 本地上下文 | string | 可选 | 不传时使用当前 profile。 |
-| --as | 本地上下文 | enum | 可选 | 仅支持 `app`；不传时使用 profile 默认身份。 |
-| --user-id | $query.user_id | string | 可选 | 传入时透传；MDM create/update 除外。 |
+| --as | 本地上下文 | enum | 可选 | 支持 `user` / `app`；不传时使用 profile 默认身份。 |
+| --user-id | $query.user_id | string | 可选 | 矩阵路径会忽略该参数；编辑人由当前用户令牌身份确定。 |
 | --output | CLI 输出 | enum | 可选 | `json`、`yaml` 或 `table`；默认 `json`。 |
 | --raw | CLI 输出 | boolean | 可选 | 原样输出服务端响应 body。 |
 
@@ -42,10 +42,10 @@
 | table_cells[].table_cell_content | object | 必填 | 单元格内容，六个字段与六种类型进行映射，每个单元格只能填充与单元格内容类型对应的字段；注意其他字段应为 null |
 | table_cells[].table_cell_content.bool | boolean | 可选 | 布尔值示例值：true |
 | table_cells[].table_cell_content.collection | array<string> | 可选 | 集合示例值：["element1"] |
-| table_cells[].table_cell_content.department_collection | array<string> | 可选 | 部门集合示例值：["od-sdwerdfvdc"] |
-| table_cells[].table_cell_content.employee_collection | array<string> | 可选 | 人员集合示例值：["ou-sdwerdfvdc"] |
+| table_cells[].table_cell_content.department_collection | array<string> | 可选 | 部门 `open_department_id`，例如 ["od-1b1b803a7df98989bf457d9ba203c350"]；不要传 `sys_department.id` 数字 |
+| table_cells[].table_cell_content.employee_collection | array<int64> | 可选 | 人员正整数外部 ID，例如 [7113921696628736004] |
 | table_cells[].table_cell_content.role_collection | array<string> | 可选 | 角色集合示例值：["123520234"] |
-| table_cells[].table_cell_content.number | number | 可选 | 数值示例值：1 |
+| table_cells[].table_cell_content.number | decimal | 可选 | 后端 BigDecimal，整数最多 30 位、小数最多 8 位，示例：1000.50 |
 | table_cells[].table_cell_content.string | string | 可选 | 字符串值示例值："strDemo" |
 | table_cells[].table_cell_content_type | string | 必填 | "单元格内容类型，需与规则表列头中的单元格内容类型保持一致示例值：""EMPLOYEE_COLLECTION""可选值有：<br>STRING：字符串<br>NUMBER：数值<br>BOOLEAN：布尔<br>COLLECTION：集合<br>EMPLOYEE_COLLECTION：人员集合<br>DEPARTMENT_COLLECTION：部门集合<br>ROLE_COLLECTION：角色集合类型" |
 | table_cells[].table_column_id | string | 必填 | 规则表列 id示例值："7113921335113285631" |
@@ -53,7 +53,7 @@
 ## 枚举与约束
 
 - 可调用此接口在规则表最下方添加行，添加时可同时创建单元格信息，接口只会创建入参中指定的单元格，对其它单元格无效。<br>单元格对应的列 id，单元格内容类型需与对应的规则表列头数据保持一致，列头数据可调用查询规则表列头信息得到。
-- `table_cells[].table_cell_content`（object，必填）：单元格内容，六个字段与六种类型进行映射，每个单元格只能填充与单元格内容类型对应的字段；注意其他字段应为 null
+- `table_cells[].table_cell_content`（object，必填）：单元格内容，六个字段与六种类型进行映射，每个单元格只能填充与单元格内容类型对应的字段；注意其他字段应为 null。部门集合使用 `open_department_id` 字符串，人员集合使用正整数外部 ID。
 - `table_cells[].table_cell_content_type`（string，必填）："单元格内容类型，需与规则表列头中的单元格内容类型保持一致示例值：""EMPLOYEE_COLLECTION""可选值有：<br>STRING：字符串<br>NUMBER：数值<br>BOOLEAN：布尔<br>COLLECTION：集合<br>EMPLOYEE_COLLECTION：人员集合<br>DEPARTMENT_COLLECTION：部门集合<br>ROLE_COLLECTION：角色集合类型"
 - 官方参数 `department_id_type`（query，可选）当前没有对应 CLI flag。
 
@@ -74,8 +74,8 @@ contract-cli rule table row create --product-id contract --group-id approve_matr
         "collection": null,
         "department_collection": null,
         "employee_collection": [
-          "ou-sdwerdfvdc",
-          "ou-ewrewdfsdvc"
+          7113921696628736004,
+          7113921696628736005
         ],
         "role_collection": null,
         "number": null,
@@ -93,3 +93,5 @@ contract-cli rule table row create --product-id contract --group-id approve_matr
 - 官方规格路径：`POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows`
 - CLI 路径表达：`POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{table_id}/table_rows`；示例 ID 或占位名已统一为 CLI 名称。
 - 本页描述请求参数；响应 envelope 和输出格式遵循共享 Skill。
+
+本次代码校准：人员字段按正整数外部 ID 处理；部门字段按 `open_department_id` 字符串（`od-...`）处理；NUMBER 为 `BigDecimal`（30 位整数、8 位小数）；需部署对应后端。原子命令继续透传 JSON，调用前按后端类型构造数据。

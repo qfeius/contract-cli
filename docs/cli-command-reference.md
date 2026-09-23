@@ -1,13 +1,17 @@
 # contract-cli 命令文档
 
+审批矩阵 `pre-release/release` 已内置全量分页规则行基准检查：预发布前保存内容，正式发布前按行 ID、列 ID 比较，忽略返回顺序并保留数字精度。基准绑定环境、身份、矩阵及预发布版本；异常或变化时停止，需重新预发布并确认。本地基准丢失但服务端 `status=0` 时，pre-release 双读版本与规则行后只恢复基准并返回 `baseline_recovered=true`，不重复预发布或改写规则行。仅核对规则行，不提供原子并发保护，不依赖 snapshot。
+
 本文档汇总当前代码里已经实际支持的 `contract-cli` 命令，作为后续继续扩展 app 接口和新业务命令的基线。
 
 ## 当前状态
 
-- 当前仅内置 `prod` 环境预设；正式包默认使用 `prod`：`contract-cli config add --env prod --name contract`
+- 当前仅内置 `prod` 环境预设；历史 test/blue/dev profile 和对应网络端点会在请求前被拒绝，不自动迁移凭据。首次配置：`contract-cli config add --env prod --name contract`
 - `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是当前同时支持 `user` 与 `app` 的结构化业务命令
-- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *` 当前仅支持 `--as app`
+- `rule *`（包括 `approval-matrix` 别名）支持 `--as user` / `--as app`；user 当前限 contract 产品且需要合同规则管理权限。
+- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 当前仅支持 `--as app`
 - `contract search-fields`、`contract approval comment list/create` 与 `contract approval task list/approve/reject` 仅支持 `--as user`，调用人固定来自个人 Token
+- 除上述双身份和 app-only 能力外，当前其他结构化业务命令仍只支持 `--as user`
 - `app` 目前已经支持登录、状态查看、登出、默认身份切换
 - 推荐使用 `npx skills add qfeius/contract-cli -y -g` 安装跨 Agent 平台 skills；`contract-cli skills install` 保留为 CLI 内置兜底
 - `update check` 支持手动检查 npm 远端版本；默认输出文本，带 `--json` 时返回飞书式 JSON；CLI 会为符合条件的普通命令按 24 小时缓存检查远端版本，并在 JSON object 输出中注入 `_notice.update`
@@ -73,8 +77,9 @@ contract-cli contract get <contract-id> --help
 - `contract ...`、`mdm ...` 结构化命令大多默认只支持 `--as user`
 - `/open-apis/contract/v1/mcp/...` 路径大多仍只支持 `--as user`
 - `contract search-fields` 只支持 user，省略 `--as` 时也默认 user，不跟随 profile 的 app 默认身份。
-- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit`、`contract resubmit`、`contract patch`、`contract delete`、`contract print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、新增写入和扩展查询型 `mdm *`、`event outbound-ip list` 和 `rule table *` 当前仅支持 `--as app`
+- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit`、`contract resubmit`、`contract patch`、`contract delete`、`contract print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、新增写入和扩展查询型 `mdm *`、`event outbound-ip list` 当前仅支持 `--as app`
 - `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是例外：
+- `rule *`（包括 `approval-matrix` 别名）也支持 `--as user|app`，但 user 对 contract 产品需要合同规则管理权限。
   - `contract get --as user` 走 MCP 路径 `/open-apis/contract/v1/mcp/contracts/{contract_id}`
   - `contract get --as app` 走开放平台路径 `/open-apis/contract/v1/contracts/{contract_id}`
   - `--as user` 走 MCP 路径 `/open-apis/contract/v1/mcp/contracts/search`
@@ -177,7 +182,7 @@ contract-cli config add --env prod --name contract
 
 #### `contract-cli version`
 
-用途：查看当前 CLI 版本、commit 和构建时间。
+用途：查看当前 CLI 版本、commit、构建时间和功能基线。审批矩阵扩展基线为 `approval-matrix-extensions`，自 `1.8.3-test.13`（提交 `61d8aa6`）起包含新增矩阵命令。
 
 命令：
 
@@ -303,13 +308,16 @@ npx skills add qfeius/contract-cli -y -g
 ```bash
 contract-cli skills install
 contract-cli skills install --target ~/.codex/skills
+contract-cli skills install --name contract-cli-rule --force
 contract-cli skills install --force
 ```
 
 支持参数：
 
 - `--target`：安装目标目录；默认优先使用 `$CODEX_HOME/skills`，否则使用 `~/.codex/skills`
+- `--name`：只安装指定的内置 Skill，例如 `contract-cli-rule`；不传时处理全部
 - `--force`：覆盖已存在的同名 skill；默认不覆盖，会跳过已有目录
+- 更新本地规则 Skill 时建议组合 `--name contract-cli-rule --force`，仅替换该目录；若有本地自定义内容，先备份。单独使用 `--force` 会覆盖所有同名内置 Skill
 
 执行结果：
 
@@ -1753,28 +1761,77 @@ contract-cli event outbound-ip list --profile contract --as app --page-size 10 -
 
 ### 8. 审批矩阵规则表命令
 
-这一组命令当前全部仅支持 `--as app`，公共定位参数是 `--product-id`、`--group-id`，涉及单表时再传 `--table-id`。
+矩阵接口返回 HTTP 200 但 JSON 业务 `code` 非 `0` 时，CLI 保留服务端响应并返回非零退出码；`code: 0` 时返回成功。
+
+完整的人工验收步骤见 [审批矩阵 CLI 业务场景测试清单](approval-matrix-cli-test-scenarios.md)。
+
+这一组命令支持 `--as user` / `--as app`；user 当前用于 contract 产品，须具备合同规则管理权限，不会自动降级为 app。公共定位参数是 `--product-id`、`--group-id`，涉及单表时再传 `--table-id`。contract 产品页面只展示 `approve_matrix`：CLI 阻断该产品的 `rule group create`（含 `approval-matrix` 别名），新建矩阵时也要求 `--group-id approve_matrix`；其他产品的原有创建能力不变。`approval-matrix publish` 和 `approval-matrix table publish` 是 `rule table release` 的兼容入口。
 
 | 命令 | 方法与路径 | 请求体 |
 | --- | --- | --- |
-| `rule table list` | `GET /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables` | 不接受 |
+| `rule group get` | `GET /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}` | 不接受 |
+| `rule employee search` | `POST .../products/{product_id}/groups/{group_id}/employees/search` | 只读搜索，必填：param |
+| `rule table create` | `POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables` | 必填：name；编码和策略可选 |
+| `rule table get/update/delete` | `GET/PUT/DELETE .../rule_tables/{rule_table_id}` | 仅 update 必填 JSON；name 必填，编码不变 |
+| `rule table column add` | `POST .../rule_tables/{rule_table_id}/table_columns` | 必填：base_table_column_id/direction |
+| `rule table column update/update-condition/update-result` | `PUT .../table_columns/{table_column_id}` | 必填；条件/结果共用接口 |
+| `rule table column delete` | `DELETE .../table_columns/{table_column_id}` | 不接受 |
+| `rule table import get/pause/resume/verify/cancel` | 本地读取、暂停、恢复、只读核验或取消计划 | 不接受，使用 --plan-id |
+| `rule table list` | `GET /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables` | 不接受；`--page-size` 必填，范围 1-100 |
 | `rule table pre-release` | `PATCH /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/pre_release` | 可选 |
 | `rule table release` | `PATCH /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/release` | 可选 |
 | `rule table column-headers list` | `GET /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_columns/column_headers` | 不接受 |
 | `rule table row create` | `POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows` | 必填 |
 | `rule table row get` | `GET /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/{table_row_id}` | 不接受 |
 | `rule table row list` | `GET /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows` | 不接受 |
-| `rule table row search` | `POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/search` | 必填 |
+| `rule table row search` | `POST /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/search` | JSON 必填；`--page-size` 必填，范围 1-100 |
 | `rule table row update` | `PUT /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/{table_row_id}` | 必填 |
 | `rule table row delete` | `DELETE /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/table_rows/{table_row_id}` | 不接受 |
+| `rule table import plan` | 读取列头和全部分页规则行后本地生成计划 | 必填，多行 `rows` 输入 |
+| `rule table import apply` | 对比行快照，逐行调用 create/update 并回读核验 | 不接受；读取本地 `plan_id` |
 
 示例：
 
 ```bash
 contract-cli rule table list --profile contract --as app --product-id <product-id> --group-id <group-id> --page-size 10
+contract-cli rule employee search --profile contract --as user --product-id contract --group-id approve_matrix --input-file employee-search.json
 contract-cli rule table row create --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --input-file row.json
 contract-cli rule table row delete <row-id> --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id>
+contract-cli rule table import plan --profile contract --as app --product-id contract --group-id approve_matrix --table-id <table-id> --input-file import.json
+contract-cli rule table import apply --profile contract --as app --plan-id <plan-id>
 ```
+
+批量导入说明：
+
+- Agent 接收业务 Excel、表格或字段资料时，先识别矩阵用于审批路由、协商自动邀请还是其他场景；用途不明确先询问，明确前不创建矩阵、不改列、不生成或执行导入计划。业务资料只是行数据来源，不视为完整结构定义。协商自动邀请必须先确认 `合同类型` 条件列存在且为 `value_type=COLLECTION`；缺失或类型不符时，结构变更单独确认并在变更后重读列头。
+
+- 矩阵和列 ID 通过 `rule table get` 或 `rule table column-headers list` 获取。若响应中包含既有 `value_id/value_code/value_name/value_type`，更新时原样复用；新增或未绑定列省略 `value_*`，不根据列名推测业务元素 ID。
+
+- 人员姓名先通过 `rule employee search` 解析；请求 `{"param":"赵少帅","group_code":"approve_matrix"}`，可选 `group_code` 必须与 `--group-id` 一致，省略或 null 兼容旧请求；返回候选 `employee_id/name/email/department_name/status/selectable`。仅采用 `selectable=true`，重名先确认。ID 是十进制字符串形式的矩阵外部人员 ID，固定 `user_id_type=user_id`；不直接复用页面内部编号。详见 [人员搜索参数](../skills/contract-cli-rule/references/employee-search-parameters.md)。
+
+- 新增结构命令字段见 [结构接口参数](../skills/contract-cli-rule/references/structure-parameters.md)。`approval-matrix` 是对应 `rule` 命令的兼容入口，支持 user/app。
+- 规则表总列数上限为 12，优先级列和备注列固定占 2 列，条件列与结果列合计最多 10 列。规划结构时先校验 `目标条件列数 + 目标结果列数 + 2 <= 12`；`rule table column add` 会先查询当前列头，在当前总数达到 12 时本地阻断，不发送新增写请求。服务端错误码 20303 仍是并发变化场景的最终保护。
+- 人员批量值使用正 int64 外部 ID（数字或十进制字符串输入，发送为数字）；部门规则行与 import plan 统一使用 `open_department_id` 字符串（形如 `od-...`）并原样发送。`department search` 的可选候选直接返回该字段；兼容的数字 `department_id` 仅作为 `department batch-get` 查询键，用于回查 `open_department_id`，不可直接写入规则行。NUMBER 支持整数 30 位、小数 8 位，导入显式 null 清空单元格，省略字段保持不变。
+- `apply --rows 1,3 --batch-size 10` 支持局部确认和分批执行；get 查询本地进度，pause 在当前行结束后停批，resume 清除暂停标记，verify 只读重试回读，cancel 取消后续操作。列头或全量行快照变化、24 小时过期返回 invalidated，结果不确定立即停止后续行。
+- `import plan` 的输入顶层为 `rows`；每行包含可选 `operation`、更新所需的 `row_id`，以及以列名或列 ID 为键的 `cells`。未传 `--table-id` 时返回已有矩阵候选项和 `status=needs_input`。
+- `plan` 查询列头和全部规则行，在本地做映射、目标行和 2000 行容量检查，不写矩阵。校验通过返回 `status=needs_confirmation` 与 `plan_id`；校验失败返回 `status=needs_input`。
+- `import apply` 将 `plan_id` 作为确认令牌，串行逐行写入并回读；回读吻合才记成功，失败时进入 `needs_verification` 并停批，再次执行同一计划时跳过已验证成功行。`partial_success`、`failed` 和 `invalidated` 会在保留结构化结果后返回非零退出码。
+- 矩阵写请求的编辑人由开平服务端从当前 Bearer 用户身份解析。使用 `--as user` 时，CLI 发送 `X-Qfei-Identity: user` 并移除 `--user-id` 对应的 query，避免把审批人 ID 或其他人员 ID 作为编辑人；`--as app` 记录应用/系统身份。
+- 写入结果不确定先用 `row get/list/search` 核对，停止后续写入，不自动重试。
+- 两个批量命令固定返回结构化状态，不支持 `--raw`。
+- 完整输入契约和兼容性设计见 [审批矩阵 CLI 集成技术方案](approval-matrix-cli-technical-design.md)。
+
+2026-09-14 配套命令（均支持 user/app）：
+
+| 命令 | 用途 |
+| --- | --- |
+| `rule employee batch-get` | 外部人员 ID 回读 |
+| `rule department search` / `rule department batch-get` | 部门搜索与回读 |
+| `rule role search` / `rule role batch-get` | 角色搜索与回读 |
+| `rule symbol query` / `rule loop-function query` | CLI 内置的当前类型符号、后端循环函数 |
+| `rule table column preview` / `rule table column patch` | 变更预检和局部更新 |
+
+方法、路径和请求示例见 [配套查询及版本保护](../skills/contract-cli-rule/references/configuration-completion.md)。无需新增 SQL；行写入仍调用原 CRUD。旧 guarded 计划已停用，应先核验已成功行再重新计划。条件类型与运算符由 BPM 定义，`rule symbol query` 使用 CLI 内置映射并提交其中的真实 symbol；该查询不调用 `/symbols/query`，无需 `product/group/profile` 或额外业务枚举数据源。
 
 ## 后续扩展 app 接口时的建议落点
 
