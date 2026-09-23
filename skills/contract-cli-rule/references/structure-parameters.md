@@ -7,7 +7,6 @@
 | 命令 | HTTP | 路径（前缀 `/open-apis/rule_engine/v1/products/{product_id}`） | 必填定位 |
 | --- | --- | --- | --- |
 | `rule group get` | GET | `/groups/{group_id}` | product-id, group-id |
-| `rule group create` | POST | `/groups` | product-id |
 | `rule table create` | POST | `/groups/{group_id}/rule_tables` | product-id, group-id |
 | `rule table get/update/delete` | GET/PUT/DELETE | `/groups/{group_id}/rule_tables/{rule_table_id}` | product-id, group-id, table-id |
 | `rule table column add` | POST | `/groups/{group_id}/rule_tables/{rule_table_id}/table_columns` | product-id, group-id, table-id |
@@ -15,15 +14,18 @@
 
 ## 规则组
 
-创建请求：`{"group_id":"approval_team","name":"审批规则组","description":"说明"}`。
-group_id 必填，允许 `[A-Za-z_0-9#]{1,30}`；name 必填且最多 100 字符；description 最多 300 字符。后端检查租户/产品和组编码重复。
+contract 产品页面只展示固定规则组 `approve_matrix`。本技能仅查询该组，不创建新组；`rule group create` 对 contract 产品在 CLI 执行层被阻断。已知其他组的只读查询仍可用于排查。
 
 ## 矩阵定义
 
-创建/更新请求：`{"name":"采购矩阵","rule_table_id":"purchase","description":"采购规则","match_policy":0,"node_repetition_policy":0}`。
+contract 产品新建矩阵必须使用 `--group-id approve_matrix`；CLI 会在发送请求前拒绝其他组，避免出现页面不可见的矩阵。
+
+创建请求不传 `rule_table_id`：`{"name":"采购矩阵","description":"采购规则","match_policy":0,"node_repetition_policy":0}`。
+
+更新请求通过路径中的矩阵 ID 定位，可省略请求体中的 `rule_table_id`：`{"name":"采购矩阵","description":"采购规则","match_policy":0,"node_repetition_policy":0}`。
 
 - name 必填且最多 100 字符；description 可选，最多 300 字符。
-- rule_table_id 为对外编码，创建时省略由服务端生成；更新时省略或与路径一致，代码不可改。
+- `rule_table_id` 是服务端生成的对外矩阵 ID。创建前不向用户索取或根据名称生成；创建返回后内部保存。普通创建确认和成功回复不主动展示，遇到同名/多状态定位、排障、组合操作部分完成或用户明确查询时可以展示。更新时省略或与路径一致，已有 ID 不可修改。
 - match_policy、node_repetition_policy 接受 0..2；具体命中策略含义按已确认后端枚举选择，勿根据中文标签猜数字。
 - 节点去重策略：0 不去重、1 前去重、2 后去重。更新省略策略保留原值；description 省略不保证保留，应先 get 后带回。
 - 创建初始化默认列及一条空白行。创建后先 `row list --page-size 10`；首条规则优先用 `row update <blank-row-id>` 填充这条默认行，后续规则再用 `row create` 追加，避免留下无业务数据的空白行。get 返回 id/name/description/status/prepared_version/release_version/match_policy/node_repetition_policy/column_headers。
@@ -33,12 +35,16 @@ group_id 必填，允许 `[A-Za-z_0-9#]{1,30}`；name 必填且最多 100 字符
 
 ## 条件列和结果列
 
+容量约束：规则表总列数上限为 12，服务端同时统计条件列、结果列、优先级列和备注列；优先级、备注固定占 2 列，所以条件列与结果列合计最多 10 列。开始结构变更前必须先读取当前列头，并按完整目标方案验证 `目标条件列数 + 目标结果列数 + 2 <= 12`。例如 10 个条件列加 2～3 个结果列总计 14～15 列，需在首次写入前停止并调整方案。`column add` 会额外读取一次列头，在当前总列数达到 12 时本地阻断，不发送新增请求；服务端仍保留错误码 20303 作为并发变化等场景的最终保护。
+
 新增分两步：
 
 1. `column add` 请求 `{"base_table_column_id":"123","direction":1}`；-1 左侧、1 右侧。新列继承同类基准列的条件/结果类别。
 2. 根据返回的 `table_column_id` 执行配置。条件列：`{"table_column_name":"金额","value_type":"NUMBER","symbol":"已确认的操作符"}`。结果列：`{"table_column_name":"审批人","result_type":"EMPLOYEE_COLLECTION","result_code":"approver","default_value":"7113921696628736004"}`。
 
 条件列可选字段：value_id、value_code、value_name、is_department_loop、multi_select_match_mode。value_id 指向同租户同规则组业务元素，且类型必须匹配；is_department_loop=true 仅适用 DEPARTMENT_COLLECTION。
+
+协商自动邀请场景把 `合同类型` 作为必需条件列，并固定使用 `value_type=COLLECTION`。收到业务 Excel 时先确认用途，再检查现有结构；不得把资料中的文本展示形式直接推导为 STRING。缺列或类型不符属于结构变更，必须先展示差异并单独确认，变更完成后重新读取列头。具体操作符按业务匹配语义从 `rule symbol query` 候选中选择；新增未绑定列仍省略 `value_*`，不根据列名猜测元素绑定。
 
 配置已有列时先调用 `table get` 或 `column-headers list`，以返回的列 `id` 定位更新目标；若返回 `value_id/value_code/value_name/value_type`，更新时原样复用。新增或未绑定列按列名、条件类型和操作符配置并省略 `value_*`，不根据名称猜测业务元素 ID。
 
@@ -62,6 +68,6 @@ group_id 必填，允许 `[A-Za-z_0-9#]{1,30}`；name 必填且最多 100 字符
 
 已有列从表详情或列头回读 ID 和配置，人员名称仍需解析为真实人员 ID。列结构变更单独确认，完成后重新读列头。单行配置可直接 row update/create；多行才生成导入计划。阈值 1000 和人员 ID 写入规则行，不放在条件列定义或默认审批人中。
 
-确认规则组 → 读取/创建矩阵并读取行 → 单独确认列结构变更 → 重新读列头 → 确认并写入规则行 → 查询核验。预发布和发布仅在用户要求后另行确认执行。
+确认使用页面可见的 `approve_matrix` 规则组 → 读取/创建矩阵并读取行 → 单独确认列结构变更 → 重新读列头 → 确认并写入规则行 → 查询核验。预发布和发布仅在用户要求后另行确认执行。
 
 保留原子命令直接调用习惯，写前确认和结构变更影响摘要由 Agent 承接。原子命令不会自动生成计划或自动发布。

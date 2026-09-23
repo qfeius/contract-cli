@@ -17,23 +17,15 @@ const (
 	productionOpenPlatformURL    = "https://open.qfei.cn"
 	productionAccountOrigin      = "https://myaccount.qfei.cn"
 	productionOpenPlatformOrigin = "https://open.qfei.cn"
-	testOpenPlatformOrigin       = "https://test-open.qtech.cn"
-	testAccountOrigin            = "https://test-myaccount.qtech.cn"
 )
 
-// testBuild 仅由联调构建的 ldflags 显式开启，正式构建继续拒绝 test，所有构建均拒绝 dev。
-var testBuild = "false"
-
 /*
-environmentOrigins 按构建能力选择环境域名，避免 test/prod 端点混用。
+environmentOrigins 只返回线上 prod 环境域名，避免旧配置跨环境复用。
 入参 environment（string）为环境名；返回 API 域名、账号域名（string）及是否支持（bool）。
 */
 func environmentOrigins(environment string) (string, string, bool) {
 	if environment == productionEnvironment {
 		return productionOpenPlatformOrigin, productionAccountOrigin, true
-	}
-	if testBuild == "true" && environment == "test" {
-		return testOpenPlatformOrigin, testAccountOrigin, true
 	}
 	return "", "", false
 }
@@ -43,10 +35,12 @@ var blockedProductionBuildHosts = map[string]struct{}{
 	"dev-myaccount.qtech.cn":  {},
 	"test-open.qtech.cn":      {},
 	"test-myaccount.qtech.cn": {},
+	"open-b.qfei.cn":          {},
+	"myaccount-b.qfei.cn":     {},
 }
 
 /*
-validateProductionProfile 校验配置中所有端点属于所选环境；默认保持生产约束。
+validateProductionProfile 校验配置及认证端点都属于线上 prod 环境。
 入参 profile（config.Profile）为配置；返回 error 表示环境或端点不合法。
 */
 func validateProductionProfile(profile config.Profile) error {
@@ -166,13 +160,10 @@ func parseProductionURL(rawURL string) (*url.URL, error) {
 }
 
 /*
-productionProfileError 返回与当前构建能力一致的环境错误，保留正式构建文案。
+productionProfileError 返回非生产配置的统一错误，提示重新初始化 prod profile。
 入参 profileName（string）为配置名；返回 error。
 */
 func productionProfileError(profileName string) error {
-	if testBuild == "true" {
-		return fmt.Errorf("profile %q has unsupported or mixed environment endpoints; configure a separate profile with --env prod or --env test and authorize again", profileName)
-	}
 	return fmt.Errorf(
 		"profile %q belongs to a non-production environment and is not allowed in this production build; run `contract-cli config add --env prod --name contract` and authorize again",
 		profileName,
@@ -195,16 +186,13 @@ type productionGuardTransport struct {
 }
 
 /*
-RoundTrip 所有构建拒绝旧 dev 地址，仅 test 联调构建允许已知 test HTTPS 域名。
+RoundTrip 在传输层拒绝已知 dev/test/blue 域名，避免旧配置绕过生产 profile 校验。
 入参 request（*http.Request）为请求；返回 HTTP 响应和 error。
 */
 func (transport productionGuardTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	host := strings.ToLower(strings.TrimSuffix(request.URL.Hostname(), "."))
 	transport.logger.Debug("production network request", "method", request.Method, "host", host)
 	if _, blocked := blockedProductionBuildHosts[host]; blocked {
-		if testBuild == "true" && (isProductionOriginURL(request.URL.String(), testOpenPlatformOrigin, true) || isProductionOriginURL(request.URL.String(), testAccountOrigin, true)) {
-			return transport.next.RoundTrip(request)
-		}
 		transport.logger.Error("production build blocked non-production network request", "method", request.Method, "host", host)
 		return nil, fmt.Errorf("production build blocks non-production host %q", host)
 	}

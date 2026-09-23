@@ -10,9 +10,9 @@ description: "contract-cli 登录与身份切换技能：初始化 profile、通
 
 ## 环境与构建能力
 
-- 正式构建仅支持 `prod`（默认 profile 为 `contract`）；test 联调构建支持 `prod/test`。先运行 `contract-cli version` 和 `contract-cli config add --help` 确认实际可执行程序的能力，不仅凭安装包名称判断。
-- 用户明确选择 test 且 CLI 帮助支持 `--env test` 时，允许初始化和调用 `contract-test`。正式构建不支持 test 时提示安装联调包，不改域名绕过校验。所有构建均不使用 dev。
-- 未指定环境沿用当前已确认配置；默认新配置为 prod。不自动切换环境，不用生产 Token 访问 test，也不因旧 profile 存在就复用它。
+- 当前构建只支持 `prod`（默认 profile 为 `contract`）；先运行 `contract-cli version` 和 `contract-cli config add --help` 确认实际可执行程序的能力，不仅凭安装包名称判断。
+- 历史 test/blue/dev profile 不再可用，不通过修改域名绕过校验，也不将其 Token 或 App Secret 迁入 prod。用户需要 prod 时，先确认目标 profile；同名重配会清理旧认证并要求重新授权。
+- 未指定环境沿用当前已确认的 prod 配置，首次初始化默认 prod；不因旧非 prod profile 存在而自动切换或覆盖它。
 - Skill 更新后必须完全退出 WorkBuddy 并新建任务。已有任务不会热加载新 Skill，因此不能用旧任务验证升级后的规则。
 
 ## 适用范围
@@ -48,16 +48,7 @@ description: "contract-cli 登录与身份切换技能：初始化 profile、通
 contract-cli config add --env prod --name contract
 ```
 
-正式构建仅内置 `prod`；test 联调构建额外支持 `test`。默认环境为 `prod`，默认 profile 名为 `contract`。上面的命令是生产示例；用户明确选择 test 时，改用以下配置，并在后续每条命令中显式传入相同的配置目录和 profile：
-
-```bash
-CONTRACT_CLI_CONFIG_DIR="$HOME/.contract-cli-test" contract-cli config add --env test --name contract-test
-CONTRACT_CLI_CONFIG_DIR="$HOME/.contract-cli-test" contract-cli auth init --profile contract-test --output json
-# 展示授权信息后结束本轮，用户回复已授权后再执行：
-CONTRACT_CLI_CONFIG_DIR="$HOME/.contract-cli-test" contract-cli auth complete --profile contract-test --output json
-```
-
-WorkBuddy 执行时须保持同一 CODEBUDDY_SESSION_ID 和上述配置目录；Device 授权的展示、等待确认及错误处理规则不变。已有明确选定的 test Authorization Code 登录态可按对应模式使用。安装包不自动创建 profile，也不携带其他机器的登录态。以下生产示例不是要求 test 用户重新初始化 prod。
+当前只内置 `prod` 环境，默认 profile 名为 `contract`。WorkBuddy 执行时须保持同一 CODEBUDDY_SESSION_ID 和选定配置目录；Device 授权的展示、等待确认及错误处理规则不变。安装包不自动创建 profile，也不携带其他机器的登录态。遇到历史非 prod 配置时，先告知其不再受支持；不要自动改写原 profile 或复用旧凭据。
 
 配置命令会：
 
@@ -145,7 +136,7 @@ contract-cli contract get <contract-id> --profile contract --output json
 - Refresh Token 返回 `invalid_grant` 时也必须先询问用户；CLI 会清理失效 Token，但会保留可能存在的 pending 会话。只有收到新的用户消息明确同意后，才先执行 `auth status --profile <profile> --as user`，再根据真实状态选择复用现有会话、普通 `auth init` 或带 `--restart` 的 `auth init`；不要直接重复未确认结果的写请求。
 - 豆包 AgentKit / Skills Sandbox 运行在云端 Skill 环境，必须提供 `SKILL_SESSION_WORKSPACE` 和格式正确的 `CONTRACT_CLI_CREDENTIAL_KEY_V1`。
 - 豆包普通工作任务使用 `SESSION_ID` 做任务级隔离；所有 CLI 命令必须从任务初始工作目录执行，不得在授权前后切换到其他目录。凭证以 AES-256-GCM 密文保存到当前任务目录，只在同一任务内复用，新建任务必须重新授权。
-- `auth init` 成功后，CLI 会把 Device 运行所需的非敏感 profile 快照与 pending transaction 一起加密保存。AgentKit 同一会话工作区或豆包普通工作任务的任务目录仍存在、但临时 HOME 中没有本地 profile 时，CLI 只会在命令显式携带 `--profile contract` 且快照完整匹配时恢复 profile。
+- `auth init` 成功后，CLI 会把 Device 运行所需的非敏感 profile 快照与 pending transaction 一起加密保存。AgentKit 同一会话工作区或豆包普通工作任务的任务目录仍存在、但临时 HOME 中没有本地 profile 时，CLI 只会在命令显式携带当前环境的 `--profile <profile>` 且快照完整匹配时恢复 profile。
 - 恢复只写入当前沙箱临时 HOME；不会把 `config.json`、`secrets.json`、App Secret 或明文 profile 写进会话工作区。快照缺失或损坏时，按错误提示重新执行 `config add` 和 `auth init`，禁止猜测环境、scope、client 或 endpoint。
 - WorkBuddy 运行在客户本机，必须提供 `CODEBUDDY_SESSION_ID`；macOS 使用 macOS Keychain，Windows 使用 Credential Manager，Linux 使用 Secret Service。任一条件缺失都直接失败，不降级成明文文件。
 
@@ -270,11 +261,11 @@ contract-cli auth use --as app
 
 ## 故障排查
 
-- `user identity is not configured`：按已确认环境初始化对应 profile；test 用上面的独立目录及 `--env test --name contract-test`，prod 用 `--env prod --name contract`。
+- `user identity is not configured`：确认当前 CLI 与配置目录，只使用 `contract-cli config add --env prod --name contract` 初始化生产 profile；历史非 prod profile 不自动覆盖。
 - 浏览器未自动打开：改用 `--no-open-browser`，手动访问输出的授权链接
 - 回调超时：检查 `redirect_url` 对应端口是否可监听，必要时调大 `--timeout`
 - app 凭据不完整：补齐 `--app-id/--app-secret` 或设置 `CONTRACT_CLI_APP_ID/CONTRACT_CLI_APP_SECRET`
-- app 登录提示缺少 `app_token_endpoint`：按当前已确认的环境和配置目录重跑 config add，不把 test profile 改成 prod。
+- app 登录提示缺少 `app_token_endpoint`：核对当前 prod profile 与配置目录；重跑 config add 前确认是否会重置同名 profile 的认证。
 - app 状态显示 `expired`：重新执行 `contract-cli auth login --as app`
 - user 状态显示 `expired`：重新执行 `contract-cli auth login --as user`
 - 旧脚本仍传 `--as bot`：可以继续执行；后续新脚本请改写为 `--as app`

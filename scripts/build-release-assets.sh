@@ -9,19 +9,14 @@ OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/release-assets}"
 GO_CACHE="${GOCACHE:-/tmp/contract-cli-go-build-cache}"
 COMMIT="${COMMIT:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 DATE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
-# 联调能力默认关闭；仅显式构建 test 预发布版本时开启，避免覆盖正式产物。
-ENABLE_TEST="${ENABLE_TEST:-false}"
-if [[ "$ENABLE_TEST" != "true" && "$ENABLE_TEST" != "false" ]]; then
-  echo "ENABLE_TEST must be true or false" >&2
-  exit 1
-fi
-if [[ "$ENABLE_TEST" == "true" && "$VERSION" != *-test.* ]]; then
-  echo "test builds require a prerelease VERSION such as 1.8.3-test.1" >&2
+# 历史联调开关不再开放；所有版本（包括预发布包）只构建 prod 能力。
+if [[ "${ENABLE_TEST:-false}" != "false" ]]; then
+  echo "ENABLE_TEST is no longer supported; builds only support prod" >&2
   exit 1
 fi
 
 bash "$ROOT_DIR/scripts/verify-feature-baseline.sh" "$ROOT_DIR" "$VERSION"
-LDFLAGS="-s -w -X cn.qfei/contract-cli/internal/build.Version=${VERSION} -X cn.qfei/contract-cli/internal/build.Commit=${COMMIT} -X cn.qfei/contract-cli/internal/build.Date=${DATE} -X cn.qfei/contract-cli/internal/cli.testBuild=${ENABLE_TEST}"
+LDFLAGS="-s -w -X cn.qfei/contract-cli/internal/build.Version=${VERSION} -X cn.qfei/contract-cli/internal/build.Commit=${COMMIT} -X cn.qfei/contract-cli/internal/build.Date=${DATE}"
 
 TARGETS=(
   "darwin/amd64"

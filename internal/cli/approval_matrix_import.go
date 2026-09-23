@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strconv"
@@ -24,7 +25,10 @@ import (
 	"github.com/gofrs/flock"
 )
 
-const approvalMatrixImportPlanVersion = 2
+const (
+	approvalMatrixImportPlanVersion = 3
+	approvalMatrixRowCountLimit     = 2000
+)
 
 type approvalMatrixImportInput struct {
 	Rows []approvalMatrixImportInputRow `json:"rows"`
@@ -64,13 +68,14 @@ type approvalMatrixRowRequest struct {
 }
 
 type approvalMatrixImportOperation struct {
-	Index     int                      `json:"index"`
-	Operation string                   `json:"operation"`
-	RowID     string                   `json:"row_id,omitempty"`
-	Request   approvalMatrixRowRequest `json:"request"`
-	Status    string                   `json:"status"`
-	Response  json.RawMessage          `json:"response,omitempty"`
-	Error     string                   `json:"error,omitempty"`
+	Index             int                      `json:"index"`
+	Operation         string                   `json:"operation"`
+	RowID             string                   `json:"row_id,omitempty"`
+	Request           approvalMatrixRowRequest `json:"request"`
+	Status            string                   `json:"status"`
+	Response          json.RawMessage          `json:"response,omitempty"`
+	ExpectedRowDigest string                   `json:"expected_row_digest,omitempty"`
+	Error             string                   `json:"error,omitempty"`
 }
 
 type approvalMatrixImportPlan struct {
@@ -87,6 +92,7 @@ type approvalMatrixImportPlan struct {
 	Status             string                          `json:"status"`
 	Operations         []approvalMatrixImportOperation `json:"operations"`
 	ColumnSnapshot     string                          `json:"column_snapshot"`
+	RowSnapshot        map[string]string               `json:"row_snapshot"`
 	ContextFingerprint string                          `json:"context_fingerprint"`
 	Reason             string                          `json:"reason,omitempty"`
 }
@@ -101,15 +107,16 @@ type approvalMatrixValidationIssue struct {
 }
 
 type approvalMatrixImportSummary struct {
-	Total     int `json:"total"`
-	Pending   int `json:"pending"`
-	Succeeded int `json:"succeeded"`
-	Failed    int `json:"failed"`
-	Uncertain int `json:"uncertain"`
+	Total      int `json:"total"`
+	Pending    int `json:"pending"`
+	Succeeded  int `json:"succeeded"`
+	Failed     int `json:"failed"`
+	Uncertain  int `json:"uncertain"`
+	Unverified int `json:"unverified"`
 }
 
 /*
-runApprovalMatrixImport 分发批量导入的计划与执行命令。
+runApprovalMatrixImport 分发批量导入的计划、执行、暂停与只读核验命令。
 入参 ctx（context.Context）为命令执行上下文，args（[]string）为 rule table import 后的参数。
 返回值为命令解析或执行错误；成功输出结构化状态并返回 nil。
 */
@@ -122,7 +129,7 @@ func (a *App) runApprovalMatrixImport(ctx context.Context, args []string) error 
 		return a.runApprovalMatrixImportPlan(ctx, args[1:])
 	case "apply":
 		return a.runApprovalMatrixImportApply(ctx, args[1:])
-	case "get", "cancel":
+	case "get", "cancel", "pause", "resume", "verify":
 		return a.runApprovalMatrixPlanControl(ctx, args[0], args[1:])
 	default:
 		return fmt.Errorf("unknown rule table import subcommand %q", args[0])
@@ -130,9 +137,9 @@ func (a *App) runApprovalMatrixImport(ctx context.Context, args []string) error 
 }
 
 /*
-runApprovalMatrixImportPlan 读取矩阵列头、校验批量输入并持久化可确认的导入计划，全程不写矩阵数据。
+runApprovalMatrixImportPlan 读取矩阵列头和全量规则行，校验容量与输入并持久化可确认的计划，全程不写矩阵数据。
 入参 ctx（context.Context）为命令执行上下文，args（[]string）为 plan 命令参数。
-返回值为解析、鉴权、列头读取或计划保存错误；业务校验问题通过 status=needs_input 输出并返回 nil。
+返回值为解析、鉴权、矩阵读取或计划保存错误；业务校验问题通过 status=needs_input 输出并返回 nil。
 */
 func (a *App) runApprovalMatrixImportPlan(ctx context.Context, args []string) error {
 	parsed, err := parseArgs(args, structuredValueFlags("--product-id", "--group-id", "--table-id"), commonBoolFlags())
@@ -163,7 +170,7 @@ func (a *App) runApprovalMatrixImportPlan(ctx context.Context, args []string) er
 		return a.renderApprovalMatrixTableCandidates(ctx, options, productID, groupID)
 	}
 
-	// 计划阶段只读取一次列头，后续映射和类型检查全部在本地完成。
+	// 列头用于类型映射；行快照用于容量计算和后续自动失效校验。
 	columnsPath := ruleTablePath(productID, groupID, tableID) + "/table_columns/column_headers"
 	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, columnsPath, openplatform.IdentityPolicyAny)
 	if err != nil {
@@ -193,6 +200,34 @@ func (a *App) runApprovalMatrixImportPlan(ctx context.Context, args []string) er
 			"available_columns": columns,
 		})
 	}
+	rows, err := readApprovalMatrixRows(ctx, client, requestContext, ruleTablePath(productID, groupID, tableID))
+	if err != nil {
+		return fmt.Errorf("read approval matrix rows for import plan: %w", err)
+	}
+	rowSnapshot, err := approvalMatrixRowSnapshot(rows)
+	if err != nil {
+		return err
+	}
+	// 后端以当前行数小于 2000 作为新增条件；默认空白行也占一个名额。
+	creates := 0
+	for _, operation := range operations {
+		if operation.Operation == "create" {
+			creates++
+		} else if _, exists := rowSnapshot[operation.RowID]; !exists {
+			issues = append(issues, approvalMatrixValidationIssue{Row: operation.Index, Code: "missing_row", Message: "update row_id does not exist in the target matrix"})
+		}
+	}
+	if len(rowSnapshot)+creates > approvalMatrixRowCountLimit {
+		issues = append(issues, approvalMatrixValidationIssue{Code: "row_limit_exceeded", Message: fmt.Sprintf("current %d rows plus %d creates exceeds maximum %d", len(rowSnapshot), creates, approvalMatrixRowCountLimit)})
+	}
+	if len(issues) > 0 {
+		return a.renderApprovalMatrixImportValue(options, map[string]any{
+			"status": "needs_input", "profile": requestContext.Profile.Name,
+			"product_id": productID, "group_id": groupID, "table_id": tableID,
+			"current_rows": len(rowSnapshot), "planned_creates": creates, "row_limit": approvalMatrixRowCountLimit,
+			"issues": issues,
+		})
+	}
 
 	planID, err := newApprovalMatrixImportPlanID()
 	if err != nil {
@@ -211,6 +246,7 @@ func (a *App) runApprovalMatrixImportPlan(ctx context.Context, args []string) er
 		Status:             "needs_confirmation",
 		Operations:         operations,
 		ColumnSnapshot:     approvalMatrixFingerprint(columns),
+		RowSnapshot:        rowSnapshot,
 		ContextFingerprint: approvalMatrixContextFingerprint(requestContext),
 	}
 	if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
@@ -269,7 +305,7 @@ func (a *App) renderApprovalMatrixTableCandidates(ctx context.Context, options c
 }
 
 /*
-runApprovalMatrixImportApply 加载已确认计划并逐行调用现有创建或更新接口，重试时跳过已经成功或结果不确定的行。
+runApprovalMatrixImportApply 校验全量行快照后逐行写入并回读，重试时跳过已验证成功行并阻断不确定或未验证行。
 入参 ctx（context.Context）为命令执行上下文，args（[]string）为 apply 命令参数。
 返回值为参数、计划读取、鉴权或状态保存错误；逐行结果先通过结构化输出保留，批量失败或计划失效时额外返回错误。
 */
@@ -343,8 +379,11 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 	if err != nil {
 		return err
 	}
-	// 旧计划缺少快照时必须重新确认；app 凭证轮换保持兼容；user 凭证、身份、应用或环境改变则失效。
-	if plan.Status == "invalidated" || plan.Version != approvalMatrixImportPlanVersion || plan.ContextFingerprint != approvalMatrixContextFingerprint(requestContext) || a.now().Sub(plan.CreatedAt) > 24*time.Hour {
+	if plan.Status == "invalidated" {
+		return a.renderApprovalMatrixImportApplyResult(options, plan)
+	}
+	// 旧计划缺少行快照时必须重新确认；app 凭证轮换保持兼容。
+	if plan.Version != approvalMatrixImportPlanVersion || plan.RowSnapshot == nil || plan.ContextFingerprint != approvalMatrixContextFingerprint(requestContext) || a.now().Sub(plan.CreatedAt) > 24*time.Hour {
 		plan.Status = "invalidated"
 		plan.Reason = "plan expired or identity/credential/application/environment changed; generate a new plan"
 		if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
@@ -382,6 +421,31 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 			}
 			return a.renderApprovalMatrixImportApplyResult(options, plan)
 		}
+		if plan.Operations[i].Status == "unverified" {
+			plan.Status = "needs_verification"
+			plan.Reason = "run import verify to check the previous write before continuing"
+			if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
+				return err
+			}
+			return a.renderApprovalMatrixImportApplyResult(options, plan)
+		}
+	}
+	// 每次启动或恢复 apply 都对整张矩阵做行快照比较，外部增删改会使确认失效。
+	currentRows, err := readApprovalMatrixRows(ctx, client, requestContext, ruleTablePath(plan.ProductID, plan.GroupID, plan.TableID))
+	if err != nil {
+		return fmt.Errorf("read approval matrix rows before import apply: %w", err)
+	}
+	currentSnapshot, err := approvalMatrixRowSnapshot(currentRows)
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(currentSnapshot, plan.RowSnapshot) {
+		plan.Status = "invalidated"
+		plan.Reason = "matrix rows changed since the plan was confirmed; generate a new plan"
+		if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
+			return err
+		}
+		return a.renderApprovalMatrixImportApplyResult(options, plan)
 	}
 	plan.Reason = ""
 	executed := 0
@@ -396,6 +460,44 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 		if operation.Status == "success" || operation.Status == "uncertain" {
 			continue
 		}
+		pauseRequested, pauseErr := approvalMatrixPauseRequested(planPath)
+		if pauseErr != nil {
+			return pauseErr
+		}
+		if pauseRequested {
+			plan.Status = "paused"
+			plan.Reason = "pause requested; no further row writes started"
+			break
+		}
+		if operation.Operation == "create" && len(plan.RowSnapshot) >= approvalMatrixRowCountLimit {
+			plan.Status = "invalidated"
+			plan.Reason = "approval matrix row limit reached; generate a new plan"
+			break
+		}
+		if operation.Operation == "update" {
+			// 目标行在批次运行中仍可能变化；单行写入前核对并预先保存期望的完整行摘要。
+			before, readErr := readApprovalMatrixImportRow(ctx, client, requestContext, basePath, operation.RowID)
+			if readErr != nil {
+				return fmt.Errorf("read row %q before update: %w", operation.RowID, readErr)
+			}
+			beforeCells, readErr := approvalMatrixCanonicalRowCells(before)
+			if readErr != nil {
+				return readErr
+			}
+			if approvalMatrixFingerprint(beforeCells) != plan.RowSnapshot[operation.RowID] {
+				plan.Status = "invalidated"
+				plan.Reason = fmt.Sprintf("row %q changed before update; generate a new plan", operation.RowID)
+				break
+			}
+			requestedCells, readErr := approvalMatrixCanonicalRequestCells(operation.Request)
+			if readErr != nil {
+				return readErr
+			}
+			for columnID, value := range requestedCells {
+				beforeCells[columnID] = value
+			}
+			operation.ExpectedRowDigest = approvalMatrixFingerprint(beforeCells)
+		}
 		requestBody, marshalErr := json.Marshal(operation.Request)
 		if marshalErr != nil {
 			return fmt.Errorf("encode approval matrix import row %d: %w", operation.Index, marshalErr)
@@ -409,9 +511,15 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 		if ctx.Err() != nil {
 			break
 		}
-		operation.Status = "running"
-		if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
-			return err
+		// 暂停和启动下一条写入共用短锁，明确并发请求的先后顺序。
+		started, startErr := a.startApprovalMatrixImportWrite(planPath, &plan, operation)
+		if startErr != nil {
+			return startErr
+		}
+		if !started {
+			plan.Status = "paused"
+			plan.Reason = "pause requested; no further row writes started"
+			break
 		}
 		response, requestErr := client.Do(ctx, requestContext, openplatform.Request{
 			Method:         method,
@@ -437,15 +545,51 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 			}
 			operation.Error = apiErr
 			operation.Response = append(json.RawMessage(nil), response.Body...)
+			var business struct {
+				Code int `json:"code"`
+			}
+			if !unknown && json.Unmarshal(response.Body, &business) == nil && business.Code == 20302 {
+				plan.Status = "invalidated"
+				plan.Reason = "approval matrix row limit reached on server; generate a new plan"
+			}
 		} else {
-			operation.Status = "success"
 			operation.Response = append(json.RawMessage(nil), response.Body...)
+			if operation.Operation == "create" {
+				var result struct {
+					Data struct {
+						TableRowID string `json:"table_row_id"`
+					} `json:"data"`
+				}
+				if json.Unmarshal(response.Body, &result) != nil || strings.TrimSpace(result.Data.TableRowID) == "" {
+					operation.Status = "uncertain"
+					operation.Error = "create response has no row id; query and reconcile before retrying"
+				} else {
+					operation.RowID = result.Data.TableRowID
+				}
+			}
+			if operation.Status != "uncertain" {
+				// 成功响应先落盘为 unverified，进程中断或回读失败时不会重放写请求。
+				operation.Status = "unverified"
+				plan.UpdatedAt = a.now().UTC()
+				if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
+					return err
+				}
+				observedDigest, verifyErr := verifyApprovalMatrixImportOperation(ctx, client, requestContext, basePath, *operation)
+				if verifyErr != nil {
+					operation.Error = verifyErr.Error()
+					plan.Status = "needs_verification"
+					plan.Reason = "readback failed or differed; run import verify before continuing"
+				} else {
+					operation.Status = "success"
+					plan.RowSnapshot[operation.RowID] = observedDigest
+				}
+			}
 		}
 		plan.UpdatedAt = a.now().UTC()
 		if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
 			return err
 		}
-		if operation.Status == "uncertain" {
+		if operation.Status == "uncertain" || operation.Status == "unverified" || plan.Status == "invalidated" {
 			break
 		}
 		var statusErr *openplatform.HTTPStatusError
@@ -467,6 +611,8 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 	switch {
 	case plan.Status == "invalidated":
 		// 冲突或目标消失时保留终止状态，禁止再次执行旧计划。
+	case summary.Unverified > 0:
+		plan.Status = "needs_verification"
 	case summary.Succeeded == summary.Total:
 		plan.Status = "success"
 	case summary.Uncertain > 0:
@@ -483,6 +629,27 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 		return err
 	}
 	return a.renderApprovalMatrixImportApplyResult(options, plan)
+}
+
+/*
+startApprovalMatrixImportWrite 原子检查暂停意图并将当前行记为 running，之后调用方才发送写请求。
+入参 planPath（string）为计划路径，plan（*approvalMatrixImportPlan）为持锁计划，operation（*approvalMatrixImportOperation）为当前行；返回 bool 表示是否可开始，error 为锁或落盘错误。
+*/
+func (a *App) startApprovalMatrixImportWrite(planPath string, plan *approvalMatrixImportPlan, operation *approvalMatrixImportOperation) (bool, error) {
+	controlLock := flock.New(planPath + ".pause.lock")
+	if err := controlLock.Lock(); err != nil {
+		return false, fmt.Errorf("lock approval matrix pause control: %w", err)
+	}
+	defer controlLock.Unlock()
+	requested, err := approvalMatrixPauseRequested(planPath)
+	if err != nil || requested {
+		return false, err
+	}
+	operation.Status = "running"
+	if err := a.saveApprovalMatrixImportPlan(*plan); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 /*
@@ -512,8 +679,8 @@ func approvalMatrixExecutionSelection(rows, batch string, total int) (map[int]bo
 }
 
 /*
-runApprovalMatrixPlanControl 读取或取消本地计划；取消与执行共用锁，避免覆盖正在写入的状态。
-入参 ctx（context.Context）为调用上下文，action（string）为 get/cancel，args（[]string）为参数；返回 error。
+runApprovalMatrixPlanControl 读取、暂停、恢复、核验或取消本地计划；状态写入与执行共用计划锁。
+入参 ctx（context.Context）为调用上下文，action（string）为控制动作，args（[]string）为参数；返回 error 为解析、状态保存或回读错误。
 */
 func (a *App) runApprovalMatrixPlanControl(ctx context.Context, action string, args []string) error {
 	parsed, err := parseArgs(args, structuredValueFlags("--plan-id"), commonBoolFlags())
@@ -539,13 +706,13 @@ func (a *App) runApprovalMatrixPlanControl(ctx context.Context, action string, a
 		return err
 	}
 	lock := flock.New(path + ".lock")
-	if action == "cancel" {
+	if action == "cancel" || action == "resume" || action == "verify" {
 		locked, err := lock.TryLock()
 		if err != nil {
 			return err
 		}
 		if !locked {
-			return fmt.Errorf("plan is running; wait for current batch to finish before cancelling")
+			return fmt.Errorf("plan is running; wait for the current row request to finish before %s", action)
 		}
 		defer lock.Unlock()
 	}
@@ -556,14 +723,139 @@ func (a *App) runApprovalMatrixPlanControl(ctx context.Context, action string, a
 	if options.profileName != "" && options.profileName != plan.Profile {
 		return fmt.Errorf("plan belongs to profile %q", plan.Profile)
 	}
-	if action == "cancel" && plan.Status != "success" {
-		plan.Status = "cancelled"
+	switch action {
+	case "pause":
+		if plan.Status != "success" && plan.Status != "cancelled" && plan.Status != "invalidated" {
+			if err := requestApprovalMatrixPause(path); err != nil {
+				return err
+			}
+		}
+	case "resume":
+		controlLock := flock.New(path + ".pause.lock")
+		if err := controlLock.Lock(); err != nil {
+			return err
+		}
+		removeErr := os.Remove(path + ".pause")
+		if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			_ = controlLock.Unlock()
+			return fmt.Errorf("clear approval matrix pause request: %w", removeErr)
+		}
+		// 只有仍有待执行行的已暂停计划才能转为可续跑；核验和不确定状态仍由原流程阻断。
+		summary := summarizeApprovalMatrixImportPlan(plan)
+		if plan.Status == "paused" && summary.Pending > 0 && summary.Uncertain == 0 && summary.Unverified == 0 {
+			plan.Status = "ready"
+			plan.Reason = ""
+			plan.UpdatedAt = a.now().UTC()
+			if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
+				_ = controlLock.Unlock()
+				return err
+			}
+		}
+		if err := controlLock.Unlock(); err != nil {
+			return err
+		}
+	case "verify":
+		if plan.Version != approvalMatrixImportPlanVersion || plan.RowSnapshot == nil {
+			return fmt.Errorf("import plan lacks a compatible row snapshot; generate a new plan")
+		}
+		if summarizeApprovalMatrixImportPlan(plan).Unverified == 0 {
+			break
+		}
+		if options.profileName == "" {
+			options.profileName = plan.Profile
+		}
+		rowsPath := ruleTablePath(plan.ProductID, plan.GroupID, plan.TableID) + "/table_rows"
+		client, rc, err := a.openPlatformClientAndContextForOptions(options, rowsPath, openplatform.IdentityPolicyAny)
+		if err != nil {
+			return err
+		}
+		if plan.ContextFingerprint != approvalMatrixContextFingerprint(rc) {
+			return fmt.Errorf("import verification identity or environment changed; query rows with the original context")
+		}
+		terminalStatus := plan.Status
+		for i := range plan.Operations {
+			operation := &plan.Operations[i]
+			if operation.Status != "unverified" {
+				continue
+			}
+			digest, verifyErr := verifyApprovalMatrixImportOperation(ctx, client, rc, rowsPath, *operation)
+			if verifyErr != nil {
+				operation.Error = verifyErr.Error()
+				continue
+			}
+			operation.Status = "success"
+			operation.Error = ""
+			plan.RowSnapshot[operation.RowID] = digest
+		}
+		summary := summarizeApprovalMatrixImportPlan(plan)
+		switch {
+		case terminalStatus == "cancelled" || terminalStatus == "invalidated":
+			// 已终止计划可只读核验历史副作用，但核验不会恢复后续写入权限。
+		case summary.Unverified > 0:
+			plan.Status = "needs_verification"
+			plan.Reason = "readback still failed or differed; inspect the affected rows"
+		case summary.Succeeded == summary.Total:
+			plan.Status = "success"
+			plan.Reason = ""
+		default:
+			plan.Status = "paused"
+			plan.Reason = "verification completed; remaining rows require apply"
+		}
 		plan.UpdatedAt = a.now().UTC()
 		if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
 			return err
 		}
+	case "cancel":
+		if plan.Status != "success" {
+			plan.Status = "cancelled"
+			plan.UpdatedAt = a.now().UTC()
+			if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
+				return err
+			}
+		}
 	}
-	return a.renderApprovalMatrixImportValue(options, approvalMatrixImportPlanOutput(plan))
+	pauseRequested, err := approvalMatrixPauseRequested(path)
+	if err != nil {
+		return err
+	}
+	result := approvalMatrixImportPlanOutput(plan)
+	result["pause_requested"] = pauseRequested
+	return a.renderApprovalMatrixImportValue(options, result)
+}
+
+/*
+requestApprovalMatrixPause 在计划锁之外持久记录暂停意图，使正在执行的批次可在当前行后停止。
+入参 planPath（string）为已校验的计划路径；返回 error 为文件创建错误。
+*/
+func requestApprovalMatrixPause(planPath string) error {
+	controlLock := flock.New(planPath + ".pause.lock")
+	if err := controlLock.Lock(); err != nil {
+		return fmt.Errorf("lock approval matrix pause control: %w", err)
+	}
+	defer controlLock.Unlock()
+	file, err := os.OpenFile(planPath+".pause", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("request approval matrix pause: %w", err)
+	}
+	return file.Close()
+}
+
+/*
+approvalMatrixPauseRequested 查询持久暂停标记，执行端在每条行写请求前调用。
+入参 planPath（string）为已校验的计划路径；返回 bool 表示是否请求暂停，error 为文件查询错误。
+*/
+func approvalMatrixPauseRequested(planPath string) (bool, error) {
+	_, err := os.Stat(planPath + ".pause")
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read approval matrix pause request: %w", err)
+	}
+	return true, nil
 }
 
 /*
@@ -907,10 +1199,182 @@ func approvalMatrixAPIError(body []byte) (string, bool) {
 	return fmt.Sprintf("open platform returned code %d: %s", *response.Code, response.Msg), false
 }
 
+type approvalMatrixCanonicalCell struct {
+	Type  string `json:"type"`
+	Value any    `json:"value"`
+}
+
 /*
-summarizeApprovalMatrixImportPlan 汇总计划中各行的当前执行状态，供 Agent 判断是否继续追问或重试。
+approvalMatrixCanonicalCellValue 提取单元格当前类型对应的值，统一空值、数字精度和无序部门集合。
+入参 raw（map[string]any）为请求或回读中的单元格；返回 approvalMatrixCanonicalCell 为比较值，error 为残缺或未知类型错误。
+*/
+func approvalMatrixCanonicalCellValue(raw map[string]any) (approvalMatrixCanonicalCell, error) {
+	cellType, ok := raw["table_cell_content_type"].(string)
+	if !ok || cellType == "" {
+		return approvalMatrixCanonicalCell{}, fmt.Errorf("missing cell content type")
+	}
+	content, ok := raw["table_cell_content"].(map[string]any)
+	if !ok {
+		return approvalMatrixCanonicalCell{}, fmt.Errorf("missing cell content")
+	}
+	key := strings.ToLower(cellType)
+	switch cellType {
+	case "STRING", "NUMBER", "BOOLEAN", "COLLECTION", "EMPLOYEE_COLLECTION", "DEPARTMENT_COLLECTION", "ROLE_COLLECTION":
+	default:
+		return approvalMatrixCanonicalCell{}, fmt.Errorf("unsupported cell content type %q", cellType)
+	}
+	value := content[key]
+	// 服务端将空字符串和空集合回读为 null；两者都表示已清空单元格。
+	if text, ok := value.(string); ok && text == "" {
+		value = nil
+	}
+	if items, ok := value.([]any); ok && len(items) == 0 {
+		value = nil
+	}
+	if value != nil {
+		wrapper := map[string]any{key: value}
+		matrixExactValues(wrapper)
+		value = wrapper[key]
+	}
+	return approvalMatrixCanonicalCell{Type: cellType, Value: value}, nil
+}
+
+/*
+approvalMatrixCanonicalRowCells 将已规范化的行转换为可精确比较的列值集合。
+入参 row（map[string]any）为分页或单行查询结果；返回 map[string]approvalMatrixCanonicalCell 为列 ID 到值的映射，error 为异常单元格结构。
+*/
+func approvalMatrixCanonicalRowCells(row map[string]any) (map[string]approvalMatrixCanonicalCell, error) {
+	rawCells, ok := row["table_cells"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("missing row cells")
+	}
+	cells := make(map[string]approvalMatrixCanonicalCell, len(rawCells))
+	for columnID, raw := range rawCells {
+		cell, ok := raw.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("invalid cell %q", columnID)
+		}
+		value, err := approvalMatrixCanonicalCellValue(cell)
+		if err != nil {
+			return nil, fmt.Errorf("column %q: %w", columnID, err)
+		}
+		cells[columnID] = value
+	}
+	return cells, nil
+}
+
+/*
+approvalMatrixCanonicalRequestCells 将计划中的写入请求转换为回读比较值，保留 JSON 数字精度。
+入参 request（approvalMatrixRowRequest）为计划行请求；返回 map[string]approvalMatrixCanonicalCell 为列值，error 为编码或重复列错误。
+*/
+func approvalMatrixCanonicalRequestCells(request approvalMatrixRowRequest) (map[string]approvalMatrixCanonicalCell, error) {
+	encoded, err := json.Marshal(request.TableCells)
+	if err != nil {
+		return nil, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	var rawCells []map[string]any
+	if err := decoder.Decode(&rawCells); err != nil {
+		return nil, err
+	}
+	cells := make(map[string]approvalMatrixCanonicalCell, len(rawCells))
+	for _, raw := range rawCells {
+		columnID, ok := raw["table_column_id"].(string)
+		if !ok || columnID == "" {
+			return nil, fmt.Errorf("request cell missing column id")
+		}
+		if _, exists := cells[columnID]; exists {
+			return nil, fmt.Errorf("request has duplicate column %q", columnID)
+		}
+		value, err := approvalMatrixCanonicalCellValue(raw)
+		if err != nil {
+			return nil, fmt.Errorf("column %q: %w", columnID, err)
+		}
+		cells[columnID] = value
+	}
+	return cells, nil
+}
+
+/*
+approvalMatrixRowSnapshot 保存整张矩阵中每行的列值摘要，供导入计划自动失效判断。
+入参 rows（map[string]any）为完整分页读取结果；返回 map[string]string 为行 ID 到摘要的映射，error 为不完整行错误。
+*/
+func approvalMatrixRowSnapshot(rows map[string]any) (map[string]string, error) {
+	snapshot := make(map[string]string, len(rows))
+	for rowID, raw := range rows {
+		row, ok := raw.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("invalid row %q", rowID)
+		}
+		cells, err := approvalMatrixCanonicalRowCells(row)
+		if err != nil {
+			return nil, fmt.Errorf("row %q: %w", rowID, err)
+		}
+		snapshot[rowID] = approvalMatrixFingerprint(cells)
+	}
+	return snapshot, nil
+}
+
+/*
+readApprovalMatrixImportRow 按 ID 回读单行并复用发布路径的严格行结构校验。
+入参 ctx（context.Context）为请求上下文，client（*openplatform.Client）和 rc（openplatform.RequestContext）为调用身份，rowsPath/rowID（string）定位规则行；返回 map[string]any 为规范化行，error 为读取或结构错误。
+*/
+func readApprovalMatrixImportRow(ctx context.Context, client *openplatform.Client, rc openplatform.RequestContext, rowsPath, rowID string) (map[string]any, error) {
+	response, err := client.Do(ctx, rc, openplatform.Request{Method: http.MethodGet, Path: rowsPath + "/" + escapePathSegment(rowID), IdentityPolicy: openplatform.IdentityPolicyAny})
+	if err != nil {
+		return nil, err
+	}
+	data, err := matrixPublishJSON(response.Body)
+	if err != nil {
+		return nil, err
+	}
+	row, err := matrixNormalizedRow(data["table_row"])
+	if err != nil {
+		return nil, err
+	}
+	if row["id"] != rowID {
+		return nil, fmt.Errorf("row readback returned id %v, expected %q", row["id"], rowID)
+	}
+	return row, nil
+}
+
+/*
+verifyApprovalMatrixImportOperation 回读已写入行并比对计划值，返回可推进快照的实际行摘要。
+入参 ctx（context.Context）、client（*openplatform.Client）、rc（openplatform.RequestContext）及 rowsPath（string）用于查询，operation（approvalMatrixImportOperation）为待核验的计划行；返回 string 为回读行摘要，error 为查询或内容不一致。
+*/
+func verifyApprovalMatrixImportOperation(ctx context.Context, client *openplatform.Client, rc openplatform.RequestContext, rowsPath string, operation approvalMatrixImportOperation) (string, error) {
+	if operation.RowID == "" {
+		return "", fmt.Errorf("write response has no row id; reconcile before retrying")
+	}
+	row, err := readApprovalMatrixImportRow(ctx, client, rc, rowsPath, operation.RowID)
+	if err != nil {
+		return "", err
+	}
+	actual, err := approvalMatrixCanonicalRowCells(row)
+	if err != nil {
+		return "", err
+	}
+	expected, err := approvalMatrixCanonicalRequestCells(operation.Request)
+	if err != nil {
+		return "", err
+	}
+	for columnID, value := range expected {
+		if !reflect.DeepEqual(actual[columnID], value) {
+			return "", fmt.Errorf("readback mismatch for column %q", columnID)
+		}
+	}
+	digest := approvalMatrixFingerprint(actual)
+	if operation.Operation == "update" && digest != operation.ExpectedRowDigest {
+		return "", fmt.Errorf("readback changed other cells of row %q", operation.RowID)
+	}
+	return digest, nil
+}
+
+/*
+summarizeApprovalMatrixImportPlan 汇总计划行状态，区分已验证成功、未验证写入和结果不确定写入。
 入参 plan（approvalMatrixImportPlan）为当前计划快照。
-返回值为总数、待执行、成功、失败和结果不确定数量。
+返回 approvalMatrixImportSummary 为各状态数量。
 */
 func summarizeApprovalMatrixImportPlan(plan approvalMatrixImportPlan) approvalMatrixImportSummary {
 	summary := approvalMatrixImportSummary{Total: len(plan.Operations)}
@@ -922,6 +1386,8 @@ func summarizeApprovalMatrixImportPlan(plan approvalMatrixImportPlan) approvalMa
 			summary.Failed++
 		case "uncertain":
 			summary.Uncertain++
+		case "unverified":
+			summary.Unverified++
 		default:
 			summary.Pending++
 		}

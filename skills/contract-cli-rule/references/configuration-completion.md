@@ -12,14 +12,14 @@
 | --- | --- | --- |
 | `employee batch-get` | POST `/employees/batch_get` | `{"ids":["123"],"group_code":"approve_matrix"}` |
 | `department search` | POST `/departments/search` | `{"param":"部门关键词","group_code":"approve_matrix"}` |
-| `department batch-get` | POST `/departments/batch_get` | `{"ids":["123"]}` |
+| `department batch-get` | POST `/departments/batch_get` | `{"ids":["123"]}`（数字 `department_id`，用于回查 `open_department_id`） |
 | `role search` | POST `/roles/search` | `{"param":"角色关键词"}` |
 | `role batch-get` | POST `/roles/batch_get` | `{"ids":["123"]}` |
 | `symbol query` | CLI 本地映射 | `{"value_type":"NUMBER"}` |
 | `loop-function query` | POST `/loop_functions/query` | `{"value_type":"DEPARTMENT_COLLECTION"}` |
 
-- group_code 可省略，传入时与路径组编码一致。batch-get 接受 1..100 个字符串 ID；人员使用正 int64 外部 ID，部门使用 `open_department_id` 字符串（形如 `od-...`），角色依租户来源使用对应 ID。
-- 目录回包为 `data.items`（含 id、专用 employee_id/department_id/role_id、name、selectable）及 `missing_ids`。部门候选必须选择 `open_department_id`/`department_id` 中的 `od-...` 值；若回包只有数字 `id`（对应 `sys_department.id`），该值不能直接用于规则行，CLI 没有从内部主键推导 `open_department_id` 的能力，应由目录接口补充可写入字段或由调用方取得对应 `od-...` 值。只采用可选候选，缺失 ID 显式提示，不用内部编号兜底。
+- group_code 可省略，传入时与路径组编码一致。batch-get 接受 1..100 个字符串 ID：人员使用正 int64 外部 ID；部门 batch-get 使用目录返回的数字 `department_id`，用于回查可写入的 `open_department_id`；角色依租户来源使用对应 ID。
+- 目录回包为 `data.items`（含专用 employee_id/department_id/open_department_id/role_id、name、selectable）及 `missing_ids`。部门搜索可直接使用 `selectable=true` 候选的 `open_department_id`（`od-...`）；数字 `department_id` 只作为 batch-get 查询键，不进入规则行。batch-get 结果同样取 `open_department_id`，用于行创建、更新、搜索和 import plan。候选缺少 `open_department_id` 时应为 `selectable=false`；此时提示部署目录接口修复，不使用数字 ID 兜底。
 - 操作符取 CLI 内置映射中的 `symbol`；列更新时仍由开平接口校验合法性。循环配置只使用 `loop-function query` 返回的可用候选。
 - 本页枚举是条件类型及运算符，不是业务字段可选值，不需要另接业务枚举接口。
 
@@ -55,6 +55,8 @@ table 返回详情而非全量行，展示规则还需 row list/get。
 
 - `import plan` 查询列头，apply 串行调用既有行接口。成功行跳过，结果不确定时停止并先查询核验；没有服务端幂等回执或行写入原子 revision 条件。参见 [导入参数](import-parameters.md)。
 - 预发布前全量分页读取规则行作为基准，调用原有 pre-release 后绑定 prepared_version。
+- 本地基准丢失但矩阵详情为 `status=0`（待发布）且有 `prepared_version` 时，重新执行 `pre-release` 会双读版本和完整规则行；两次结果稳定后仅恢复本地基准，返回 `baseline_recovered=true`，不重复请求服务端预发布。Agent 重新展示版本和行数并取得正式发布确认后再执行 `release`。
+- 基准恢复不改写规则行。不得用“原值重写”、清空、增删行或修改列把矩阵重置为草稿；这些业务写操作不属于原发布确认范围，也会改变已预发布内容。
 - 正式发布前再次全量读取，按行 ID、列 ID 对比内容，忽略返回顺序并保留 ID、金额精度；有新增、删除或值变化时停止发布，重新预发布并确认。读取失败或分页不完整时停止。
 - 基准绑定 profile、环境、身份、矩阵 ID 和预发布版本，切换目标或重新预发布后更新基准。
 - 数据一致且用户确认后调用原有 release，再回读 release_version；结果不确定先查询，不自动重试。

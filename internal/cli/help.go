@@ -190,7 +190,7 @@ func renderHelpFlags(writer io.Writer, flags []helpFlag) error {
 }
 
 /*
-helpRegistry 构造本地命令帮助，包括审批矩阵结构能力。
+helpRegistry 构造本地命令帮助，环境入口始终只展示 prod。
 无入参；返回 map[string]helpTopic 为命令路径到帮助主题的映射。
 */
 func helpRegistry() map[string]helpTopic {
@@ -254,16 +254,6 @@ func helpRegistry() map[string]helpTopic {
 	addEventHelp(registry)
 	addRuleHelp(registry)
 	addRuleStructureHelp(registry)
-	if testBuild == "true" {
-		topic := registry["config add"]
-		for i := range topic.Flags {
-			if topic.Flags[i].Name == "--env <prod>" {
-				topic.Flags[i] = helpFlag{"--env <prod|test>", "联调构建支持 prod 和 test；默认 prod，建议 test 使用独立 profile"}
-			}
-		}
-		topic.Examples = append(topic.Examples, "contract-cli config add --env test --name contract-test")
-		registry["config add"] = topic
-	}
 	return registry
 }
 
@@ -395,6 +385,10 @@ func addAuthHelp(registry map[string]helpTopic) {
 	}
 }
 
+/*
+addSkillsHelp 注册内置 Skill 命令及安装参数的帮助主题。
+入参 registry（map[string]helpTopic）为待填充的帮助索引；返回值为空。
+*/
 func addSkillsHelp(registry map[string]helpTopic) {
 	registry["skills"] = helpTopic{
 		Name:  "skills",
@@ -421,11 +415,13 @@ func addSkillsHelp(registry map[string]helpTopic) {
 		Usage:   []string{"contract-cli skills install [flags]"},
 		Flags: []helpFlag{
 			{"--target <dir>", "安装目标目录；默认 $CODEX_HOME/skills 或 ~/.codex/skills"},
+			{"--name <skill>", "只安装指定的内置 skill；默认安装全部"},
 			{"--force", "覆盖已存在的同名 skill；默认跳过"},
 		},
 		Examples: []string{
 			"contract-cli skills install",
 			"contract-cli skills install --target ~/.codex/skills",
+			"contract-cli skills install --name contract-cli-rule --force",
 			"contract-cli skills install --force",
 		},
 	}
@@ -1699,7 +1695,7 @@ func addRuleHelp(registry map[string]helpTopic) {
 		"contract-cli rule table pre-release --product-id <id> --group-id <id> --table-id <id> [flags]",
 		concatHelpFlags(tableIDHelpFlags(), jsonBodyFlags()),
 		[]string{"contract-cli rule table pre-release --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id>"},
-		[]string{"走 PATCH /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/pre_release。", "--input-file / --data 可选；自动化样例不发送请求体。"},
+		[]string{"草稿状态走 PATCH /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/pre_release。", "服务端已为 status=0 待发布状态时，双读版本与规则行后只恢复本地基准并返回 baseline_recovered=true，不重复预发布、不改写规则行。", "--input-file / --data 可选；自动化样例不发送请求体。"},
 	)
 	registry["rule table release"] = ruleTableHelpTopic(
 		"rule table release",
@@ -1707,7 +1703,7 @@ func addRuleHelp(registry map[string]helpTopic) {
 		"contract-cli rule table release --product-id <id> --group-id <id> --table-id <id> [flags]",
 		concatHelpFlags(tableIDHelpFlags(), jsonBodyFlags()),
 		[]string{"contract-cli rule table release --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id>"},
-		[]string{"走 PATCH /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/release。", "--input-file / --data 可选；自动化样例不发送请求体。"},
+		[]string{"走 PATCH /open-apis/rule_engine/v1/products/{product_id}/groups/{group_id}/rule_tables/{rule_table_id}/release。", "本地基准丢失时先执行 pre-release；服务端仍待发布会只读恢复基准并返回 baseline_recovered=true，不改写规则行。", "--input-file / --data 可选；自动化样例不发送请求体。"},
 	)
 	registry["rule table column-headers"] = helpTopic{
 		Name:  "rule table column-headers",
@@ -1752,15 +1748,15 @@ func addRuleHelp(registry map[string]helpTopic) {
 	}
 	registry["rule table import plan"] = ruleTableHelpTopic(
 		"rule table import plan",
-		"读取当前列头，将按列名或列 ID 表达的多行输入转换为待确认计划；本命令不写矩阵数据。",
+		"读取当前列头和全量规则行，将多行输入转换为待确认计划并校验 2000 行上限；本命令不写矩阵数据。",
 		"contract-cli rule table import plan --product-id <id> --group-id <id> [--table-id <id>] --input-file <path>|--data <json> [flags]",
 		concatHelpFlags(approvalMatrixImportPlanHelpFlags(), jsonBodyFlags()),
 		[]string{"contract-cli rule table import plan --profile contract --as app --product-id contract --group-id approve_matrix --table-id <table-id> --input-file import.json"},
-		[]string{"输入顶层为 rows；每行包含 operation(create|update)、update 所需的 row_id，以及以列名或列 ID 为键的 cells。", "未传 --table-id 时返回 status=needs_input 和候选矩阵；成功返回 status=needs_confirmation 和 plan_id。", "缺列、重名列或类型错误返回 status=needs_input。", "不支持 --raw。"},
+		[]string{"输入顶层为 rows；每行包含 operation(create|update)、update 所需的 row_id，以及以列名或列 ID 为键的 cells。", "未传 --table-id 时返回 status=needs_input 和候选矩阵；成功返回 status=needs_confirmation 和 plan_id。", "缺列、重名列、类型错误、目标行不存在或现有行加新增行超过 2000 时返回 status=needs_input。", "不支持 --raw。"},
 	)
 	registry["rule table import apply"] = helpTopic{
 		Name:    "rule table import apply",
-		Summary: "使用 plan_id 作为确认令牌，串行执行批量创建或更新；重试会跳过已经成功的行。",
+		Summary: "使用 plan_id 串行执行；写入成功后逐行回读，重试跳过已验证成功的行。",
 		Usage:   []string{"contract-cli rule table import apply --plan-id <id> [flags]"},
 		Flags:   concatHelpFlags(ruleOpenPlatformCommonFlags(), []helpFlag{{"--plan-id <id>", "必填，plan 命令返回的确认令牌"}}),
 		Examples: []string{
@@ -1768,7 +1764,7 @@ func addRuleHelp(registry map[string]helpTopic) {
 		},
 		Notes: []string{
 			"支持 --as user / --as app；user 需具备合同规则管理权限。",
-			"返回 success、partial_success、failed 或 needs_input，并附逐行结果。",
+			"返回 success、paused、needs_verification、partial_success、failed、invalidated 或 needs_input，并附逐行结果。",
 			"结果不确定的写入不会自动重试，请先用行查询命令核对。",
 			"不接受 --input-file / --data，也不支持 --raw。",
 		},

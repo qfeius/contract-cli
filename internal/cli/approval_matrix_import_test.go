@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -55,6 +56,24 @@ func TestApprovalMatrixImportPlanAndRetryableApply(t *testing.T) {
 					{"id":"column-department","name":"部门","type":3,"table_cell_content_type":"DEPARTMENT_COLLECTION"}
 				]}
 			}`), nil
+		case req.Method == http.MethodGet && req.URL.Path == rowsPath:
+			amount := 1100000
+			if updateCalls >= 2 {
+				amount = 1200000
+			}
+			rows := fmt.Sprintf(`{"id":"row-existing","table_cells":[{"table_column_id":"column-amount","table_cell_content_type":"NUMBER","table_cell_content":{"number":%d}}]}`, amount)
+			if createCalls > 0 {
+				rows += `,{"id":"row-created","table_cells":[{"table_column_id":"column-amount","table_cell_content_type":"NUMBER","table_cell_content":{"number":1000000}},{"table_column_id":"column-approvers","table_cell_content_type":"EMPLOYEE_COLLECTION","table_cell_content":{"employee_collection":[7113921696628736004]}},{"table_column_id":"column-department","table_cell_content_type":"DEPARTMENT_COLLECTION","table_cell_content":{"department_collection":["od-1b1b803a7df98989bf457d9ba203c350"]}}]}`
+			}
+			return jsonResponse(`{"code":0,"data":{"table_rows":[` + rows + `],"has_more":false}}`), nil
+		case req.Method == http.MethodGet && req.URL.Path == rowsPath+"/row-existing":
+			amount := 1100000
+			if updateCalls >= 2 {
+				amount = 1200000
+			}
+			return jsonResponse(fmt.Sprintf(`{"code":0,"data":{"table_row":{"id":"row-existing","table_cells":[{"table_column_id":"column-amount","table_cell_content_type":"NUMBER","table_cell_content":{"number":%d}}]}}}`, amount)), nil
+		case req.Method == http.MethodGet && req.URL.Path == rowsPath+"/row-created":
+			return jsonResponse(`{"code":0,"data":{"table_row":{"id":"row-created","table_cells":[{"table_column_id":"column-amount","table_cell_content_type":"NUMBER","table_cell_content":{"number":1000000}},{"table_column_id":"column-approvers","table_cell_content_type":"EMPLOYEE_COLLECTION","table_cell_content":{"employee_collection":[7113921696628736004]}},{"table_column_id":"column-department","table_cell_content_type":"DEPARTMENT_COLLECTION","table_cell_content":{"department_collection":["od-1b1b803a7df98989bf457d9ba203c350"]}}]}}}`), nil
 		case req.Method == http.MethodPost && req.URL.Path == rowsPath:
 			createCalls++
 			body, err := io.ReadAll(req.Body)
@@ -268,6 +287,9 @@ func TestApprovalMatrixImportApplyRejectsConcurrentExecution(t *testing.T) {
 		Store:  store,
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			if req.Method == http.MethodGet {
+				if strings.HasSuffix(req.URL.Path, "/table_rows") {
+					return jsonResponse(`{"code":0,"data":{"table_rows":[],"has_more":false}}`), nil
+				}
 				return jsonResponse(`{"code":0,"msg":"success","data":{"columns_headers":[{"id":"column-amount","name":"合同金额","type":1,"table_cell_content_type":"NUMBER"}]}}`), nil
 			}
 			writes++
@@ -321,6 +343,12 @@ func TestApprovalMatrixImportUserIdentity(t *testing.T) {
 					}
 					if req.Method == http.MethodGet {
 						reads++
+						if strings.HasSuffix(req.URL.Path, "/table_rows") {
+							return jsonResponse(`{"code":0,"data":{"table_rows":[],"has_more":false}}`), nil
+						}
+						if strings.HasSuffix(req.URL.Path, "/table_rows/new-row") {
+							return jsonResponse(`{"code":0,"data":{"table_row":{"id":"new-row","table_cells":[{"table_column_id":"c","table_cell_content_type":"NUMBER","table_cell_content":{"number":1}}]}}}`), nil
+						}
 						return jsonResponse(`{"code":0,"data":{"columns_headers":[{"id":"c","name":"金额","type":1,"table_cell_content_type":"NUMBER"}]}}`), nil
 					}
 					writes++
@@ -356,10 +384,10 @@ func TestApprovalMatrixImportUserIdentity(t *testing.T) {
 			}
 			result := decodeJSONObject(t, stdout.Bytes())
 			if mode == "user" {
-				if result["status"] != "success" || writes != 1 || reads != 2 {
+				if result["status"] != "success" || writes != 1 || reads != 5 {
 					t.Fatalf("result=%v writes=%d reads=%d", result, writes, reads)
 				}
-			} else if result["status"] != "invalidated" || writes != 0 || reads != 1 {
+			} else if result["status"] != "invalidated" || writes != 0 || reads != 2 {
 				t.Fatalf("cross-identity plan executed: %v", result)
 			}
 		})
@@ -380,13 +408,23 @@ func TestApprovalMatrixImportStopsAndInvalidates(t *testing.T) {
 			stdout := &bytes.Buffer{}
 			reads, writes := 0, 0
 			app := cli.New(cli.Options{Store: store, Stdout: stdout, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				if req.Method == http.MethodGet {
+				if req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/column_headers") {
 					reads++
 					kind := "NUMBER"
 					if scenario == "changed_columns" && reads > 1 {
 						kind = "STRING"
 					}
 					return jsonResponse(`{"code":0,"data":{"columns_headers":[{"id":"c","name":"金额","type":1,"table_cell_content_type":"` + kind + `"}]}}`), nil
+				}
+				if req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/table_rows") {
+					return jsonResponse(`{"code":0,"data":{"table_rows":[],"has_more":false}}`), nil
+				}
+				if req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/table_rows/r") {
+					amount := 1
+					if scenario == "partial_confirmation" {
+						amount = 2
+					}
+					return jsonResponse(fmt.Sprintf(`{"code":0,"data":{"table_row":{"id":"r","table_cells":[{"table_column_id":"c","table_cell_content_type":"NUMBER","table_cell_content":{"number":%d}}]}}}`, amount)), nil
 				}
 				writes++
 				response := jsonResponse(`{"code":0,"data":{"table_row_id":"r"}}`)
@@ -475,6 +513,9 @@ func TestApprovalMatrixImportBackendValueTypes(t *testing.T) {
 		app := cli.New(cli.Options{Store: store, Stdout: stdout, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			if req.Method != http.MethodGet {
 				t.Fatal("plan wrote data")
+			}
+			if strings.HasSuffix(req.URL.Path, "/table_rows") {
+				return jsonResponse(`{"code":0,"data":{"table_rows":[],"has_more":false}}`), nil
 			}
 			return jsonResponse(`{"code":0,"data":{"columns_headers":[{"id":"c","name":"c","type":1,"table_cell_content_type":"` + tc.kind + `"}]}}`), nil
 		})}})

@@ -41,7 +41,7 @@ HTTP 方法和路径：
 问题描述：
 ```
 
-写入场景使用专用测试矩阵或测试规则组。删除、预发布和发布只在确认记录后执行。报告中保留 ID 和版本号，隐藏 Token、Cookie 和个人敏感信息。
+写入场景使用 `approve_matrix` 规则组下的专用测试矩阵。删除、预发布和发布只在确认记录后执行。报告中保留 ID 和版本号，隐藏 Token、Cookie 和个人敏感信息。
 
 ## 1. 接入与命令入口
 
@@ -62,9 +62,9 @@ HTTP 方法和路径：
 | 编号 | 场景 | 命令 / 输入 | 预期 |
 | --- | --- | --- | --- |
 | B-01 | 查询已有规则组 | `rule group get $COMMON` | 返回组编码、名称、描述和矩阵范围 |
-| B-02 | 创建测试规则组 | `rule group create $COMMON --data '{"group_id":"<new-group>","name":"CLI 测试组"}'` | 创建成功，返回可继续使用的 group ID |
-| B-03 | 重复创建规则组 | 重复执行 B-02 | 返回业务错误，已有组保持不变 |
-| B-04 | 组编码与 `--group-id` 不一致 | body 中传另一个 `group_code` | 本地或服务端拒绝，记录 code/msg |
+| B-02 | contract 产品创建规则组 | `rule group create --profile "$PROFILE" --as "$AS" --product-id contract --data '{"group_id":"<new-group>","name":"CLI 测试组"}'` | 本地拒绝，不发送 HTTP 请求 |
+| B-03 | 创建规则组的兼容入口 | B-02 改用 `approval-matrix group create` | 同样本地拒绝，不发送 HTTP 请求 |
+| B-04 | 在非固定规则组创建矩阵 | `rule table create --profile "$PROFILE" --as "$AS" --product-id contract --group-id <new-group> --data '{"name":"不可见矩阵"}'` | 本地拒绝，不发送 HTTP 请求；在 `approve_matrix` 创建仍成功 |
 
 ### 2.2 矩阵列表和候选选择
 
@@ -119,8 +119,8 @@ HTTP 方法和路径：
 
 | 编号 | 场景 | 命令 / 输入 | 预期 |
 | --- | --- | --- | --- |
-| C-09 | 部门搜索 | `rule department search $COMMON --data '{"param":"<部门关键词>"}'` | 返回部门候选和可用于规则行的 `open_department_id`（`od-...`）；若只有数字 `sys_department.id`，记录为目录接口字段缺失 |
-| C-10 | 部门批量回读 | `rule department batch-get $COMMON --data '{"ids":["<department-id>"]}'` | 返回部门名称和缺失 ID |
+| C-09 | 部门搜索 | `rule department search $COMMON --data '{"param":"<部门关键词>"}'` | 返回数字 `department_id` 和可直接用于规则行/import plan 的 `open_department_id`（`od-...`）；缺少后者时 `selectable=false` |
+| C-10 | 部门批量回读 | `rule department batch-get $COMMON --data '{"ids":["<数字 department_id>"]}'` | 返回部门名称、`open_department_id` 和缺失 ID；将返回的 `od-...` 用于后续写入 |
 | C-11 | 角色搜索 | `rule role search $COMMON --data '{"param":"<角色关键词>"}'` | 返回角色候选和外部 ID |
 | C-12 | 角色批量回读 | `rule role batch-get $COMMON --data '{"ids":["<role-id>"]}'` | 返回角色名称和缺失 ID |
 | C-13 | 空搜索词 | `param` 为空或全是空格 | 本地拒绝，不发送请求 |
@@ -144,6 +144,9 @@ HTTP 方法和路径：
 | --- | --- | --- | --- |
 | D-01 | 查询列头 | `rule table column-headers list $COMMON --table-id "$TABLE_ID"` | 返回列 ID、名称、列类型、单元格内容类型及已绑定配置 |
 | D-02 | 新增左侧列 | `rule table column add $COMMON --table-id "$TABLE_ID" --data '{"base_table_column_id":"<base-column>","direction":-1}'` | 返回新列 ID，位置在基准列左侧 |
+| D-02A | 列容量未满 | 当前条件列、结果列、优先级列和备注列总计小于 12，再执行 `column add` | CLI 先查询列头，再发送新增请求；条件列与结果列共用 10 个名额 |
+| D-02B | 列容量已满 | 当前 8 个条件列、2 个结果列，加优先级和备注共 12 列，再执行 `column add` | CLI 本地返回当前条件/结果/系统列计数及总上限 12，不发送新增请求，不等服务端返回 20303 |
+| D-02C | 完整方案超限 | 请求 10 个条件列和 2～3 个结果列 | 首个结构写入前计算总计 14～15 列并说明超限，停止执行 |
 | D-03 | 新增右侧列 | `direction=1` | 返回新列 ID，位置在基准列右侧 |
 | D-04 | 非法插入方向 | `direction=0` | 本地拒绝 |
 | D-05 | 基准列不存在 | 使用错误 base column ID | 返回明确业务错误 |
@@ -246,7 +249,10 @@ HTTP 方法和路径：
 
 | 编号 | 场景 | 命令 / 输入 | 预期 |
 | --- | --- | --- | --- |
-| F-01 | 生成创建计划 | `rule table import plan $COMMON --table-id "$TABLE_ID" --input-file import.json` | 只读列头，返回 `needs_confirmation` 和 plan_id |
+| F-00A | 业务 Excel 用途不明确 | 只提供业务 Excel 并要求“批量导入矩阵” | Agent 先询问矩阵业务用途；不创建矩阵、不改列、不生成或执行导入计划 |
+| F-00B | 协商自动邀请缺合同类型列 | 已明确用于协商自动邀请，现有列头没有 `合同类型` | 先展示并单独确认新增 `value_type=COLLECTION` 的合同类型条件列；变更并重读列头后才生成计划 |
+| F-00C | 协商自动邀请合同类型错误 | `合同类型` 条件列当前为 STRING | 不按 Excel 文本形态直接导入；先单独确认改为 COLLECTION，服务端因已有值阻止时按清空确认流程处理 |
+| F-01 | 生成创建计划 | `rule table import plan $COMMON --table-id "$TABLE_ID" --input-file import.json` | 只读列头和全部分页规则行，返回 `needs_confirmation` 和 plan_id |
 | F-02 | 生成更新计划 | 输入带 `operation=update` 和 row_id | 生成 PUT 请求计划，不发送写请求 |
 | F-03 | 未知列 | cells 使用不存在列名或列 ID | `needs_input`，列出问题，不保存计划 |
 | F-04 | 类型错误 | 字符串列传 number、数字列传 string 等 | `needs_input`，返回 expected_type |
@@ -254,7 +260,7 @@ HTTP 方法和路径：
 | F-06 | update 缺少 row_id | 省略 row_id | `needs_input` |
 | F-07 | 顶层未知字段 | rows 外增加字段 | 本地 JSON 校验错误 |
 | F-08 | null 和空数组 | 同时测试 null 清空和 [] 清空 | 计划中的 cell content 为空，执行语义为清空 |
-| F-09 | 执行全量计划 | `rule table import apply --profile "$PROFILE" --as "$AS" --plan-id <plan-id>` | 串行执行，返回逐行结果 |
+| F-09 | 执行全量计划 | `rule table import apply --profile "$PROFILE" --as "$AS" --plan-id <plan-id>` | 串行执行并逐行回读，吻合后才记 success |
 | F-10 | 局部行确认 | 增加 `--rows 1,3` | 只执行选中行 |
 | F-11 | 分批执行 | 增加 `--batch-size 1` | 已执行行完成，剩余状态为 paused |
 | F-12 | 查看计划 | `rule table import get --profile "$PROFILE" --plan-id <plan-id>` | 返回当前状态、摘要和逐行结果 |
@@ -266,6 +272,10 @@ HTTP 方法和路径：
 | F-18 | 计划过期 | 使用超过 24 小时的计划 | 状态 invalidated |
 | F-19 | 身份或环境变化 | 用其他 profile、身份或环境 apply | 状态 invalidated 或本地拒绝 |
 | F-20 | raw 输出限制 | plan/apply 增加 `--raw` | 本地提示使用结构化状态 |
+| F-21 | 2000 行边界 | 1999 行加 1/2 个 create；2000 行只做 update | 前者分别可计划/返回 `needs_input`；2000 行 update 可计划；服务端 20302 停批并使计划失效 |
+| F-22 | 行快照变化 | plan 后外部增删改行，再 apply | `invalidated`，没有写请求；本计划已验证写入不使快照失效 |
+| F-23 | 运行中暂停 | 第一条写请求未结束时调用 `import pause --plan-id` | 当前写入及回读结束后返回 paused，第二条不发送；resume 后可续跑 |
+| F-24 | 回读失败或不符 | 写请求成功，随后行 get 报错或值不符 | 行状态 unverified，计划 `needs_verification`；再次 apply 不重发写请求，`import verify` 只读恢复 |
 
 ## 7. 预发布与正式发布
 
@@ -277,7 +287,7 @@ HTTP 方法和路径：
 | G-04 | 新增行后发布 | 预发布后新增一行再 release | 阻断发布，要求重新预发布 |
 | G-05 | 删除行后发布 | 预发布后删除一行再 release | 阻断发布 |
 | G-06 | 修改单元格后发布 | 预发布后修改金额、人员或集合值 | 阻断发布 |
-| G-07 | 返回顺序变化 | 两次查询行顺序不同但内容相同 | 按行 ID 比较，发布继续 |
+| G-07 | 返回顺序变化 | 两次查询行、单元格或 `department_collection` 成员顺序不同但内容相同 | 按行 ID、列 ID 和无序部门集合比较，发布继续；部门成员变化仍阻断 |
 | G-08 | 金额精度变化 | 测试 1000 与 1000.0、30 位整数、8 位小数 | 精确比较，不因 float64 丢失而误判 |
 | G-09 | 重复行 ID | 查询返回重复 row ID | 阻断并报告分页数据异常 |
 | G-10 | 分页 token 异常 | has_more=true 但 token 缺失或循环 | 阻断并报告分页异常 |
@@ -286,6 +296,7 @@ HTTP 方法和路径：
 | G-13 | 矩阵或身份变化 | release 使用其他 table_id/profile/identity | 阻断发布 |
 | G-14 | release 结果不确定 | release 请求网络中断 | 先查询版本和状态，不直接重试 |
 | G-15 | 发布别名 | G-03 改用 `approval-matrix publish` 或 `approval-matrix table publish` | 与 `rule table release` 行为一致 |
+| G-16 | profile 重建后恢复发布 | 服务端 `status=0` 且有 `prepared_version`，本地发布基准为空 | 再执行 pre-release 时双读详情与完整规则行，仅保存本地基准并返回 `baseline_recovered=true`；不请求重复预发布、不改写规则行，重新确认后 release 成功 |
 
 ## 8. 原始方案中的页面能力边界
 
@@ -294,14 +305,14 @@ HTTP 方法和路径：
 | 编号 | 页面业务场景 | 当前记录 |
 | --- | --- | --- |
 | H-01 | 测试用例创建、执行、结果查看 | 当前范围外 |
-| H-02 | 系统模板或 Excel 导入 | 当前范围外 |
+| H-02 | CLI 原生系统模板或 Excel 文件导入 | 当前范围外；Agent 可在用途和结构确认后把业务 Excel 转为 import JSON |
 | H-03 | 导入历史查看与恢复 | 当前范围外 |
 | H-04 | 更新记录、审计记录 | 当前范围外 |
 | H-05 | 版本历史和回滚 | 当前范围外 |
 | H-06 | 已有列移动和排序 | 当前范围外 |
 | H-07 | 流程设计器节点绑定 | 原方案要求单独确认 |
 | H-08 | 审批流程节点配置 | 原方案要求单独确认 |
-| H-09 | 协作角色自动邀请 | 原方案要求单独确认 |
+| H-09 | 协商自动邀请 | Agent 导入前识别用途，并补齐 COLLECTION 类型的 `合同类型` 条件列；流程设计器绑定仍单独确认 |
 
 ## 9. 测试完成判定
 
@@ -311,7 +322,7 @@ HTTP 方法和路径：
 2. C-01、C-09、C-11、C-14 完成目录和元数据闭环；
 3. D-01、D-02、D-06、D-13、D-18 完成列配置闭环；
 4. E-01、E-02、E-03、E-10、E-16、E-17 完成行数据闭环；
-5. F-01、F-09、F-12、F-13、F-16、F-17 完成批量导入状态闭环；
+5. F-00A、F-00B、F-01、F-09、F-12、F-13、F-16、F-17 完成用途识别、结构补齐与批量导入状态闭环；
 6. G-01、G-03、G-04、G-06、G-11、G-15 完成发布保护闭环；
 7. H 组逐项标记为当前范围外或另行验收。
 

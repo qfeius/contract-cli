@@ -309,6 +309,96 @@ func TestOpenAPIGapCommandsUseExpectedEndpointsAsBot(t *testing.T) {
 	}
 }
 
+/*
+TestRuleTableRowSearchEmptyResults 验证规则行搜索在服务端返回空对象时仍向调用方提供稳定的空行列表。
+入参 t（*testing.T）为测试上下文；返回值为空，断言失败时报告测试错误。
+*/
+func TestRuleTableRowSearchEmptyResults(t *testing.T) {
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(uploadProfile(config.IdentityApp), true); err != nil {
+		t.Fatal(err)
+	}
+	for _, identity := range []string{"app", "user"} {
+		t.Run(identity, func(t *testing.T) {
+			stdout := &bytes.Buffer{}
+			app := cli.New(cli.Options{Store: store, Stdout: stdout, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.Method != http.MethodPost || !strings.HasSuffix(req.URL.Path, "/table_rows/search") {
+					t.Fatalf("unexpected search request: %s %s", req.Method, req.URL)
+				}
+				return jsonResponse(`{"code":0,"data":{}}`), nil
+			})}})
+			err := app.Run(context.Background(), []string{"rule", "table", "row", "search", "--profile", "contract", "--as", identity, "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "t", "--page-size", "10", "--data", `{"table_cell":{"table_column_id":"c","table_cell_content_type":"STRING","table_cell_content":{"string":"missing"}}}`})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := decodeApprovalMatrixOutput(t, stdout.Bytes())
+			data, ok := result["data"].(map[string]any)
+			if !ok {
+				t.Fatalf("search data=%v", result["data"])
+			}
+			rows, ok := data["table_rows"].([]any)
+			if !ok || len(rows) != 0 || data["has_more"] != false {
+				t.Fatalf("empty search data=%v", data)
+			}
+		})
+	}
+}
+
+/*
+TestRuleTableRowSearchPreservesOtherResponses 验证原始输出、业务错误和非空分页不会被空结果规范化误改。
+入参 t（*testing.T）为测试上下文；返回值为空，断言失败时报告测试错误。
+*/
+func TestRuleTableRowSearchPreservesOtherResponses(t *testing.T) {
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(uploadProfile(config.IdentityApp), true); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, body     string
+		raw, wantError bool
+	}{
+		{"raw", `{"code":0,"data":{}}`, true, false},
+		{"business_error", `{"code":41001,"msg":"rejected","data":{}}`, false, true},
+		{"nonempty", `{"code":0,"data":{"table_rows":[{"id":"r1"}],"has_more":true,"page_token":"next"}}`, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stdout := &bytes.Buffer{}
+			app := cli.New(cli.Options{Store: store, Stdout: stdout, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				return jsonResponse(tc.body), nil
+			})}})
+			args := []string{"rule", "table", "row", "search", "--profile", "contract", "--as", "app", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "t", "--page-size", "10", "--data", `{"table_cell":{"table_column_id":"c","table_cell_content_type":"STRING","table_cell_content":{"string":"x"}}}`}
+			if tc.raw {
+				args = append(args, "--raw")
+			}
+			err := app.Run(context.Background(), args)
+			if (err != nil) != tc.wantError {
+				t.Fatalf("Run() error=%v, wantError=%v", err, tc.wantError)
+			}
+			if tc.raw {
+				if stdout.String() != tc.body {
+					t.Fatalf("raw output=%q, want %q", stdout.String(), tc.body)
+				}
+				return
+			}
+			result := decodeApprovalMatrixOutput(t, stdout.Bytes())
+			data, ok := result["data"].(map[string]any)
+			if !ok {
+				t.Fatalf("response data=%v", result["data"])
+			}
+			if tc.wantError {
+				if len(data) != 0 || result["code"] != float64(41001) {
+					t.Fatalf("business error was changed: %v", result)
+				}
+				return
+			}
+			rows, ok := data["table_rows"].([]any)
+			if !ok || len(rows) != 1 || data["has_more"] != true || data["page_token"] != "next" {
+				t.Fatalf("nonempty search was changed: %v", data)
+			}
+		})
+	}
+}
+
 func TestOpenAPIGapDownloadCommandsWriteOutputFileAsBot(t *testing.T) {
 	t.Parallel()
 

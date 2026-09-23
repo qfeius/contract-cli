@@ -7,6 +7,16 @@ import (
 	"net/http"
 	"strings"
 	"unicode/utf8"
+
+	"cn.qfei/contract-cli/internal/openplatform"
+)
+
+const (
+	approvalMatrixColumnCountLimit         = 12
+	approvalMatrixEditableColumnCountLimit = 10
+	approvalMatrixImplicitPriorityColumns  = 1
+	// contract 产品页面只展示这个规则组，新增矩阵必须归入同一组。
+	contractApprovalMatrixGroupID = "approve_matrix"
 )
 
 /*
@@ -43,7 +53,7 @@ func normalizeApprovalMatrixArgs(args []string) []string {
 }
 
 /*
-runRuleStructure 调用规则组、矩阵、列结构和只读人员搜索接口。
+runRuleStructure 调用规则组、矩阵、列结构和只读人员搜索接口，并阻断 contract 产品不可见的创建目标。
 入参 ctx（context.Context）为上下文，resource（string）为资源类型，args（[]string）为动作及参数。
 返回 error 表示参数或开放平台调用失败；成功使用项目统一响应输出。
 */
@@ -76,11 +86,19 @@ func (a *App) runRuleStructure(ctx context.Context, resource string, args []stri
 	if err != nil {
 		return err
 	}
+	// 页面无法展示 contract 产品的新规则组，必须在任何网络请求前阻断创建。
+	if product == "contract" && resource == "group" && action == "create" {
+		return fmt.Errorf("contract product only displays rule group %s; rule group create is disabled", contractApprovalMatrixGroupID)
+	}
 	path := "/open-apis/rule_engine/v1/products/" + escapePathSegment(product) + "/groups"
 	if resource != "group" || action != "create" {
 		group, err := requiredParsedValue(parsed, "--group-id")
 		if err != nil {
 			return err
+		}
+		// 即使调用方没有新建规则组，也不能让新矩阵落入页面不展示的组。
+		if product == "contract" && resource == "table" && action == "create" && group != contractApprovalMatrixGroupID {
+			return fmt.Errorf("contract product rule table create requires --group-id %s; tables in other groups are not visible in the page", contractApprovalMatrixGroupID)
 		}
 		path += "/" + escapePathSegment(group)
 	}
@@ -122,7 +140,71 @@ func (a *App) runRuleStructure(ctx context.Context, resource string, args []stri
 	} else if err = rejectRawBody(options, "rule "+resource+" "+action); err != nil {
 		return err
 	}
+	if resource == "column" && action == "add" {
+		if err = a.preflightApprovalMatrixColumnAdd(ctx, options, path); err != nil {
+			return err
+		}
+	}
 	return a.executeRuleOpenPlatformRequest(ctx, options, method, path, nil, body)
+}
+
+/*
+preflightApprovalMatrixColumnAdd 在新增列写请求前读取当前列头，并按服务端总列数上限阻断超限操作。
+入参 ctx（context.Context）为请求上下文，options（commandOptions）为身份与输出选项，columnsPath（string）为新增列集合路径。
+返回值 error 表示鉴权、列头读取、响应解析或容量检查失败；仍有容量时返回 nil。
+*/
+func (a *App) preflightApprovalMatrixColumnAdd(ctx context.Context, options commandOptions, columnsPath string) error {
+	columnHeadersPath := columnsPath + "/column_headers"
+	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, columnHeadersPath, openplatform.IdentityPolicyAny)
+	if err != nil {
+		return err
+	}
+	response, err := client.Do(ctx, requestContext, openplatform.Request{
+		Method:         http.MethodGet,
+		Path:           columnHeadersPath,
+		IdentityPolicy: openplatform.IdentityPolicyAny,
+	})
+	if err != nil {
+		return err
+	}
+	columns, err := decodeApprovalMatrixColumns(response.Body)
+	if err != nil {
+		return err
+	}
+
+	// 列头接口省略优先级列，但服务端阈值会统计它；备注列则以 type=3 出现在列头中。
+	conditionCount, resultCount, systemCount := 0, 0, 0
+	priorityIncluded := false
+	for _, column := range columns {
+		switch column.Type {
+		case 1:
+			conditionCount++
+		case 2:
+			resultCount++
+		case 0:
+			// 兼容未来列头显式返回优先级列，避免重复补计。
+			priorityIncluded = true
+			systemCount++
+		default:
+			systemCount++
+		}
+	}
+	if !priorityIncluded {
+		systemCount += approvalMatrixImplicitPriorityColumns
+	}
+	currentTotal := conditionCount + resultCount + systemCount
+	if currentTotal >= approvalMatrixColumnCountLimit {
+		return fmt.Errorf(
+			"approval matrix column limit: adding 1 column would make total %d; maximum %d (current: condition %d, result %d, system %d including priority and remark); condition and result columns share %d slots",
+			currentTotal+1,
+			approvalMatrixColumnCountLimit,
+			conditionCount,
+			resultCount,
+			systemCount,
+			approvalMatrixEditableColumnCountLimit,
+		)
+	}
+	return nil
 }
 
 /*
@@ -203,43 +285,44 @@ func validateRuleStructureBody(resource, action, groupID, tableID string, body [
 }
 
 /*
-addRuleStructureHelp 注册结构命令、只读人员搜索及请求字段提示。
+addRuleStructureHelp 注册公开的结构命令、导入控制、只读人员搜索及请求字段提示。
 入参 registry（map[string]helpTopic）为帮助注册表；返回值为空，就地新增主题。
 */
 func addRuleStructureHelp(registry map[string]helpTopic) {
 	defer addMatrixExtensionHelp(registry)
-	for _, action := range []string{"get", "cancel"} {
+	for _, action := range []string{"get", "pause", "resume", "verify", "cancel"} {
 		name := "rule table import " + action
-		registry[name] = helpTopic{Name: name, Usage: []string{"contract-cli " + name + " --plan-id <id> [flags]"}, Flags: concatHelpFlags(openPlatformCommonFlags(), []helpFlag{{"--plan-id <id>", "本地计划 ID"}}), Notes: []string{"get 只读本地进度；cancel 在没有执行中的批次时取消后续操作，不撤销已成功写入。"}}
+		registry[name] = helpTopic{Name: name, Usage: []string{"contract-cli " + name + " --plan-id <id> [flags]"}, Flags: concatHelpFlags(openPlatformCommonFlags(), []helpFlag{{"--plan-id <id>", "本地计划 ID"}}), Notes: []string{"get 读取进度；pause 在当前行写入与回读结束后停批；resume 清除暂停标记；verify 只回读未验证行；cancel 取消后续操作。"}}
 		parent := registry["rule table import"]
-		parent.Commands = append(parent.Commands, helpCommand{"contract-cli " + name + " [flags]", "读取或取消导入计划"})
+		parent.Commands = append(parent.Commands, helpCommand{"contract-cli " + name + " [flags]", "控制或核验导入计划"})
 		registry["rule table import"] = parent
 	}
 	apply := registry["rule table import apply"]
 	apply.Flags = append(apply.Flags, helpFlag{"--rows <1,2>", "仅执行已确认的计划行序号"}, helpFlag{"--batch-size <n>", "本次最多执行 n 行，剩余进度保留为 paused"})
-	apply.Notes = append(apply.Notes, "执行前重读列头，24 小时过期或应用/环境变化时返回 invalidated；不确定结果立即停止后续行。")
+	apply.Notes = append(apply.Notes, "执行前重读列头和全量规则行；24 小时过期、身份/环境或行快照变化时返回 invalidated。写入成功须回读吻合才记 success；回读失败进入 needs_verification 并停止后续行。")
 	registry["rule table import apply"] = apply
 	groups := []struct {
 		parent  string
 		actions []string
 	}{
 		{"rule employee", []string{"search"}},
-		{"rule group", []string{"get", "create"}},
+		{"rule group", []string{"get"}},
 		{"rule table", []string{"get", "create", "update", "delete"}},
 		{"rule table column", []string{"add", "update", "update-condition", "update-result", "delete"}},
 	}
 	for _, group := range groups {
 		parent := registry[group.parent]
 		parent.Name = group.parent
+		if group.parent == "rule group" {
+			// 父级帮助只展示子命令，固定组约束也要在这里可见。
+			parent.Notes = append(parent.Notes, "contract 产品页面只展示 approve_matrix；group create 在执行层被阻断。")
+		}
 		if len(parent.Usage) == 0 {
 			parent.Usage = []string{"contract-cli " + group.parent + " <subcommand> [flags]"}
 		}
 		for _, action := range group.actions {
 			name := group.parent + " " + action
-			flags := []helpFlag{{"--product-id <id>", "产品编码"}}
-			if group.parent != "rule group" || action != "create" {
-				flags = append(flags, helpFlag{"--group-id <id>", "规则组对外编码"})
-			}
+			flags := []helpFlag{{"--product-id <id>", "产品编码"}, {"--group-id <id>", "规则组对外编码；contract 产品固定为 approve_matrix"}}
 			if group.parent == "rule table column" || (group.parent == "rule table" && action != "create") {
 				flags = append(flags, helpFlag{"--table-id <id>", "规则表对外编码（不是数据库主键）"})
 			}
@@ -254,11 +337,14 @@ func addRuleStructureHelp(registry map[string]helpTopic) {
 			case "rule employee":
 				notes = []string{"只读 POST 搜索：JSON 为 {\"param\":\"姓名关键词\",\"group_code\":\"approve_matrix\"}；param 最长 100 字符，可选 group_code 必须与 --group-id 一致；支持 user/app。", "返回 data 数组，employee_id 为矩阵外部人员 ID（十进制字符串）；仅 selectable=true 可用于写入，重名须选择，禁止自动取第一人。", "user_id_type 固定使用默认 user_id 语义；不把内部员工编号或 ou_ ID 写入规则。"}
 			case "rule group":
-				notes = append(notes, "创建 JSON：group_id、name 必填，description 可选。")
+				notes = append(notes, "contract 产品页面只展示 approve_matrix；group create 在 contract 产品被执行层阻断。")
 			case "rule table":
-				notes = append(notes, "写入 JSON：name 必填；rule_table_id、description、match_policy、node_repetition_policy 可选。策略值为 0..2；更新时 rule_table_id 不可改变。", "更新 description 省略会按后端空值语义处理；保留原描述时先 get 并带回。")
+				notes = append(notes, "contract 产品新建矩阵必须使用 --group-id approve_matrix。", "写入 JSON：name 必填；rule_table_id、description、match_policy、node_repetition_policy 可选。策略值为 0..2；更新时 rule_table_id 不可改变。", "更新 description 省略会按后端空值语义处理；保留原描述时先 get 并带回。")
 			case "rule table column":
 				notes = append(notes, "add JSON：base_table_column_id 必填，direction 为 -1 左侧或 1 右侧；新列类型继承基准列，随后用 update 配置。", "条件列更新：table_column_name、value_type、symbol；可选 value_id/value_code/value_name/is_department_loop/multi_select_match_mode。", "结果列更新：table_column_name、result_type；可选 result_code/default_value。default_value 是字符串，人员为逗号分隔的正整数外部 ID，部门为逗号分隔的 open_department_id（od-...）。", "已有值且类型或操作符改变单元格类型时，服务端阻止更新；需要先单独确认清空。优先级列、备注列及最后必要列受服务端保护。")
+				if action == "add" {
+					notes = append(notes, "总列数上限为 12；优先级列和备注列固定占 2 列，条件列与结果列共用剩余 10 个名额。add 会先读取当前列头并在超限写入前本地阻断。")
+				}
 			}
 			registry[name] = helpTopic{Name: name, Usage: []string{"contract-cli " + name + " [flags]"}, Flags: concatHelpFlags(openPlatformCommonFlags(), flags), Notes: notes}
 			parent.Commands = append(parent.Commands, helpCommand{"contract-cli " + name + " [flags]", "审批矩阵结构操作"})

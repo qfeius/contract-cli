@@ -27,7 +27,6 @@ func TestApprovalMatrixStructureEndpoints(t *testing.T) {
 			{"employee search", "POST", "/approve_matrix/employees/search", `{"param":"赵少帅","group_code":"approve_matrix"}`},
 			{"employee search", "POST", "/approve_matrix/employees/search", `{"param":"赵少帅","group_code":null}`},
 			{"group get", "GET", "/approve_matrix", ""},
-			{"group create", "POST", "", `{"group_id":"test_group","name":"测试组"}`},
 			{"table create", "POST", "/approve_matrix/rule_tables", `{"name":"采购","match_policy":0}`},
 			{"table get", "GET", "/approve_matrix/rule_tables/table-1", ""},
 			{"table update", "PUT", "/approve_matrix/rule_tables/table-1", `{"name":"采购2","match_policy":1}`},
@@ -45,6 +44,9 @@ func TestApprovalMatrixStructureEndpoints(t *testing.T) {
 				calls := 0
 				app := cli.New(cli.Options{Store: store, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 					calls++
+					if tc.command == "column add" && req.Method == http.MethodGet && req.URL.Path == base+"/approve_matrix/rule_tables/table-1/table_columns/column_headers" {
+						return jsonResponse(`{"code":0,"data":{"columns_headers":[{"id":"condition","name":"条件","type":1,"table_cell_content_type":"STRING"},{"id":"result","name":"结果","type":2,"table_cell_content_type":"COLLECTION"},{"id":"note","name":"备注","type":3,"table_cell_content_type":"STRING"}]}}`), nil
+					}
 					if req.Method != tc.method || req.URL.Path != base+tc.suffix {
 						t.Fatalf("unexpected request %s %s", req.Method, req.URL.Path)
 					}
@@ -78,10 +80,146 @@ func TestApprovalMatrixStructureEndpoints(t *testing.T) {
 				if err := app.Run(context.Background(), args); err != nil {
 					t.Fatal(err)
 				}
-				if calls != 1 {
-					t.Fatalf("calls=%d", calls)
+				wantCalls := 1
+				if tc.command == "column add" {
+					wantCalls = 2
+				}
+				if calls != wantCalls {
+					t.Fatalf("calls=%d, want %d", calls, wantCalls)
 				}
 			})
+		}
+	}
+}
+
+/*
+TestContractRuleCreationScope 验证 contract 产品的规则组创建与跨组建表在发请求前被拦截。
+入参 t（*testing.T）为测试上下文；返回值为空，失败通过测试断言报告。
+*/
+func TestContractRuleCreationScope(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"rule group create", []string{"rule", "group", "create", "--product-id", "contract", "--data", `{"group_id":"hidden","name":"隐藏组"}`}},
+		{"approval-matrix group create", []string{"approval-matrix", "group", "create", "--product-id", "contract", "--data", `{"group_id":"hidden","name":"隐藏组"}`}},
+		{"rule table create outside fixed group", []string{"rule", "table", "create", "--product-id", "contract", "--group-id", "hidden", "--data", `{"name":"隐藏矩阵"}`}},
+		{"approval-matrix table create outside fixed group", []string{"approval-matrix", "table", "create", "--product-id", "contract", "--group-id", "hidden", "--data", `{"name":"隐藏矩阵"}`}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := config.NewStore(t.TempDir())
+			if err := store.UpsertProfile(uploadProfile(config.IdentityApp), true); err != nil {
+				t.Fatal(err)
+			}
+			// 任何创建请求都应停在本地，计数器用于防止别名绕过保护。
+			calls := 0
+			app := cli.New(cli.Options{Store: store, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				calls++
+				return jsonResponse(`{"code":0,"data":{}}`), nil
+			})}})
+			args := append(append([]string{}, tc.args...), "--profile", "contract", "--as", "app")
+			err := app.Run(context.Background(), args)
+			if err == nil || !strings.Contains(err.Error(), "approve_matrix") {
+				t.Fatalf("error = %v, want fixed approve_matrix group error", err)
+			}
+			if calls != 0 {
+				t.Fatalf("HTTP calls = %d, want 0", calls)
+			}
+		})
+	}
+}
+
+/*
+TestOtherProductRuleGroupCreate 验证固定组限制不影响非 contract 产品的原有创建命令。
+入参 t（*testing.T）为测试上下文；返回值为空，失败通过测试断言报告。
+*/
+func TestOtherProductRuleGroupCreate(t *testing.T) {
+	t.Parallel()
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(uploadProfile(config.IdentityApp), true); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	app := cli.New(cli.Options{Store: store, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.Method != http.MethodPost || req.URL.Path != "/open-apis/rule_engine/v1/products/other/groups" {
+			t.Fatalf("unexpected request %s %s", req.Method, req.URL.Path)
+		}
+		return jsonResponse(`{"code":0,"data":{}}`), nil
+	})}})
+	err := app.Run(context.Background(), []string{"rule", "group", "create", "--profile", "contract", "--as", "app", "--product-id", "other", "--data", `{"group_id":"new_group","name":"新规则组"}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("HTTP calls = %d, want 1", calls)
+	}
+}
+
+/*
+TestApprovalMatrixColumnAddRejectsLocalColumnLimit 验证新增列前按服务端口径统计条件列、结果列和系统列，并在总数达到 12 时本地阻断。
+入参 t（*testing.T）为测试上下文；返回值为空，失败终止当前测试。
+*/
+func TestApprovalMatrixColumnAddRejectsLocalColumnLimit(t *testing.T) {
+	t.Parallel()
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(uploadProfile(config.IdentityApp), true); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	app := cli.New(cli.Options{Store: store, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.Method != http.MethodGet || !strings.HasSuffix(req.URL.Path, "/table_columns/column_headers") {
+			t.Fatalf("column limit preflight sent unexpected request: %s %s", req.Method, req.URL.Path)
+		}
+		return jsonResponse(`{"code":0,"data":{"columns_headers":[
+			{"id":"c1","name":"条件1","type":1,"table_cell_content_type":"STRING"},
+			{"id":"c2","name":"条件2","type":1,"table_cell_content_type":"STRING"},
+			{"id":"c3","name":"条件3","type":1,"table_cell_content_type":"STRING"},
+			{"id":"c4","name":"条件4","type":1,"table_cell_content_type":"STRING"},
+			{"id":"c5","name":"条件5","type":1,"table_cell_content_type":"STRING"},
+			{"id":"c6","name":"条件6","type":1,"table_cell_content_type":"STRING"},
+			{"id":"c7","name":"条件7","type":1,"table_cell_content_type":"STRING"},
+			{"id":"c8","name":"条件8","type":1,"table_cell_content_type":"STRING"},
+			{"id":"r1","name":"结果1","type":2,"table_cell_content_type":"EMPLOYEE_COLLECTION"},
+			{"id":"r2","name":"结果2","type":2,"table_cell_content_type":"EMPLOYEE_COLLECTION"},
+			{"id":"note","name":"备注","type":3,"table_cell_content_type":"STRING"}
+		]}}`), nil
+	})}})
+	err := app.Run(context.Background(), []string{
+		"rule", "table", "column", "add",
+		"--profile", "contract", "--as", "app",
+		"--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1",
+		"--data", `{"base_table_column_id":"c1","direction":1}`,
+	})
+	if err == nil {
+		t.Fatal("column add accepted a thirteenth total column")
+	}
+	for _, fragment := range []string{"maximum 12", "condition 8", "result 2", "system 2", "priority and remark", "share 10 slots"} {
+		if !strings.Contains(err.Error(), fragment) {
+			t.Fatalf("column limit error %q missing %q", err, fragment)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("column limit preflight calls = %d, want one read and no write", calls)
+	}
+}
+
+/*
+TestApprovalMatrixColumnAddHelpExplainsColumnLimit 验证新增列帮助在执行前明确总列数、系统列占用和业务列共享额度。
+入参 t（*testing.T）为测试上下文；返回值为空，失败终止当前测试。
+*/
+func TestApprovalMatrixColumnAddHelpExplainsColumnLimit(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	app := cli.New(cli.Options{Stdout: &output, Stderr: &bytes.Buffer{}, Store: config.NewStore(t.TempDir())})
+	if err := app.Run(context.Background(), []string{"help", "rule", "table", "column", "add"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, fragment := range []string{"总列数上限为 12", "优先级列和备注列固定占 2 列", "条件列与结果列共用剩余 10 个名额", "超限写入前本地阻断"} {
+		if !strings.Contains(output.String(), fragment) {
+			t.Fatalf("column add help missing %q: %s", fragment, output.String())
 		}
 	}
 }

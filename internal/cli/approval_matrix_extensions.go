@@ -215,6 +215,9 @@ func validateMatrixExtensionBody(resource, action, group string, body []byte) er
 					}
 				} else {
 					if n, e := strconv.ParseInt(id, 10, 64); e != nil || n <= 0 || strconv.FormatInt(n, 10) != id {
+						if resource == "department" {
+							return fmt.Errorf("department batch-get ID %q must be a positive numeric directory department_id; use the returned open_department_id for rule rows and imports", id)
+						}
 						return fmt.Errorf("invalid external ID")
 					}
 				}
@@ -282,6 +285,16 @@ func addMatrixExtensionHelp(registry map[string]helpTopic) {
 			topic.Notes = []string{"使用 JSON {\"value_type\":\"NUMBER\"} 查询 CLI 内置映射。页面条件类型为 STRING、COLLECTION、NUMBER、EMPLOYEE_COLLECTION、DEPARTMENT_COLLECTION；保留 BOOLEAN 旧接口兼容。", "此命令只读取 CLI 内置的 symbol、symbolName、valueTypes，不读取 profile、不需要授权、不调用 symbols/query；列更新时仍由后端校验 symbol。"}
 			registry[name] = topic
 		}
+		if name == "rule department search" {
+			topic := registry[name]
+			topic.Notes = []string{"使用 JSON {\"param\":\"部门关键词\"} 搜索部门；只采用 selectable=true 的候选。", "结果中的 department_id 是数字目录查询 ID；open_department_id（od-...）才是规则行创建、更新、搜索和批量导入可直接使用的部门 ID。"}
+			registry[name] = topic
+		}
+		if name == "rule department batch-get" {
+			topic := registry[name]
+			topic.Notes = []string{"使用 JSON {\"ids\":[\"<数字 department_id>\"]} 回读部门目录；支持 user/app。", "该命令把目录数字 ID 回查为包含 open_department_id 的候选；规则行和批量导入只使用返回的 od-... 值。"}
+			registry[name] = topic
+		}
 		parts := strings.Split(name, " ")
 		parentName := strings.Join(parts[:len(parts)-1], " ")
 		parent := registry[parentName]
@@ -300,6 +313,6 @@ func addMatrixExtensionHelp(registry map[string]helpTopic) {
 		registry[parentName] = parent
 	}
 	plan := registry["rule table import plan"]
-	plan.Notes = append(plan.Notes, "导入复用现有行创建/更新接口，结果不确定时停止并先查询核验。NUMBER 支持最多 30 位整数、8 位小数，不自动换算单位；显式 null 清空单元格。")
+	plan.Notes = append(plan.Notes, "导入复用现有行创建/更新接口，结果不确定时停止并先查询核验。NUMBER 支持最多 30 位整数、8 位小数，不自动换算单位；显式 null 清空单元格。", "DEPARTMENT_COLLECTION 只接受目录返回的 open_department_id 字符串（od-...）；数字 department_id 先通过 rule department batch-get 回查转换。")
 	registry["rule table import plan"] = plan
 }

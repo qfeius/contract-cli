@@ -593,19 +593,10 @@ func (a *App) providerFor(identity config.IdentityKind) authProvider {
 }
 
 /*
-resolveEnvironment 提供环境预设，test 仅对显式启用的联调构建开放。
+resolveEnvironment 只提供线上 prod 环境预设，非生产环境在任何网络请求前被拒绝。
 入参 name（string）为环境名；返回 environmentPreset 和 error。
 */
 func resolveEnvironment(name string) (environmentPreset, error) {
-	if name == "test" && testBuild == "true" {
-		// 复用认证参数，仅替换环境端点，默认 prod 的预设保持不变。
-		preset, _ := resolveEnvironment("prod")
-		preset.OpenPlatformBaseURL = testOpenPlatformOrigin
-		preset.AppTokenEndpoint = testOpenPlatformOrigin + "/open-apis/auth/v3/tenant_access_token/internal"
-		preset.AuthorizationServerMetadataURL = testAccountOrigin + "/.well-known/oauth-authorization-server/contract"
-		preset.Resource = testOpenPlatformOrigin
-		return preset, nil
-	}
 	switch name {
 	case "prod":
 		return environmentPreset{
@@ -622,9 +613,6 @@ func resolveEnvironment(name string) (environmentPreset, error) {
 			DeviceScope:                    "contract:full contract-review:full",
 		}, nil
 	default:
-		if testBuild == "true" {
-			return environmentPreset{}, fmt.Errorf("unsupported environment %q; supported environments: prod, test", name)
-		}
 		return environmentPreset{}, fmt.Errorf("unsupported environment %q; supported environments: prod", name)
 	}
 }

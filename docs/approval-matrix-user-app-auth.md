@@ -20,17 +20,17 @@
 4. 不对外直连仅信任 X-Gate-Auth 的 app 后端入口；保留原有网络隔离。透传 401/403/503，不伪装为成功。
 5. 若网关剥离 Authorization、自定义头或仅接受 tenant_access_token，需要同步修改网关配置/代码。本次尚未取得网关项目路径，因此未修改或验证该层。
 
-## test 联调步骤
+## prod 验证步骤
 
-先部署后端及上述网关配置，再构建安装包含本次修改的 test CLI。旧 dev 包不包含本次环境替换，需安装 test 联调包；不复用 dev 凭证。
+当前 CLI 仅支持 prod。先确认后端及上述网关配置已部署，再使用独立、已授权的 prod profile 做只读验证；历史 dev/test/blue 凭证不迁移。
 
 ```bash
-export CONTRACT_CLI_CONFIG_DIR="$HOME/.contract-cli-test"
-# 适用于已有 Authorization Code 类型 contract-test profile
-contract-cli auth login --profile contract-test --as user
-contract-cli rule table list --profile contract-test --as user --product-id contract --group-id approve_matrix
+contract-cli config add --env prod --name contract
+# Authorization Code 类型 profile 可使用 auth login；Device profile 仍按 auth init/complete 授权
+contract-cli auth login --profile contract --as user
+contract-cli rule table list --profile contract --as user --product-id contract --group-id approve_matrix
 # 使用原 app 凭证回归同一查询
-contract-cli rule table list --profile contract-test --as app --product-id contract --group-id approve_matrix
+contract-cli rule table list --profile contract --as app --product-id contract --group-id approve_matrix
 ```
 
 以上查询不会创建组或矩阵。管理员 user、无权限 user、过期 Token、app、跨租户资源，以及 user 标记被剥离/冒充 app 的负向用例都需要网关联调验证。新增/修改/删除和发布必须先确认具体目标与变更，不通过写业务数据测试登录。

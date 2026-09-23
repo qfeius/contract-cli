@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# 构建独立 test 联调 npm 包；不修改源码版本、不覆盖正式 release assets、不发布。
+# 构建独立预发布 npm 包；版本须带 -test 标记，但环境能力与正式包一样仅 prod。
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${VERSION:-$(node -p "require('$ROOT_DIR/package.json').version")-test.1}"
@@ -24,7 +24,7 @@ manifest.version = version;
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 NODE
 cd "$ROOT_DIR"
-ENABLE_TEST=true VERSION="$VERSION" OUT_DIR="$STAGING_DIR/dist/release-assets" bash scripts/build-release-assets.sh
+VERSION="$VERSION" OUT_DIR="$STAGING_DIR/dist/release-assets" bash scripts/build-release-assets.sh
 (cd "$STAGING_DIR/dist/release-assets" && LC_ALL=C shasum -a 256 -c checksums.txt)
 cd "$STAGING_DIR"
 npm pack --pack-destination "$PACKAGE_OUT_DIR"

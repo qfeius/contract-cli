@@ -33,29 +33,17 @@
 
 ## Installation & Quick Start
 
-### Test 联调包
+### 环境与本地预发布包
 
-正式构建仍仅支持 prod。独立 `1.8.3-test.1` 联调包通过构建开关增加 test，默认环境仍为 prod。
+当前源码构建和正式构建都只支持 `prod`，默认 profile 为 `contract`；将 `--env` 指定为 `test`、`blue` 或 `dev` 会在发请求前拒绝，历史非 prod profile 也不会自动迁移或复用凭据。API 地址为 `https://open.qfei.cn`，账号地址为 `https://myaccount.qfei.cn`。
 
-dev 环境支持已移除；新包拒绝旧 dev profile 和 dev 网络地址。test 使用独立配置并重新授权，不迁移 dev Token 或 App Secret。
+若需验证 npm 包构建流程，仍可生成独立的本地预发布包；版本中的 `-test` 只是包标记，不开放 test 环境，也不发布到 npm：
 
 ```bash
-# 从源码生成联调包，不发布、不覆盖正式包
-bash scripts/build-test-package.sh
-npm install -g ./dist/qfeius-contract-cli-1.8.3-test.1.tgz
-
-# 建议使用独立配置目录及 profile，避免改变现有生产默认配置
-export CONTRACT_CLI_CONFIG_DIR="$HOME/.contract-cli-test"
-contract-cli config add --env test --name contract-test
+VERSION=1.8.4-test.20260923.6 bash scripts/build-test-package.sh
 ```
 
-审批矩阵支持 `--profile contract-test --as user` 或 `--as app`。user 复用浏览器授权登录并需具备合同规则管理权限；app 使用本机安全配置的 test 应用凭据。不要在对话中发送 Token 或 App Secret。此包包含双身份变更，调用仍需部署配套后端及网关配置（见下方说明）。
-
-旧 Authorization Code profile 的用户登录命令：`contract-cli auth login --profile contract-test --as user`；Device profile 使用已有 `auth init` → 浏览器授权 → `auth complete`。审批矩阵接口仍走同一规则 OpenAPI 路径，具体网关要求见 [双身份接入说明](docs/approval-matrix-user-app-auth.md)。
-
-API 地址为 `https://test-open.qtech.cn`，账号地址为 `https://test-myaccount.qtech.cn`。同名 profile 切换环境会清理原有认证，需要重新登录；独立 profile 不受影响。
-
-联调包沿用正式包的内置 Agent Skills（其中仍保留生产使用约束），本节 test 操作面向本地 CLI 操作者。安装联调包会替换全局同名命令；需要回到正式版时可重新安装 `1.8.3` 正式包。结束联调后 `unset CONTRACT_CLI_CONFIG_DIR` 恢复默认配置目录。
+历史 `.5` 及更早联调包仍含旧环境能力，不能用它们判断当前分支的新构建行为。审批矩阵的 user/app 双身份和规则 OpenAPI 命令保持不变；真实环境验证仍需对应后端及网关配置，见 [双身份接入说明](docs/approval-matrix-user-app-auth.md)。不要在对话中发送 Token 或 App Secret。
 
 ### Requirements
 
@@ -219,6 +207,8 @@ npx skills add qfeius/contract-cli -y -g
 
 ```bash
 contract-cli skills install --target ~/.codex/skills
+# CLI 升级后定向刷新已有的规则 Skill，避免旧指令清单滞留
+contract-cli skills install --name contract-cli-rule --force
 ```
 
 ## Authentication

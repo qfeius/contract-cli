@@ -161,6 +161,17 @@ func TestHelpRequestsRenderExpectedTopics(t *testing.T) {
 			},
 		},
 		{
+			name:        "contract rule group help hides create",
+			args:        []string{"rule", "group", "--help"},
+			contains:    []string{"rule group get", "approve_matrix"},
+			notContains: []string{"rule group create"},
+		},
+		{
+			name:     "contract table create help names visible group",
+			args:     []string{"rule", "table", "create", "--help"},
+			contains: []string{"--group-id approve_matrix"},
+		},
+		{
 			name: "approval matrix import apply help",
 			args: []string{"rule", "table", "import", "apply", "--help"},
 			contains: []string{
@@ -298,7 +309,9 @@ func TestHelpRequestsRenderExpectedTopics(t *testing.T) {
 			contains: []string{
 				"skills install",
 				"--target <dir>",
+				"--name <skill>",
 				"--force",
+				"contract-cli skills install --name contract-cli-rule --force",
 			},
 		},
 	}

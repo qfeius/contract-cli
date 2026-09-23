@@ -24,49 +24,51 @@ func TestRuleTableDepartmentIDsUseOpenDepartmentID(t *testing.T) {
 	}{
 		{
 			name: "create",
-			args: []string{"rule", "table", "row", "create", "--profile", "contract", "--as", "app", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1"},
+			args: []string{"rule", "table", "row", "create", "--profile", "contract", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1"},
 			body: `{"table_cells":[{"table_cell_content":{"department_collection":["` + departmentID + `"]},"table_cell_content_type":"DEPARTMENT_COLLECTION","table_column_id":"column-1"}]}`,
 		},
 		{
 			name: "search",
-			args: []string{"rule", "table", "row", "search", "--profile", "contract", "--as", "app", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1", "--page-size", "10"},
+			args: []string{"rule", "table", "row", "search", "--profile", "contract", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1", "--page-size", "10"},
 			body: `{"table_cell":{"table_cell_content":{"department_collection":["` + departmentID + `"]},"table_cell_content_type":"DEPARTMENT_COLLECTION","table_column_id":"column-1"}}`,
 		},
 		{
 			name: "update",
-			args: []string{"rule", "table", "row", "update", "row-1", "--profile", "contract", "--as", "app", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1"},
+			args: []string{"rule", "table", "row", "update", "row-1", "--profile", "contract", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1"},
 			body: `{"table_cells":[{"table_cell_content":{"department_collection":["` + departmentID + `"]},"table_cell_content_type":"DEPARTMENT_COLLECTION","table_column_id":"column-1"}]}`,
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			store := config.NewStore(t.TempDir())
-			if err := store.UpsertProfile(uploadProfile(config.IdentityApp), true); err != nil {
-				t.Fatal(err)
-			}
-			var gotBody string
-			app := cli.New(cli.Options{
-				Store:  store,
-				Stdout: &bytes.Buffer{},
-				Stderr: &bytes.Buffer{},
-				HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-					data, err := io.ReadAll(req.Body)
-					if err != nil {
-						t.Fatal(err)
-					}
-					gotBody = string(data)
-					return jsonResponse(`{"code":0,"msg":"success","data":{}}`), nil
-				})},
+	for _, identity := range []config.IdentityKind{config.IdentityUser, config.IdentityApp} {
+		for _, tc := range cases {
+			t.Run(string(identity)+"/"+tc.name, func(t *testing.T) {
+				store := config.NewStore(t.TempDir())
+				if err := store.UpsertProfile(uploadProfile(identity), true); err != nil {
+					t.Fatal(err)
+				}
+				var gotBody string
+				app := cli.New(cli.Options{
+					Store:  store,
+					Stdout: &bytes.Buffer{},
+					Stderr: &bytes.Buffer{},
+					HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+						data, err := io.ReadAll(req.Body)
+						if err != nil {
+							t.Fatal(err)
+						}
+						gotBody = string(data)
+						return jsonResponse(`{"code":0,"msg":"success","data":{}}`), nil
+					})},
+				})
+				args := append(append([]string{}, tc.args...), "--as", string(identity), "--data", tc.body)
+				if err := app.Run(context.Background(), args); err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(gotBody, `"department_collection":["`+departmentID+`"]`) {
+					t.Fatalf("department ID was not preserved: %s", gotBody)
+				}
 			})
-			args := append(append([]string{}, tc.args...), "--data", tc.body)
-			if err := app.Run(context.Background(), args); err != nil {
-				t.Fatal(err)
-			}
-			if !strings.Contains(gotBody, `"department_collection":["`+departmentID+`"]`) {
-				t.Fatalf("department ID was not preserved: %s", gotBody)
-			}
-		})
+		}
 	}
 }
 
@@ -74,29 +76,33 @@ func TestRuleTableDepartmentIDsUseOpenDepartmentID(t *testing.T) {
 func TestRuleTableDepartmentIDsRejectInternalID(t *testing.T) {
 	t.Parallel()
 
-	store := config.NewStore(t.TempDir())
-	if err := store.UpsertProfile(uploadProfile(config.IdentityApp), true); err != nil {
-		t.Fatal(err)
-	}
-	requests := 0
-	app := cli.New(cli.Options{
-		Store:  store,
-		Stdout: &bytes.Buffer{},
-		Stderr: &bytes.Buffer{},
-		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			requests++
-			return jsonResponse(`{"code":0,"msg":"unexpected","data":{}}`), nil
-		})},
-	})
-	err := app.Run(context.Background(), []string{
-		"rule", "table", "row", "search", "--profile", "contract", "--as", "app",
-		"--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1", "--page-size", "10",
-		"--data", `{"table_cell":{"table_cell_content":{"department_collection":[1018399484738012242]},"table_cell_content_type":"DEPARTMENT_COLLECTION","table_column_id":"column-1"}}`,
-	})
-	if err == nil || !strings.Contains(err.Error(), "sys_department.id is not accepted") {
-		t.Fatalf("error = %v, want local department ID validation", err)
-	}
-	if requests != 0 {
-		t.Fatalf("internal department ID sent to backend: %d requests", requests)
+	for _, identity := range []config.IdentityKind{config.IdentityUser, config.IdentityApp} {
+		t.Run(string(identity), func(t *testing.T) {
+			store := config.NewStore(t.TempDir())
+			if err := store.UpsertProfile(uploadProfile(identity), true); err != nil {
+				t.Fatal(err)
+			}
+			requests := 0
+			app := cli.New(cli.Options{
+				Store:  store,
+				Stdout: &bytes.Buffer{},
+				Stderr: &bytes.Buffer{},
+				HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					requests++
+					return jsonResponse(`{"code":0,"msg":"unexpected","data":{}}`), nil
+				})},
+			})
+			err := app.Run(context.Background(), []string{
+				"rule", "table", "row", "search", "--profile", "contract", "--as", string(identity),
+				"--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1", "--page-size", "10",
+				"--data", `{"table_cell":{"table_cell_content":{"department_collection":[1018399484738012242]},"table_cell_content_type":"DEPARTMENT_COLLECTION","table_column_id":"column-1"}}`,
+			})
+			if err == nil || !strings.Contains(err.Error(), "sys_department.id is not accepted") {
+				t.Fatalf("error = %v, want local department ID validation", err)
+			}
+			if requests != 0 {
+				t.Fatalf("internal department ID sent to backend: %d requests", requests)
+			}
+		})
 	}
 }

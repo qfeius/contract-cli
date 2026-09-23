@@ -1,5 +1,10 @@
 # AI 变更记录
 
+- 2026-09-23
+  变更摘要：当前分支移除 test/blue 环境运行能力，源码与本地预发布包统一只支持 prod。
+  涉及文件/模块：环境预设与传输拦截、构建脚本、回归测试、README、命令文档及 auth/shared Skill。
+  关键逻辑/决策：非 prod 配置和历史 profile 在请求前拒绝；不迁移、不复用旧凭据。历史记录中的 test/blue 联调方案保留为当时背景，不代表当前可用能力。
+
 - 2026-09-16
   变更摘要：审批矩阵运算符改由 CLI 内置映射提供，`rule symbol query` 全程本地执行。
   涉及文件/模块：`internal/cli/approval_matrix_extensions.go`、矩阵回归测试、`contract-cli-rule` Skill、审批矩阵命令文档和测试场景。

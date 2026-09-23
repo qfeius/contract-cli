@@ -128,7 +128,7 @@ func TestRemovedMatrixMutationCommandsRejectBeforeHTTP(t *testing.T) {
 	}
 }
 
-/* TestRetiredGuardedPlanDoesNotFallBackToRowWrites 验证旧保护计划停用后不降级写入；t 为测试上下文，返回 void。 */
+/* TestRetiredGuardedPlanDoesNotFallBackToRowWrites 验证旧保护计划停用后不降级写入；入参 t（*testing.T）为测试上下文，返回值为空。 */
 func TestRetiredGuardedPlanDoesNotFallBackToRowWrites(t *testing.T) {
 	store := config.NewStore(t.TempDir())
 	if err := store.UpsertProfile(uploadProfile(config.IdentityApp), true); err != nil {
@@ -138,10 +138,18 @@ func TestRetiredGuardedPlanDoesNotFallBackToRowWrites(t *testing.T) {
 	calls := 0
 	app := cli.New(cli.Options{Store: store, Stdout: output, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		calls++
-		if calls != 1 || req.Method != "GET" || !strings.HasSuffix(req.URL.Path, "/column_headers") {
+		if req.Method != "GET" {
 			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
 		}
-		return jsonResponse(`{"code":0,"data":{"columns_headers":[{"id":"c","name":"金额","type":1,"table_cell_content_type":"NUMBER"}]}}`), nil
+		switch {
+		case calls == 1 && strings.HasSuffix(req.URL.Path, "/column_headers"):
+			return jsonResponse(`{"code":0,"data":{"columns_headers":[{"id":"c","name":"金额","type":1,"table_cell_content_type":"NUMBER"}]}}`), nil
+		case calls == 2 && strings.HasSuffix(req.URL.Path, "/table_rows"):
+			return jsonResponse(`{"code":0,"data":{"table_rows":[],"has_more":false}}`), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
+			return nil, nil
+		}
 	})}})
 	if err := app.Run(context.Background(), []string{"rule", "table", "import", "plan", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "t", "--as", "app", "--data", `{"rows":[{"cells":{"c":1000.50}}]}`}); err != nil {
 		t.Fatal(err)
@@ -169,7 +177,7 @@ func TestRetiredGuardedPlanDoesNotFallBackToRowWrites(t *testing.T) {
 	if err := app.Run(context.Background(), []string{"rule", "table", "import", "apply", "--plan-id", id, "--as", "app"}); err == nil {
 		t.Fatal("invalidated plan apply error = nil")
 	}
-	if decodeApprovalMatrixOutput(t, output.Bytes())["status"] != "invalidated" || calls != 1 {
+	if decodeApprovalMatrixOutput(t, output.Bytes())["status"] != "invalidated" || calls != 2 {
 		t.Fatalf("legacy plan executed: %s", output.String())
 	}
 }
@@ -231,6 +239,105 @@ func TestMatrixExtensionRoutes(t *testing.T) {
 					t.Fatalf("calls=%d", calls)
 				}
 			})
+		}
+	}
+}
+
+/*
+TestDepartmentDirectoryIDContract 验证部门目录明确返回可写入的 open_department_id，并保留数字 department_id 作为批量回查输入。
+入参 t（*testing.T）为测试上下文；返回值为空。
+*/
+func TestDepartmentDirectoryIDContract(t *testing.T) {
+	t.Parallel()
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(uploadProfile(config.IdentityApp), true); err != nil {
+		t.Fatal(err)
+	}
+	stdout := &bytes.Buffer{}
+	app := cli.New(cli.Options{
+		Store:  store,
+		Stdout: stdout,
+		Stderr: &bytes.Buffer{},
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path != "/open-apis/rule_engine/v1/products/contract/groups/approve_matrix/departments/search" {
+				t.Fatalf("unexpected path: %s", req.URL.Path)
+			}
+			return jsonResponse(`{"code":0,"msg":"success","data":{"items":[{"department_id":"1018399484738012242","open_department_id":"od-1b1b803a7df98989bf457d9ba203c350","name":"产品研发部","selectable":true}],"missing_ids":[]}}`), nil
+		})},
+	})
+
+	err := app.Run(context.Background(), []string{
+		"rule", "department", "search", "--profile", "contract", "--as", "app",
+		"--product-id", "contract", "--group-id", "approve_matrix", "--data", `{"param":"产品研发部"}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := decodeJSONObject(t, stdout.Bytes())
+	data, ok := result["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("data = %#v", result["data"])
+	}
+	items, ok := data["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("items = %#v", data["items"])
+	}
+	item, ok := items[0].(map[string]any)
+	if !ok {
+		t.Fatalf("item = %#v", items[0])
+	}
+	if item["department_id"] != "1018399484738012242" || item["open_department_id"] != "od-1b1b803a7df98989bf457d9ba203c350" || item["selectable"] != true {
+		t.Fatalf("department candidate = %#v", item)
+	}
+}
+
+/*
+TestDepartmentBatchGetRejectsWritableIDAsLookupID 验证 batch-get 只接收数字目录 ID，并给出 open_department_id 的后续用途。
+入参 t（*testing.T）为测试上下文；返回值为空。
+*/
+func TestDepartmentBatchGetRejectsWritableIDAsLookupID(t *testing.T) {
+	t.Parallel()
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(uploadProfile(config.IdentityApp), true); err != nil {
+		t.Fatal(err)
+	}
+	requests := 0
+	app := cli.New(cli.Options{
+		Store:  store,
+		Stdout: &bytes.Buffer{},
+		Stderr: &bytes.Buffer{},
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			requests++
+			return jsonResponse(`{"code":0,"msg":"unexpected","data":{}}`), nil
+		})},
+	})
+	err := app.Run(context.Background(), []string{
+		"rule", "department", "batch-get", "--profile", "contract", "--as", "app",
+		"--product-id", "contract", "--group-id", "approve_matrix",
+		"--data", `{"ids":["od-1b1b803a7df98989bf457d9ba203c350"]}`,
+	})
+	if err == nil || !strings.Contains(err.Error(), "positive numeric directory department_id") || !strings.Contains(err.Error(), "open_department_id") {
+		t.Fatalf("error = %v, want directory ID conversion guidance", err)
+	}
+	if requests != 0 {
+		t.Fatalf("invalid batch-get request reached backend: %d", requests)
+	}
+}
+
+/*
+TestDepartmentHelpExplainsIDContract 验证命令帮助覆盖目录数字 ID 到规则行 open_department_id 的完整转换链路。
+入参 t（*testing.T）为测试上下文；返回值为空。
+*/
+func TestDepartmentHelpExplainsIDContract(t *testing.T) {
+	t.Parallel()
+	for _, command := range [][]string{{"help", "rule", "department", "search"}, {"help", "rule", "department", "batch-get"}, {"help", "rule", "table", "import", "plan"}} {
+		var stdout bytes.Buffer
+		app := cli.New(cli.Options{Store: config.NewStore(t.TempDir()), Stdout: &stdout, Stderr: &bytes.Buffer{}})
+		if err := app.Run(context.Background(), command); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(stdout.String(), "open_department_id") {
+			t.Fatalf("help %v does not explain writable department ID: %s", command, stdout.String())
 		}
 	}
 }

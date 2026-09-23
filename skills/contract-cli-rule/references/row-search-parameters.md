@@ -34,6 +34,8 @@
 | --output | CLI 输出 | enum | 可选 | `json`、`yaml` 或 `table`；默认 `json`。 |
 | --raw | CLI 输出 | boolean | 可选 | 原样输出服务端响应 body。 |
 
+默认结构化输出在成功且未命中时提供 `data.table_rows: []` 和 `data.has_more: false`；`--raw` 保留服务端原始 body。
+
 ## 请求体字段
 
 字段名、类型和服务端必填性来自官方 OpenAPI；“CLI 必填/禁止”是结构化命令的额外本地校验。父对象可选时，其内部必填字段标记为“父对象存在时必填”。
