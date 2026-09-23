@@ -1,7 +1,7 @@
 interface:
   display_name: "Contract CLI MDM Fields"
   short_description: "Fetch vendor and legal_entity field definitions with user or app identity; use user/MCP for vendor_risk"
-  default_prompt: "Use $contract-cli-mdm-fields to inspect field definitions for vendor, legal_entity, or vendor_risk. Choose user or app for vendor and legal_entity; use user/MCP for vendor_risk."
+  default_prompt: "Use $contract-cli-mdm-fields to inspect field definitions for vendor, legal_entity, or vendor_risk. Choose user or app for vendor and legal_entity; use user/MCP for vendor_risk. When interpreting vendor fields, module 0 required fields are global, modules 1-4 child collections are optional and conditional, and module 5 is outside vendor maintenance. Map vendor custom field types to exactly one value property: 0/1/3/5 fieldValue, 2 num, 4/6 options, 7 date, 8 rangeDate, 12 appendix, and 14 employee."
 
 policy:
   allow_implicit_invocation: true

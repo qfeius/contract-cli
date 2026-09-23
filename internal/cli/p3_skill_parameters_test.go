@@ -18,8 +18,8 @@ func TestP3CommandsHaveDedicatedParameterReferences(t *testing.T) {
 	t.Parallel()
 
 	references := p3ParameterReferences()
-	if len(references) != 33 {
-		t.Fatalf("P3 parameter reference count = %d, want 33", len(references))
+	if len(references) != 35 {
+		t.Fatalf("P3 parameter reference count = %d, want 35", len(references))
 	}
 
 	root := filepath.Join("..", "..", "skills")
@@ -88,6 +88,8 @@ func p3ParameterReferences() []p3ParameterReference {
 		{"contract-cli-mdm-exchange", "fixed-exchange-rate-update-parameters.md", "contract-cli mdm fixed-exchange-rate update", "PUT /open-apis/mdm/v1/fixed_exchange_rate", true},
 		{"contract-cli-mdm-vendor", "vendor-create-parameters.md", "contract-cli mdm vendor create", "POST /open-apis/mdm/v1/vendors", true},
 		{"contract-cli-mdm-vendor", "vendor-update-parameters.md", "contract-cli mdm vendor update", "PUT /open-apis/mdm/v1/vendors/{vendor_id}", true},
+		{"contract-cli-mdm-vendor", "vendor-patch-parameters.md", "contract-cli mdm vendor patch", "PATCH /open-apis/mdm/v1/vendors/{vendor_id}", true},
+		{"contract-cli-mdm-vendor", "vendor-status-parameters.md", "contract-cli mdm vendor enable", "PUT /open-apis/contract/v1/mcp/vendors/{vendor_id}/status", false},
 		{"contract-cli-mdm-vendor", "vendor-list-all-parameters.md", "contract-cli mdm vendor list-all", "GET /open-apis/mdm/v1/vendors/list_all", false},
 		{"contract-cli-mdm-vendor", "vendor-query-by-cert-parameters.md", "contract-cli mdm vendor query-by-cert", "GET /open-apis/mdm/v1/vendors/query_vendors", false},
 		{"contract-cli-mdm-legal", "legal-create-parameters.md", "contract-cli mdm legal create", "POST /open-apis/mdm/v1/legal_entities", true},

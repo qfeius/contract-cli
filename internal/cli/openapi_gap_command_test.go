@@ -403,7 +403,6 @@ func TestOpenAPIGapBotOnlyCommandsRejectUserIdentityBeforeHTTP(t *testing.T) {
 		{"contract", "cooperation", "file", "download", "file-1", "--profile", "contract", "--as", "user", "--output-file", filepath.Join(dir, "cooperation.bin")},
 		{"contract", "esign", "personal-auth-url", "--profile", "contract", "--as", "user", "--data", `{"psnAuthConfig":{"psnAccount":"18500000000"}}`},
 		{"mdm", "fixed-exchange-rate", "update", "--profile", "contract", "--as", "user", "--data", `{"source_currency":"CNY"}`},
-		{"mdm", "vendor", "create", "--profile", "contract", "--as", "user", "--data", `{"vendor":"V0001"}`},
 		{"mdm", "legal", "create", "--profile", "contract", "--as", "user", "--data", `{"legal_entity":"L0001"}`},
 		{"mdm", "legal", "get", "--profile", "contract", "--as", "user", "--code", "L0001"},
 		{"event", "outbound-ip", "list", "--profile", "contract", "--as", "user"},

@@ -61,6 +61,9 @@ func TestContractMCPToolSpecsDeclareReadWriteSemantics(t *testing.T) {
 		"sync-user-groups":         true,
 		"create-contracts":         true,
 		"create-template-instance": true,
+		"create-vendor":            true,
+		"patch-vendor":             true,
+		"set-vendor-status":        true,
 		"create-process-comment":   true,
 		"process-approval-task":    true,
 	}
@@ -71,6 +74,47 @@ func TestContractMCPToolSpecsDeclareReadWriteSemantics(t *testing.T) {
 		}
 		if spec.OperationKind != want {
 			t.Fatalf("tool %q operation = %q, want %q", spec.ToolName, spec.OperationKind, want)
+		}
+	}
+}
+
+func TestVendorMaintenanceMCPToolSpecs(t *testing.T) {
+	t.Parallel()
+
+	wants := map[string]struct {
+		method string
+		path   string
+	}{
+		"create-vendor": {
+			method: "POST",
+			path:   "/open-apis/contract/v1/mcp/vendors",
+		},
+		"patch-vendor": {
+			method: "PATCH",
+			path:   "/open-apis/contract/v1/mcp/vendors/{vendor_id}",
+		},
+		"set-vendor-status": {
+			method: "PUT",
+			path:   "/open-apis/contract/v1/mcp/vendors/{vendor_id}/status",
+		},
+	}
+
+	for name, want := range wants {
+		spec, ok := openplatform.ContractMCPToolSpec(name)
+		if !ok {
+			t.Fatalf("tool %q is not configured", name)
+		}
+		if spec.Method != want.method || spec.Path != want.path {
+			t.Fatalf("tool %q = %s %s, want %s %s", name, spec.Method, spec.Path, want.method, want.path)
+		}
+		if spec.IdentityPolicy != openplatform.IdentityPolicyUserOnly {
+			t.Fatalf("tool %q identity policy = %q, want user_only", name, spec.IdentityPolicy)
+		}
+		if spec.OperationKind != openplatform.OperationWrite {
+			t.Fatalf("tool %q operation = %q, want write", name, spec.OperationKind)
+		}
+		if got := spec.FixedQuery.Get("user_id_type"); got != "user_id" {
+			t.Fatalf("tool %q user_id_type = %q, want user_id", name, got)
 		}
 	}
 }

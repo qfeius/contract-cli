@@ -3,13 +3,14 @@
   "version": "1.9.2-beta.1",
   "description": "CLI for Qfei contract open platform",
   "bin": {
-    "contract-cli": "scripts/run.js"
+    "contract-cli": "scripts/run.js",
+    "contract-cli-setup": "scripts/setup.js"
   },
   "scripts": {
     "postinstall": "node scripts/install.js",
     "build": "./build.sh",
     "test": "go test ./...",
-    "test:installer": "node --test scripts/install.test.js"
+    "test:installer": "node --test scripts/install.test.js scripts/setup.test.js"
   },
   "config": {
     "binaryName": "contract-cli",
@@ -39,6 +40,7 @@
   "files": [
     "scripts/install.js",
     "scripts/run.js",
+    "scripts/setup.js",
     "dist/release-assets/**",
     "skills/**/SKILL.md",
     "skills/**/agents/**",

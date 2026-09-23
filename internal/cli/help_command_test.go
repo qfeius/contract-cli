@@ -195,8 +195,20 @@ func TestHelpRequestsRenderExpectedTopics(t *testing.T) {
 			contains: []string{
 				"mdm vendor create",
 				"--user-id <id>",
+				"--department-id-type <type>",
+				"open_department_id",
 				"必传 --user-id",
 				"不要传后端生成的 vendor 编码",
+			},
+		},
+		{
+			name: "mdm vendor patch help",
+			args: []string{"mdm", "vendor", "patch", "--help"},
+			contains: []string{
+				"mdm vendor patch",
+				"--department-id-type <type>",
+				"open_department_id",
+				"ownerDepts",
 			},
 		},
 		{
@@ -246,8 +258,17 @@ func TestHelpRequestsRenderExpectedTopics(t *testing.T) {
 			contains: []string{
 				"mdm vendor list",
 				"--name <name>",
+				"user 身份按名称模糊查询；app 身份按交易方编码查询",
 				"--page-size <n>",
 				"--page-token <token>",
+			},
+		},
+		{
+			name: "mdm legal list keeps shared query wording",
+			args: []string{"mdm", "legal", "list", "--help"},
+			contains: []string{
+				"mdm legal list",
+				"名称或编码查询条件",
 			},
 		},
 		{

@@ -331,7 +331,7 @@ func (a *App) runMDMFixedExchangeRate(ctx context.Context, args []string) error 
 }
 
 func (a *App) runMDMVendorCreate(ctx context.Context, args []string) error {
-	parsed, err := parseArgs(args, structuredValueFlags(), commonBoolFlags())
+	parsed, err := parseArgs(args, structuredValueFlags("--department-id-type"), commonBoolFlags())
 	if err != nil {
 		return err
 	}
@@ -339,20 +339,7 @@ func (a *App) runMDMVendorCreate(ctx context.Context, args []string) error {
 		return fmt.Errorf("usage: contract-cli mdm vendor create --input-file <path>|--data <json> [flags]")
 	}
 	options := parseCommandOptions(parsed)
-	if err := rejectExplicitNonAppIdentity(options, "/open-apis/mdm/v1/vendors"); err != nil {
-		return err
-	}
-	if err := requireMDMWriteUserID("mdm vendor create", options); err != nil {
-		return err
-	}
-	body, err := resolveRequiredRawBody(options)
-	if err != nil {
-		return err
-	}
-	if err := validateMDMVendorCreateBody(body); err != nil {
-		return err
-	}
-	return a.executeAppOpenPlatformRequest(ctx, options, http.MethodPost, "/open-apis/mdm/v1/vendors", nil, body)
+	return a.executeVendorCreate(ctx, options)
 }
 
 func (a *App) runMDMVendorUpdate(ctx context.Context, args []string) error {

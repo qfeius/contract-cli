@@ -2,8 +2,9 @@
 
 本页专用于 `contract-cli mdm vendor create`。
 
-- 接口：`POST /open-apis/mdm/v1/vendors`
-- 身份：仅 `app`
+- App 接口：`POST /open-apis/mdm/v1/vendors`
+- 个人接口：`POST /open-apis/contract/v1/mcp/vendors`
+- 身份：`app` 或 `user`
 - 请求体：JSON 必填，`--input-file` 与 `--data` 二选一
 - 官方 OpenAPI：[创建交易方](https://docs.qfei.cn/373499161e0.md)
 - 校验基线：`contract-cli` 当前分支；CLM `master@334c18fc2e` 存在对应实现时，以 Controller、DTO 和业务校验补充官方规格。
@@ -20,18 +21,25 @@
 
 | 参数 | 请求位置 | 类型 | 必填性 | 说明 |
 | --- | --- | --- | --- | --- |
-| --user-id | $query.user_id | string | 必填（CLI 本地校验） | 示例值："123123123123" |
+| --user-id | $query.user_id | string | app 必填，user 禁止 | app 当前操作人；user 操作人来自认证。 |
 | --user-id-type | $query.user_id_type | string | 可选，默认 `user_id` | 用户 ID 类型，参考 用户身份体系 |
+| --department-id-type | $query.department_id_type | enum | user 可选，app 禁止 | `department_id` 或 `open_department_id`；`ownerDepts` 传 `od-...` 时必须传 `open_department_id`。 |
 | --input-file | $body | JSON file | 二选一必填 | 从文件读取 JSON；与 `--data` 互斥。 |
 | --data | $body | JSON string | 二选一必填 | 内联 JSON；与 `--input-file` 互斥。 |
 | --profile | 本地上下文 | string | 可选 | 不传时使用当前 profile。 |
-| --as | 本地上下文 | enum | 可选 | 仅支持 `app`；不传时使用 profile 默认身份。 |
+| --as | 本地上下文 | enum | 可选 | `app` 或 `user`；不传时使用 profile 默认身份。 |
 | --output | CLI 输出 | enum | 可选 | `json`、`yaml` 或 `table`；默认 `json`。 |
 | --raw | CLI 输出 | boolean | 可选 | 原样输出服务端响应 body。 |
 
 ## 请求体字段
 
-字段名、类型和服务端必填性来自官方 OpenAPI；“CLI 必填/禁止”是结构化命令的额外本地校验。父对象可选时，其内部必填字段标记为“父对象存在时必填”。
+字段名、类型和服务端必填性来自 App V1 OpenAPI；“CLI 必填/禁止”是结构化命令的额外本地校验。父对象可选时，其内部必填字段标记为“父对象存在时必填”。个人创建使用相同字段族，但只允许租户中已启用且个人可编辑的字段，服务端生成编码并创建为启用。
+
+个人创建的动态必填性以租户字段配置为准，统一按 [交易方字段配置解释规则](../../contract-cli-mdm-fields/references/vendor-field-config-semantics.md) 处理：module 0 的必填字段属于全局必填；module 1～4 的子项集合本身可选，其内部必填字段只在提交对应子项时生效；module 5 不属于交易方创建请求。自定义字段也必须按该文档的 `fieldType` 映射只提交一个对应值属性。静态 App V1 表格中的必填标记不得覆盖个人接口的动态配置，也不得根据示例值为用户生成默认业务值。
+
+个人身份不允许传 `vendor`、`status`、风险字段和系统字段。个人创建不发起审批；手工编码租户不支持个人创建，外部主数据限制由服务端配置判断。
+
+个人创建不允许传 `vendorAccounts[].bankId`；该字段仅保留 App 创建的历史契约，不能据此绕过个人字段权限。
 
 | JSON 路径 | 类型 | 必填性 | 说明 |
 | --- | --- | --- | --- |
@@ -67,7 +75,7 @@
 | appendix[].fileSize | integer | 可选 | 文件大小<br>示例值：1024 |
 | appendix[].downloadUrl | string | 可选 | 文件下载地址<br>示例值："http://download.com/xxxxx" |
 | extendInfo | array<object> | 可选 | 扩展字段相关信息列表,每个扩展字段需要填入【field_code】、【field_type】、【field_value】三个信息，其中【field_code】和【field_type】需要与用户【字段配置】(获取配置字段的开放平台接口：https://open.qfei.cn/open-apis/mdm/v1/config/config_list)中扩展字段（sys = 1）相关联（目前不支持附件类型的扩展信息）<br>数据校验规则：<br>- 最大长度：100 |
-| extendInfo[].fieldType | integer | 父对象存在时必填 | 字段类型<br>示例值：0<br>可选值有：<br>- 0：单行文本框<br>- 1：多行文本框<br>- 2：数字<br>- 3：单选框<br>- 4：多选框<br>- 5：下拉单选<br>- 6：下拉多选<br>- 7：日期<br>- 8：日期区间<br>- 12：附件 |
+| extendInfo[].fieldType | integer | 父对象存在时必填 | 字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。 |
 | extendInfo[].fieldValue | string | 可选 | 字段类型为 单行文本框(0)、多行文本框(1)、单选框(3)、下拉单选框(5) 时的值<br>示例值："文本值" |
 | extendInfo[].options | array<string> | 可选 | 字段类型为 多选框(4) 下拉多选(6) 时的值<br>示例值：["字段名称"]<br>数据校验规则：最大长度：100 |
 | extendInfo[].num | number | 可选 | 字段类型为 数字(2) 时的值<br>示例值：1.11 |
@@ -85,7 +93,7 @@
 | vendorAccounts[].account | string | 可选 | 账号<br>示例值："62448345986564434"<br>数据校验规则：最大长度：50 字符 |
 | vendorAccounts[].iban | string | 可选 | 国际银行账号<br>示例值："46677"<br>数据校验规则：最大长度：34 字符 |
 | vendorAccounts[].accountName | string | 可选 | 账户名<br>示例值："上海xxx技术有限（上海）分公司"<br>数据校验规则：<br>最大长度：1000 字符 |
-| vendorAccounts[].bankId | string | 可选 | 银行内部Id<br>示例值："MDBK00061195"<br>数据校验规则：<br>最大长度：100 字符 |
+| vendorAccounts[].bankId | string | app 可选，user 禁止 | 银行内部Id<br>示例值："MDBK00061195"<br>数据校验规则：<br>最大长度：100 字符 |
 | vendorAccounts[].bankCode | string | 可选 | 银联号<br>示例值："308290003732"<br>数据校验规则：<br>最大长度：100 字符 |
 | vendorAccounts[].swiftCode | string | 可选 | 银行Swift编码<br>示例值："BOFAUS3NINQ"<br>数据校验规则：最大长度：100 字符 |
 | vendorAccounts[].vendorSiteCode | string | 可选 | 交易方siteCode<br>示例值："99999999"<br>数据校验规则：<br>最大长度：100 字符 |
@@ -94,7 +102,7 @@
 | vendorAccounts[].country | string | 可选 | 国家<br>示例值："CN"<br>数据校验规则：<br>最大长度：100 字符 |
 | vendorAccounts[].bankControlCode | string | 可选 | 银行控制码<br>示例值："99999999"<br>数据校验规则：<br>最大长度：10 字符 |
 | vendorAccounts[].extendInfo | array<object> | 可选 | 扩展字段相关信息列表<br>数据校验规则：<br>最大长度：100 |
-| vendorAccounts[].extendInfo[].fieldType | integer | 父对象存在时必填 | 文件类型<br>示例值："DOX"<br>可选值有：<br>- DOC：DOC<br>- DOCX：DOCX<br>- XLS：XLS<br>- XLSX：XLSX<br>- PNG：PNG<br>- JPG：JPG<br>- JPEG：JPEG<br>- PDF：PDF<br>- ZIP：ZIP<br>- RAR：RAR |
+| vendorAccounts[].extendInfo[].fieldType | integer | 父对象存在时必填 | 字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。 |
 | vendorAccounts[].extendInfo[].fieldValue | string | 可选 | 字段类型为 单行文本框(0)、多行文本框(1)、单选框(3)、下拉单选框(5) 时的值<br>示例值："文本值" |
 | vendorAccounts[].extendInfo[].options | array<string> | 可选 | 字段类型为 多选框(4) 下拉多选(6) 时的值<br>示例值：[""""]<br>数据校验规则：<br>最大长度：100 |
 | vendorAccounts[].extendInfo[].num | number | 可选 | 字段类型为 数字(2) 时的值<br>示例值：1.11 |
@@ -115,7 +123,7 @@
 | vendorAddresses[].county | string | 可选 | 县<br>示例值："MDCA00002746"<br>数据校验规则：<br>最大长度：64 字符 |
 | vendorAddresses[].address | string | 可选 | 详细地址<br>示例值："北京市海淀区苏州街"<br>数据校验规则：<br>最大长度：64 字符 |
 | vendorAddresses[].extendInfo | array<object> | 可选 | 扩展字段相关信息列表<br>数据校验规则：<br>最大长度：100 |
-| vendorAddresses[].extendInfo[].fieldType | integer | 父对象存在时必填 | 文件类型<br>示例值："DOX"<br>可选值有：<br>- DOC：DOC<br>- DOCX：DOCX<br>- XLS：XLS<br>- XLSX：XLSX<br>- PNG：PNG<br>- JPG：JPG<br>- JPEG：JPEG<br>- PDF：PDF<br>- ZIP：ZIP<br>- RAR：RAR |
+| vendorAddresses[].extendInfo[].fieldType | integer | 父对象存在时必填 | 字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。 |
 | vendorAddresses[].extendInfo[].fieldValue | string | 可选 | 字段类型为 单行文本框(0)、多行文本框(1)、单选框(3)、下拉单选框(5) 时的值<br>示例值："文本值" |
 | vendorAddresses[].extendInfo[].options | array<string> | 可选 | 字段类型为 多选框(4) 下拉多选(6) 时的值<br>示例值：[""""]<br>数据校验规则：<br>最大长度：100 |
 | vendorAddresses[].extendInfo[].num | number | 可选 | 字段类型为 数字(2) 时的值<br>示例值：1.11 |
@@ -136,7 +144,7 @@
 | vendorCompanyViews[].paymentTerm | string | 可选 | 付款条件信息<br>示例值："PT09"<br>数据校验规则：最大长度：255 字符 |
 | vendorCompanyViews[].downPaymentTerm | string | 可选 | 预付条件<br>示例值："PT08"<br>数据校验规则：最大长度：100 字符 |
 | vendorCompanyViews[].extendInfo | array<object> | 可选 | 扩展字段相关信息列表<br>数据校验规则：最大长度：100 |
-| vendorCompanyViews[].extendInfo[].fieldType | integer | 父对象存在时必填 | 字段类型<br>示例值：0<br>可选值有：<br>- 0：单行文本框<br>- 1：多行文本框<br>- 2：数字<br>- 3：单选框<br>- 4：多选框<br>- 5：下拉单选<br>- 6：下拉多选<br>- 7：日期<br>- 8：日期区间<br>- 12：附件 |
+| vendorCompanyViews[].extendInfo[].fieldType | integer | 父对象存在时必填 | 字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。 |
 | vendorCompanyViews[].extendInfo[].fieldValue | string | 可选 | 字段类型为 单行文本框(0)、多行文本框(1)、单选框(3)、下拉单选框(5) 时的值<br>示例值："文本值" |
 | vendorCompanyViews[].extendInfo[].options | array<string> | 可选 | 字段类型为 多选框(4) 下拉多选(6) 时的值示例值：[""""]<br>数据校验规则：最大长度：100 |
 | vendorCompanyViews[].extendInfo[].num | number | 可选 | 字段类型为 数字(2) 时的值<br>示例值：1.11 |
@@ -157,7 +165,7 @@
 | vendorContacts[].phone | string | 可选 | 手机号<br>示例值："13333323333"<br>数据校验规则：<br>最大长度：50 字符 |
 | vendorContacts[].remark | string | 可选 | 备注<br>示例值："备注"<br>数据校验规则：<br>最大长度：200 字符 |
 | vendorContacts[].extendInfo | array<object> | 可选 | 扩展字段相关信息列表数据<br>校验规则：<br>最大长度：100 |
-| vendorContacts[].extendInfo[].fieldType | integer | 父对象存在时必填 | 文件类型<br>示例值："DOX"<br>可选值有：<br>- DOC：DOC<br>- DOCX：DOCX<br>- XLS：XLS<br>- XLSX：XLSX<br>- PNG：PNG<br>- JPG：JPG<br>- JPEG：JPEG<br>- PDF：PDF<br>- ZIP：ZIP<br>- RAR：RAR |
+| vendorContacts[].extendInfo[].fieldType | integer | 父对象存在时必填 | 字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。 |
 | vendorContacts[].extendInfo[].fieldValue | string | 可选 | 字段类型为 单行文本框(0)、多行文本框(1)、单选框(3)、下拉单选框(5) 时的值<br>示例值："文本值" |
 | vendorContacts[].extendInfo[].options | array<string> | 可选 | 字段类型为 多选框(4) 下拉多选(6) 时的值示例值：["字段名称"]<br>数据校验规则：<br>最大长度：100 |
 | vendorContacts[].extendInfo[].num | number | 可选 | 字段类型为 数字(2) 时的值<br>示例值：1.11 |
@@ -207,7 +215,7 @@
 - `appendix[].fileId`（string，可选）：文件id(文件的唯一标识)<br>示例值："5c7237e821a8409d9b8b2e1041cdc9a4"
 - `appendix[].fileType`（string，可选）：文件类型<br>示例值："DOX"<br>可选值有：<br>- DOC：DOC<br>- DOCX：DOCX<br>- XLS：XLS<br>- XLSX：XLSX<br>- PNG：PNG<br>- JPG：JPG<br>- JPEG：JPEG<br>- PDF：PDF<br>- ZIP：ZIP<br>- RAR：RAR
 - `extendInfo`（array<object>，可选）：扩展字段相关信息列表,每个扩展字段需要填入【field_code】、【field_type】、【field_value】三个信息，其中【field_code】和【field_type】需要与用户【字段配置】(获取配置字段的开放平台接口：https://open.qfei.cn/open-apis/mdm/v1/config/config_list)中扩展字段（sys = 1）相关联（目前不支持附件类型的扩展信息）<br>数据校验规则：<br>- 最大长度：100
-- `extendInfo[].fieldType`（integer，父对象存在时必填）：字段类型<br>示例值：0<br>可选值有：<br>- 0：单行文本框<br>- 1：多行文本框<br>- 2：数字<br>- 3：单选框<br>- 4：多选框<br>- 5：下拉单选<br>- 6：下拉多选<br>- 7：日期<br>- 8：日期区间<br>- 12：附件
+- `extendInfo[].fieldType`（integer，父对象存在时必填）：字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。
 - `extendInfo[].options`（array<string>，可选）：字段类型为 多选框(4) 下拉多选(6) 时的值<br>示例值：["字段名称"]<br>数据校验规则：最大长度：100
 - `extendInfo[].rangeDate`（array<string>，可选）：字段类型是 日期区间(8) 时候的值 数组长度为2 0-startTime 1-endTime<br>示例值：["字段编码"]<br>数据校验规则：长度范围：2 ～ 2
 - `extendInfo[].appendix`（array<object>，可选）：附件列表 字段类型是 附件(12) 时候的值<br>数据校验规则：<br>最大长度：10
@@ -217,7 +225,7 @@
 - `vendorAccounts[].account`（string，可选）：账号<br>示例值："62448345986564434"<br>数据校验规则：最大长度：50 字符
 - `vendorAccounts[].iban`（string，可选）：国际银行账号<br>示例值："46677"<br>数据校验规则：最大长度：34 字符
 - `vendorAccounts[].accountName`（string，可选）：账户名<br>示例值："上海xxx技术有限（上海）分公司"<br>数据校验规则：<br>最大长度：1000 字符
-- `vendorAccounts[].bankId`（string，可选）：银行内部Id<br>示例值："MDBK00061195"<br>数据校验规则：<br>最大长度：100 字符
+- `vendorAccounts[].bankId`（string，仅 App 可选，个人禁止）：银行内部Id<br>示例值："MDBK00061195"<br>数据校验规则：<br>最大长度：100 字符
 - `vendorAccounts[].bankCode`（string，可选）：银联号<br>示例值："308290003732"<br>数据校验规则：<br>最大长度：100 字符
 - `vendorAccounts[].swiftCode`（string，可选）：银行Swift编码<br>示例值："BOFAUS3NINQ"<br>数据校验规则：最大长度：100 字符
 - `vendorAccounts[].vendorSiteCode`（string，可选）：交易方siteCode<br>示例值："99999999"<br>数据校验规则：<br>最大长度：100 字符
@@ -226,7 +234,7 @@
 - `vendorAccounts[].country`（string，可选）：国家<br>示例值："CN"<br>数据校验规则：<br>最大长度：100 字符
 - `vendorAccounts[].bankControlCode`（string，可选）：银行控制码<br>示例值："99999999"<br>数据校验规则：<br>最大长度：10 字符
 - `vendorAccounts[].extendInfo`（array<object>，可选）：扩展字段相关信息列表<br>数据校验规则：<br>最大长度：100
-- `vendorAccounts[].extendInfo[].fieldType`（integer，父对象存在时必填）：文件类型<br>示例值："DOX"<br>可选值有：<br>- DOC：DOC<br>- DOCX：DOCX<br>- XLS：XLS<br>- XLSX：XLSX<br>- PNG：PNG<br>- JPG：JPG<br>- JPEG：JPEG<br>- PDF：PDF<br>- ZIP：ZIP<br>- RAR：RAR
+- `vendorAccounts[].extendInfo[].fieldType`（integer，父对象存在时必填）：字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。
 - `vendorAccounts[].extendInfo[].options`（array<string>，可选）：字段类型为 多选框(4) 下拉多选(6) 时的值<br>示例值：[""""]<br>数据校验规则：<br>最大长度：100
 - `vendorAccounts[].extendInfo[].rangeDate`（array<string>，可选）：字段类型是 日期区间(8) 时候的值 数组长度为2 0-startTime 1-endTime<br>示例值：[""""]<br>数据校验规则：长度范围：2 ～ 2
 - `vendorAccounts[].extendInfo[].appendix`（array<object>，可选）：附件列表 字段类型是 附件(12) 时候的值<br>数据校验规则：最大长度：10
@@ -239,7 +247,7 @@
 - `vendorAddresses[].county`（string，可选）：县<br>示例值："MDCA00002746"<br>数据校验规则：<br>最大长度：64 字符
 - `vendorAddresses[].address`（string，可选）：详细地址<br>示例值："北京市海淀区苏州街"<br>数据校验规则：<br>最大长度：64 字符
 - `vendorAddresses[].extendInfo`（array<object>，可选）：扩展字段相关信息列表<br>数据校验规则：<br>最大长度：100
-- `vendorAddresses[].extendInfo[].fieldType`（integer，父对象存在时必填）：文件类型<br>示例值："DOX"<br>可选值有：<br>- DOC：DOC<br>- DOCX：DOCX<br>- XLS：XLS<br>- XLSX：XLSX<br>- PNG：PNG<br>- JPG：JPG<br>- JPEG：JPEG<br>- PDF：PDF<br>- ZIP：ZIP<br>- RAR：RAR
+- `vendorAddresses[].extendInfo[].fieldType`（integer，父对象存在时必填）：字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。
 - `vendorAddresses[].extendInfo[].options`（array<string>，可选）：字段类型为 多选框(4) 下拉多选(6) 时的值<br>示例值：[""""]<br>数据校验规则：<br>最大长度：100
 - `vendorAddresses[].extendInfo[].rangeDate`（array<string>，可选）：字段类型是 日期区间(8) 时候的值 数组长度为2 0-startTime 1-endTime<br>示例值：["字段名称"]<br>数据校验规则：<br>长度范围：2 ～ 2
 - `vendorAddresses[].extendInfo[].appendix`（array<object>，可选）：附件列表 字段类型是 附件(12) 时候的值<br>数据校验规则：<br>最大长度：10
@@ -252,7 +260,7 @@
 - `vendorCompanyViews[].paymentTerm`（string，可选）：付款条件信息<br>示例值："PT09"<br>数据校验规则：最大长度：255 字符
 - `vendorCompanyViews[].downPaymentTerm`（string，可选）：预付条件<br>示例值："PT08"<br>数据校验规则：最大长度：100 字符
 - `vendorCompanyViews[].extendInfo`（array<object>，可选）：扩展字段相关信息列表<br>数据校验规则：最大长度：100
-- `vendorCompanyViews[].extendInfo[].fieldType`（integer，父对象存在时必填）：字段类型<br>示例值：0<br>可选值有：<br>- 0：单行文本框<br>- 1：多行文本框<br>- 2：数字<br>- 3：单选框<br>- 4：多选框<br>- 5：下拉单选<br>- 6：下拉多选<br>- 7：日期<br>- 8：日期区间<br>- 12：附件
+- `vendorCompanyViews[].extendInfo[].fieldType`（integer，父对象存在时必填）：字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。
 - `vendorCompanyViews[].extendInfo[].options`（array<string>，可选）：字段类型为 多选框(4) 下拉多选(6) 时的值示例值：[""""]<br>数据校验规则：最大长度：100
 - `vendorCompanyViews[].extendInfo[].rangeDate`（array<string>，可选）：字段类型是 日期区间(8) 时候的值 数组长度为2 0-startTime 1-endTime<br>示例值：["字段名称"]数据校验规则：长度范围：2 ～ 2
 - `vendorCompanyViews[].extendInfo[].appendix`（array<object>，可选）：附件列表 字段类型是 附件(12) 时候的值<br>数据校验规则：最大长度：10
@@ -265,7 +273,7 @@
 - `vendorContacts[].phone`（string，可选）：手机号<br>示例值："13333323333"<br>数据校验规则：<br>最大长度：50 字符
 - `vendorContacts[].remark`（string，可选）：备注<br>示例值："备注"<br>数据校验规则：<br>最大长度：200 字符
 - `vendorContacts[].extendInfo`（array<object>，可选）：扩展字段相关信息列表数据<br>校验规则：<br>最大长度：100
-- `vendorContacts[].extendInfo[].fieldType`（integer，父对象存在时必填）：文件类型<br>示例值："DOX"<br>可选值有：<br>- DOC：DOC<br>- DOCX：DOCX<br>- XLS：XLS<br>- XLSX：XLSX<br>- PNG：PNG<br>- JPG：JPG<br>- JPEG：JPEG<br>- PDF：PDF<br>- ZIP：ZIP<br>- RAR：RAR
+- `vendorContacts[].extendInfo[].fieldType`（integer，父对象存在时必填）：字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。
 - `vendorContacts[].extendInfo[].options`（array<string>，可选）：字段类型为 多选框(4) 下拉多选(6) 时的值示例值：["字段名称"]<br>数据校验规则：<br>最大长度：100
 - `vendorContacts[].extendInfo[].rangeDate`（array<string>，可选）：字段类型是 日期区间(8) 时候的值 数组长度为2 0-startTime 1-endTime<br>示例值：["字段名称"]数据校验规则：长度范围：2 ～ 2
 - `vendorContacts[].extendInfo[].appendix`（array<object>，可选）：附件列表 字段类型是 附件(12) 时候的值<br>数据校验规则：<br>最大长度：10
@@ -280,9 +288,10 @@
 
 ```bash
 contract-cli mdm vendor create --user-id <operator-user-id> --input-file request.json --profile contract --as app
+contract-cli mdm vendor create --profile contract --as user --department-id-type open_department_id --data '{"vendorText":"交易方A","ownerDepts":["od-xxx"]}'
 ```
 
-官方请求体示例（动态字段接口仍须以当前租户配置为准）：
+官方 App 请求体示例（动态字段接口仍须以当前租户配置为准；包含个人创建禁止的系统字段和 `bankId`，不得用于个人请求；示例为字段全集展示，实际每个 `extendInfo` 元素只提交与其 `fieldType` 对应的一个值属性）：
 
 ```json
 {
@@ -497,4 +506,5 @@ contract-cli mdm vendor create --user-id <operator-user-id> --input-file request
 ## 来源差异说明
 
 - 官方规格路径：`POST /open-apis/mdm/v1/vendors`
+- 个人维护路径：`POST /open-apis/contract/v1/mcp/vendors`
 - 本页描述请求参数；响应 envelope 和输出格式遵循共享 Skill。

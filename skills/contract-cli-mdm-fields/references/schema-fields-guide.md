@@ -48,6 +48,8 @@ app 示例：
 contract-cli mdm fields list --profile contract --as app --biz-line vendor --user-id-type employee_id
 ```
 
+返回结果必须按 [交易方字段配置解释规则](vendor-field-config-semantics.md) 使用：module 0 决定创建时的全局必填字段；module 1～4 的子项集合本身可选，内部必填只在提交该子项时生效；module 5 不进入交易方维护请求。不得据此要求用户补齐未请求的子项，也不得使用示例值替用户生成默认业务值。
+
 ### 2.2 查法人实体字段定义
 
 适用场景：

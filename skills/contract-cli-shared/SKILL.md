@@ -75,7 +75,7 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 - `payment create/update/get/list`
 - `payment plan notify/search`
 - `payment record create/update/get/list`
-- `mdm vendor list/get/create/update/list-all/query-by-cert`
+- `mdm vendor list/get/create/update/patch/enable/disable/list-all/query-by-cert`
 - `mdm legal list/get/create/update`
 - `mdm fields list`
 - `mdm fixed-exchange-rate get/update`
@@ -101,15 +101,15 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 
 - `api call` 当前不对外开放；执行 `contract-cli api ...` 会直接返回 `api call 暂未开放使用，请使用已开放的结构化命令`
 - `contract/v1/mcp` 这批路径大部分只支持 `--as user`
-- 同时支持 `user` 与 `app` 的结构化业务命令：`contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list`
-- app-only 命令包括 `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *`
+- 同时支持 `user` 与 `app` 的结构化业务命令：`contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get`、`mdm vendor list`、`mdm vendor get`、`mdm vendor create`、`mdm vendor patch`、`mdm legal list`、`mdm legal get`、`mdm fields list`
 - `employee list` / `department list` 也仅支持 user，省略 `--as` 时仍使用 user；参数与候选规则见各自独立 Skill。
-- user-only 命令包括 `contract search-fields`、`contract approval comment list/create` 与 `contract approval task list/approve/reject`
-- 双身份合同命令的 app 路由走 `/open-apis/contract/v1/...`；`contract upload-file` 走 `/open-apis/contract/v1/files/upload`；`mdm vendor list/get` 的 app 路由走 `/open-apis/mdm/v1/vendors...`；`mdm legal list/get` 的 app 路由分别走 `/open-apis/mdm/v1/legal_entities/list_all` 和 `/open-apis/mdm/v1/legal_entities/{legal_entity_id}`；`mdm fields list` 的 app 路由走 `/open-apis/mdm/v1/config/config_list`
+- user-only 命令包括 `contract search-fields`、`contract approval comment list/create`、`contract approval task list/approve/reject` 与 `mdm vendor enable/disable`
+- app-only 命令包括 `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *`
+- 双身份合同命令的 app 路由走 `/open-apis/contract/v1/...`；`contract upload-file` 走 `/open-apis/contract/v1/files/upload`；`mdm vendor list/get/create/patch` 的 app 路由走 `/open-apis/mdm/v1/vendors...`；`mdm legal list/get` 的 app 路由分别走 `/open-apis/mdm/v1/legal_entities/list_all` 和 `/open-apis/mdm/v1/legal_entities/{legal_entity_id}`；`mdm fields list` 的 app 路由走 `/open-apis/mdm/v1/config/config_list`
 - 若命中 `/open-apis/contract/v1/mcp/` 且未传 `--as`，CLI 会默认按 `user` 解析，不看 `default_identity`
 - 这批命令不暴露 `--operator`
 - 请求体文件输入统一使用 `--input-file`
-- `--user-id-type` / `--user-id` 是开放平台通用 query 参数：结构化命令支持；`--user-id-type` 不传时默认拼接 `user_id_type=user_id`，app 标准接口允许显式传值覆盖；部分 user-only MCP tool spec 会固定 query 默认值，例如 `contract search --as user` 当前固定 `user_id`，以模块 Skill 为准。`--user-id` 传了就透传，不传就不带。例外：`mdm vendor create/update` 与 `mdm legal create/update` 写接口会本地要求 `--user-id`
+- `--user-id-type` / `--user-id` 是开放平台通用 query 参数：结构化命令支持；`--user-id-type` 不传时默认拼接 `user_id_type=user_id`，app 标准接口允许显式传值覆盖；部分 user-only MCP tool spec 会固定 query 默认值，例如 `contract search --as user` 当前固定 `user_id`，以模块 Skill 为准。`--user-id` 传了就透传，不传就不带。例外：`mdm vendor create/update/patch --as app` 与 `mdm legal create/update` 写接口会本地要求 `--user-id`
 - user MCP 审批详情、评论、任务和统一文件下载不发送调用人 query；评论创建的 `--mention-id-type` 只映射被 @ 用户的 `user_id_type`
 - `--file` 现在只用于真实二进制文件上传，例如 `contract upload-file`
 - `contract download-file` 下载二进制响应，默认弹窗保存；user 身份必须加 `--contract`，Agent/CI/远程环境优先传 `--output-file`，管道场景用 `--raw`

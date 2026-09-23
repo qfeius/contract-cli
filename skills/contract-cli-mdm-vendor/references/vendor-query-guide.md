@@ -31,6 +31,7 @@ contract-cli mdm vendor query-by-cert --profile contract --as app --certificatio
 - 如果要排障或确认原始响应，建议加 `--raw`
 - `mdm vendor list` 同时支持 `user` 和 `app`
 - `mdm vendor get` 也同时支持 `user` 和 `app`
+- `mdm vendor list --as user` 只支持交易方名称模糊查询；`--as app` 按交易方编码查询
 - `mdm vendor create/update/list-all/query-by-cert` 当前仅支持 `app`
 - `mdm vendor create/update` 必须传 `--user-id`，用于提供当前操作人上下文
 - `create` 请求体不要包含后端生成的 `vendor` 编码；`update` 请求体必须包含后端返回的 `id` 和 `vendor` 编码
@@ -38,7 +39,7 @@ contract-cli mdm vendor query-by-cert --profile contract --as app --certificatio
 
 ## 2. 场景配方
 
-### 2.1 按名称找候选交易方
+### 2.1 按身份查找候选交易方
 
 适用场景：
 
@@ -61,7 +62,9 @@ contract-cli mdm vendor list --profile contract --name "供应商A"
 
 - user 路由走 `/open-apis/contract/v1/mcp/vendors`
 - app 路由走 `/open-apis/mdm/v1/vendors`
-- 生产文档里 app 侧把 query `vendor` 描述成“供应商编码”，CLI 仍保持 `--name -> vendor` 的透传映射
+- user 身份只支持交易方名称模糊查询，不支持交易方编码；只拿到编码时应请用户补充名称或内部交易方 ID
+- app 身份按交易方编码查询，CLI 为兼容现有命令仍使用 `--name` 参数名并透传到 query `vendor`
+- 不得自动切换身份，也不得把个人按编码查询得到的空结果解释为交易方不存在或据此重复创建
 
 ### 2.2 分页扫交易方列表
 

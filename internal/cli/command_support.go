@@ -17,14 +17,15 @@ import (
 )
 
 type commandOptions struct {
-	profileName string
-	identity    string
-	output      output.Format
-	raw         bool
-	inputFile   string
-	data        string
-	userIDType  string
-	userID      string
+	profileName      string
+	identity         string
+	output           output.Format
+	raw              bool
+	inputFile        string
+	data             string
+	userIDType       string
+	userID           string
+	departmentIDType string
 }
 
 type parsedArgs struct {
@@ -131,14 +132,15 @@ func (p parsedArgs) Int(name string) (int, error) {
 
 func parseCommandOptions(parsed parsedArgs) commandOptions {
 	return commandOptions{
-		profileName: parsed.String("--profile"),
-		identity:    parsed.String("--as"),
-		output:      output.Format(parsed.String("--output")),
-		raw:         parsed.Bool("--raw"),
-		inputFile:   parsed.String("--input-file"),
-		data:        parsed.String("--data"),
-		userIDType:  parsed.String("--user-id-type"),
-		userID:      parsed.String("--user-id"),
+		profileName:      parsed.String("--profile"),
+		identity:         parsed.String("--as"),
+		output:           output.Format(parsed.String("--output")),
+		raw:              parsed.Bool("--raw"),
+		inputFile:        parsed.String("--input-file"),
+		data:             parsed.String("--data"),
+		userIDType:       parsed.String("--user-id-type"),
+		userID:           parsed.String("--user-id"),
+		departmentIDType: parsed.String("--department-id-type"),
 	}
 }
 
@@ -301,6 +303,9 @@ func commandCommonQuery(options commandOptions) url.Values {
 	}
 	if value := strings.TrimSpace(options.userID); value != "" {
 		query.Set("user_id", value)
+	}
+	if value := strings.TrimSpace(options.departmentIDType); value != "" {
+		query.Set("department_id_type", value)
 	}
 	return query
 }

@@ -36,7 +36,7 @@ mdm vendor get
 
 | CLI 参数 | 请求位置 | 类型 | 必填性 | 业务含义 | 联动/注意 |
 | --- | --- | --- | --- | --- | --- |
-| `--name` | `$query.vendor` | `string` | 可选 | 交易方查询关键字。 | user 侧通常按名称筛选；app 生产文档把它描述成供应商编码，CLI 继续统一透传到 `vendor`。 |
+| `--name` | `$query.vendor` | `string` | 可选 | user 身份只支持交易方名称模糊查询；app 身份按交易方编码查询。 | 参数名为兼容现有命令保持不变。个人只拿到编码时应补充名称或内部交易方 ID，不得把空结果解释为不存在，也不得自动切换身份。 |
 | `--page-size` | `$query.page_size` | `integer` | 可选 | 每页条数。 | 当前接口默认 `10`，建议不超过 `50`。 |
 | `--page-token` | `$query.page_token` | `string` | 可选 | 分页令牌。 | 首次请求通常不传，翻页时使用上一页返回的 `page_token`。 |
 | `--profile` | 本地上下文 | `string` | 可选 | 选择 profile。 | 未传时走默认 profile。 |

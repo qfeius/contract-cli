@@ -81,13 +81,28 @@ env \
   npm install -g "$PACKAGE_FILE" --prefix "$PREFIX_DIR"
 
 "$PREFIX_DIR/bin/contract-cli" --version | grep -q "contract-cli version"
-"$PREFIX_DIR/bin/contract-cli" skills list | grep -q "contract-cli-contract"
-"$PREFIX_DIR/bin/contract-cli" skills install --target "$CODEX_SKILLS_DIR"
+SKILLS_LIST="$($PREFIX_DIR/bin/contract-cli skills list)"
+printf '%s\n' "$SKILLS_LIST" | grep -Fq "contract-cli-contract"
+"$PREFIX_DIR/bin/contract-cli-setup" --target "$CODEX_SKILLS_DIR"
 
 test -f "$CODEX_SKILLS_DIR/auth/SKILL.md"
 test -f "$CODEX_SKILLS_DIR/contract-cli-contract/SKILL.md"
 test -f "$CODEX_SKILLS_DIR/contract-cli-employee/SKILL.md"
 test -f "$CODEX_SKILLS_DIR/contract-cli-department/SKILL.md"
 test -f "$CODEX_SKILLS_DIR/contract-cli-contract/references/create-contract-fields.md"
+grep -Fq "version: $VERSION" "$CODEX_SKILLS_DIR/contract-cli-mdm-vendor/SKILL.md"
+grep -Fq '本 Skill 只指导 Agent 执行 `contract-cli`' "$CODEX_SKILLS_DIR/contract-cli-mdm-vendor/SKILL.md"
+
+printf '\n# local-custom-marker\n' >> "$CODEX_SKILLS_DIR/contract-cli-mdm-vendor/SKILL.md"
+SKIP_OUTPUT="$($PREFIX_DIR/bin/contract-cli-setup --target "$CODEX_SKILLS_DIR")"
+printf '%s\n' "$SKIP_OUTPUT" | grep -Fq "contract-cli skills install --target \"$CODEX_SKILLS_DIR\" --force"
+grep -Fq '# local-custom-marker' "$CODEX_SKILLS_DIR/contract-cli-mdm-vendor/SKILL.md"
+
+"$PREFIX_DIR/bin/contract-cli-setup" --target "$CODEX_SKILLS_DIR" --force
+if grep -Fq '# local-custom-marker' "$CODEX_SKILLS_DIR/contract-cli-mdm-vendor/SKILL.md"; then
+  echo "force install did not synchronize contract-cli-mdm-vendor" >&2
+  exit 1
+fi
+grep -Fq "version: $VERSION" "$CODEX_SKILLS_DIR/contract-cli-mdm-vendor/SKILL.md"
 
 echo "local npm install ok: $PACKAGE_FILE"

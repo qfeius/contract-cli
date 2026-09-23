@@ -772,8 +772,12 @@ func TestSkillsInstallCopiesBundledSkillsAndSkipsExisting(t *testing.T) {
 		t.Fatalf("second skills install error = %v", err)
 	}
 	assertFileContent(t, filepath.Join(target, "auth", "SKILL.md"), "local custom skill\n")
-	if !strings.Contains(stdout.String(), "Skipped existing skill: auth") {
+	if !strings.Contains(stdout.String(), "Skipped existing skill: auth (not synchronized; use --force to overwrite)") {
 		t.Fatalf("expected skip output, got: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "contract-cli skills install --target ") ||
+		!strings.Contains(stdout.String(), " --force") {
+		t.Fatalf("expected actionable skill synchronization command, got: %s", stdout.String())
 	}
 }
 

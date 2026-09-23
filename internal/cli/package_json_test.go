@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -17,7 +18,8 @@ func TestPackageJSONIncludesSkillsInNPMPackage(t *testing.T) {
 	}
 
 	var manifest struct {
-		Files []string `json:"files"`
+		Bin   map[string]string `json:"bin"`
+		Files []string          `json:"files"`
 	}
 	if err := json.Unmarshal(content, &manifest); err != nil {
 		t.Fatalf("Unmarshal(package.json) error = %v", err)
@@ -32,6 +34,24 @@ func TestPackageJSONIncludesSkillsInNPMPackage(t *testing.T) {
 		if !containsString(manifest.Files, required) {
 			t.Fatalf("package.json files must include %s, got %v", required, manifest.Files)
 		}
+	}
+	if got := manifest.Bin["contract-cli-setup"]; got != "scripts/setup.js" {
+		t.Fatalf("contract-cli-setup bin = %q, want scripts/setup.js", got)
+	}
+	if !containsString(manifest.Files, "scripts/setup.js") {
+		t.Fatalf("package.json files must include scripts/setup.js, got %v", manifest.Files)
+	}
+}
+
+func TestMakeTestRunsSetupInstallerTests(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile(filepath.Join("..", "..", "Makefile"))
+	if err != nil {
+		t.Fatalf("ReadFile(Makefile) error = %v", err)
+	}
+	if !strings.Contains(string(content), "node --test scripts/install.test.js scripts/setup.test.js") {
+		t.Fatal("make test must run both install.js and setup.js tests")
 	}
 }
 

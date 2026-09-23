@@ -1452,8 +1452,11 @@ func addMDMHelp(registry map[string]helpTopic) {
 		Name:  "mdm vendor",
 		Usage: []string{"contract-cli mdm vendor <subcommand> [flags]"},
 		Commands: []helpCommand{
-			{"contract-cli mdm vendor create [flags]", "app 身份创建交易方"},
+			{"contract-cli mdm vendor create [flags]", "app/user 身份创建交易方"},
 			{"contract-cli mdm vendor update <vendor-id> [flags]", "app 身份更新交易方"},
+			{"contract-cli mdm vendor patch <vendor-id> [flags]", "app/user 身份局部更新交易方"},
+			{"contract-cli mdm vendor enable <vendor-id> [flags]", "user 身份启用交易方"},
+			{"contract-cli mdm vendor disable <vendor-id> [flags]", "user 身份停用交易方"},
 			{"contract-cli mdm vendor list [flags]", "查询交易方列表"},
 			{"contract-cli mdm vendor get <vendor-id> [flags]", "查询交易方详情"},
 			{"contract-cli mdm vendor list-all [flags]", "app 身份查询交易方全量数据"},
@@ -1462,19 +1465,52 @@ func addMDMHelp(registry map[string]helpTopic) {
 	}
 	registry["mdm vendor create"] = helpTopic{
 		Name:    "mdm vendor create",
-		Summary: "app 身份创建交易方，请求体必须是 JSON。",
+		Summary: "app/user 身份创建交易方，请求体必须是 JSON。",
 		Usage:   []string{"contract-cli mdm vendor create --input-file <path>|--data <json> [flags]"},
-		Flags:   concatHelpFlags(openPlatformCommonFlags(), jsonBodyFlags()),
+		Flags:   concatHelpFlags(openPlatformCommonFlags(), jsonBodyFlags(), vendorDepartmentIDTypeFlags()),
 		Examples: []string{
 			"contract-cli mdm vendor create --profile contract --as app --user-id <operator-user-id> --input-file vendor-create.json",
+			"contract-cli mdm vendor create --profile contract --as user --input-file vendor-create.json",
+			"contract-cli mdm vendor create --profile contract --as user --department-id-type open_department_id --data '{\"vendorText\":\"交易方A\",\"ownerDepts\":[\"od-xxx\"]}'",
 		},
 		Notes: []string{
-			"app-only: 当前仅支持 --as app。",
-			"写接口必传 --user-id，用于提供当前操作人上下文。",
-			"走 POST /open-apis/mdm/v1/vendors。",
+			"app 必传 --user-id；user 使用认证身份，不允许传 --user-id。",
+			"app: POST /open-apis/mdm/v1/vendors；user: POST /open-apis/contract/v1/mcp/vendors。",
 			"创建请求体不要传后端生成的 vendor 编码。",
+			"user 不传状态、风险或系统字段，不发起审批；以返回的 outcome 判断是否生效。",
+			"user 传 ownerDepts 中的 od-... 时必须加 --department-id-type open_department_id；内部数字 ID 可省略该参数。",
 			"交易方字段是否必填受后台动态配置影响，可先查 mdm fields list --biz-line vendor。",
 		},
+	}
+	registry["mdm vendor patch"] = helpTopic{
+		Name:    "mdm vendor patch",
+		Summary: "app/user 身份局部更新交易方，仅修改提交的字段。",
+		Usage:   []string{"contract-cli mdm vendor patch <vendor-id> --input-file <path>|--data <json> [flags]"},
+		Flags:   concatHelpFlags(openPlatformCommonFlags(), jsonBodyFlags(), vendorDepartmentIDTypeFlags()),
+		Examples: []string{
+			"contract-cli mdm vendor patch <vendor-id> --profile contract --as user --department-id-type open_department_id --data '{\"ownerDepts\":[\"od-xxx\"]}'",
+		},
+		Notes: []string{
+			"ID 仅放在命令参数，不允许 body.id。未传不改；null 请求清空，仍需满足业务校验。",
+			"app 必传 --user-id，可传 status；user 不传 --user-id、vendor、status、风险或系统字段。",
+			"子项按 ID 修改，无 ID 新增；删除须传 id 和 _delete:true，未列出的子项保留。",
+			"附件、人员、部门、多选列表传入时整体替换；extendInfo 按 fieldCode 合并。",
+			"user 传 ownerDepts 中的 od-... 时必须加 --department-id-type open_department_id；内部数字 ID 可省略该参数。",
+			"user 编辑已停用资料不会自动启用。执行结果不确定时，先查询，不盲目重试。",
+		},
+	}
+	for _, command := range []string{"enable", "disable"} {
+		registry["mdm vendor "+command] = helpTopic{
+			Name:    "mdm vendor " + command,
+			Summary: "user 身份设置交易方启停状态。",
+			Usage:   []string{"contract-cli mdm vendor " + command + " <vendor-id> [flags]"},
+			Flags:   openPlatformCommonFlags(),
+			Notes: []string{
+				"仅支持 --as user，不接收请求体或 --user-id。",
+				"仅处理正常启用/停用状态，不发起审批；与在途审批冲突时拒绝。",
+				"同目标返回 NO_CHANGE，不重复写入。执行结果不确定时先查询确认。",
+			},
+		}
 	}
 	registry["mdm vendor update"] = helpTopic{
 		Name:    "mdm vendor update",
@@ -1496,7 +1532,7 @@ func addMDMHelp(registry map[string]helpTopic) {
 		Name:    "mdm vendor list",
 		Summary: "查询交易方列表。",
 		Usage:   []string{"contract-cli mdm vendor list [flags]"},
-		Flags:   concatHelpFlags(openPlatformCommonFlags(), listQueryFlags()),
+		Flags:   concatHelpFlags(openPlatformCommonFlags(), vendorListQueryFlags()),
 		Examples: []string{
 			"contract-cli mdm vendor list --profile contract --name 供应商 --page-size 10",
 			"contract-cli mdm vendor list --profile contract --as app --name V00000001 --user-id-type employee_id",
@@ -1913,6 +1949,12 @@ func jsonBodyFlags() []helpFlag {
 	}
 }
 
+func vendorDepartmentIDTypeFlags() []helpFlag {
+	return []helpFlag{
+		{"--department-id-type <type>", "user 身份 ownerDepts 的 ID 类型：department_id 或 open_department_id"},
+	}
+}
+
 func pageFlags() []helpFlag {
 	return []helpFlag{
 		{"--page-size <n>", "分页大小"},
@@ -1930,6 +1972,12 @@ func eventOutboundIPPageFlags() []helpFlag {
 func listQueryFlags() []helpFlag {
 	return concatHelpFlags([]helpFlag{
 		{"--name <name>", "名称或编码查询条件"},
+	}, pageFlags())
+}
+
+func vendorListQueryFlags() []helpFlag {
+	return concatHelpFlags([]helpFlag{
+		{"--name <name>", "user 身份按名称模糊查询；app 身份按交易方编码查询"},
 	}, pageFlags())
 }
 

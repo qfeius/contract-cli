@@ -11,6 +11,7 @@ cd "$ROOT_DIR"
 
 node --check scripts/install.js
 node --check scripts/run.js
+node --check scripts/setup.js
 
 env npm_config_cache="$NPM_CACHE" npm pack --dry-run --json > "$PACK_JSON"
 
@@ -24,6 +25,7 @@ const required = [
   "package.json",
   "scripts/install.js",
   "scripts/run.js",
+  "scripts/setup.js",
   "README.md",
   "CHANGELOG.md",
   "LICENSE",

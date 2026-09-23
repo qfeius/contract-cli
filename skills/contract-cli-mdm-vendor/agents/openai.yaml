@@ -1,7 +1,7 @@
 interface:
   display_name: "Contract CLI MDM Vendor"
-  short_description: "Query vendor candidates/details and create or update vendors"
-  default_prompt: "Use $contract-cli-mdm-vendor to query vendor candidates or vendor details with user or app identity, or create, update, list all, and query by certificate with app identity."
+  short_description: "Query, create, patch, enable, disable, or update vendors"
+  default_prompt: "Use $contract-cli-mdm-vendor through contract-cli only to query vendor candidates or vendor details with user or app identity; create, update, or patch vendors; enable or disable vendors as user; and run certificate queries as app. User vendor list supports name search only, while app vendor list queries by vendor code; never switch identity automatically or treat an empty code-as-name search as proof that a vendor does not exist. For vendor field configuration, only module 0 required fields are globally required; modules 1-4 child collections are optional and their required fields apply only when that child is submitted; module 5 is outside vendor maintenance. Map custom field types to exactly one value property: 0/1/3/5 fieldValue, 2 num, 4/6 options, 7 date, 8 rangeDate, 12 appendix, and 14 employee. Resolve the target first, inspect field configuration before uncertain writes, fetch vendor details before changing child records, ask before ambiguous writes, never fabricate defaults, and never retry an UNKNOWN write result without querying the final state."
 
 policy:
   allow_implicit_invocation: true

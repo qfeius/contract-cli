@@ -103,7 +103,7 @@ func (a *App) runSkillsInstall(args []string) error {
 		if _, err := os.Stat(destination); err == nil {
 			if !force {
 				skipped++
-				_, _ = fmt.Fprintf(a.stdout, "Skipped existing skill: %s\n", skill.Dir)
+				_, _ = fmt.Fprintf(a.stdout, "Skipped existing skill: %s (not synchronized; use --force to overwrite)\n", skill.Dir)
 				continue
 			}
 			if err := os.RemoveAll(destination); err != nil {
@@ -125,6 +125,9 @@ func (a *App) runSkillsInstall(args []string) error {
 
 	_, _ = fmt.Fprintf(a.stdout, "Skills target: %s\n", resolvedTarget)
 	_, _ = fmt.Fprintf(a.stdout, "Installed: %d, skipped: %d\n", installed, skipped)
+	if skipped > 0 {
+		_, _ = fmt.Fprintf(a.stdout, "Review local skill changes before synchronizing, then run: contract-cli skills install --target %q --force\n", resolvedTarget)
+	}
 	a.logger.Info("skills install completed", "target", resolvedTarget, "installed", installed, "skipped", skipped)
 	return nil
 }

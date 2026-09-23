@@ -41,6 +41,10 @@ func (a *App) runMDMVendor(ctx context.Context, args []string) error {
 		return a.runMDMVendorCreate(ctx, args[1:])
 	case "update":
 		return a.runMDMVendorUpdate(ctx, args[1:])
+	case "patch":
+		return a.runMDMVendorPatch(ctx, args[1:])
+	case "enable", "disable":
+		return a.runMDMVendorStatus(ctx, args[0], args[1:])
 	case "list-all":
 		return a.runMDMVendorListAll(ctx, args[1:])
 	case "query-by-cert":

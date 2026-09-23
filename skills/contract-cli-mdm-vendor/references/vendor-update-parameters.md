@@ -7,6 +7,7 @@
 - 请求体：JSON 必填，`--input-file` 与 `--data` 二选一
 - 官方 OpenAPI：[更新交易方](https://docs.qfei.cn/373499262e0.md)
 - 校验基线：`contract-cli` 当前分支；CLM `master@334c18fc2e` 存在对应实现时，以 Controller、DTO 和业务校验补充官方规格。
+- 自定义字段类型和值属性统一按 [交易方字段配置解释规则](../../contract-cli-mdm-fields/references/vendor-field-config-semantics.md) 解释；本页保留旧 PUT 的字段清单和全量更新行为。
 
 ## 目录
 
@@ -69,7 +70,7 @@
 | appendix[].fileSize | integer | 可选 | 文件大小<br>示例值：1024 |
 | appendix[].downloadUrl | string | 可选 | 文件下载地址<br>示例值："http://download.com/xxxxx" |
 | extendInfo | array<object> | 可选 | 扩展字段相关信息列表,每个扩展字段需要填入【field_code】、【field_type】、【field_value】三个信息，其中【field_code】和【field_type】需要与用户【字段配置】(获取配置字段的开放平台接口：https://open.qfei.cn/open-apis/mdm/v1/config/config_list)中扩展字段（sys = 1）相关联（目前不支持附件类型的扩展信息）<br>数据校验规则：<br>- 最大长度：100 |
-| extendInfo[].fieldType | integer | 父对象存在时必填 | 字段类型<br>示例值：0<br>可选值有：<br>- 0：单行文本框<br>- 1：多行文本框<br>- 2：数字<br>- 3：单选框<br>- 4：多选框<br>- 5：下拉单选<br>- 6：下拉多选<br>- 7：日期<br>- 8：日期区间<br>- 12：附件 |
+| extendInfo[].fieldType | integer | 父对象存在时必填 | 字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。 |
 | extendInfo[].fieldValue | string | 可选 | 字段类型为 单行文本框(0)、多行文本框(1)、单选框(3)、下拉单选框(5) 时的值<br>示例值："文本值" |
 | extendInfo[].options | array<string> | 可选 | 字段类型为 多选框(4) 下拉多选(6) 时的值<br>示例值：["字段名称"]<br>数据校验规则：最大长度：100 |
 | extendInfo[].num | number | 可选 | 字段类型为 数字(2) 时的值<br>示例值：1.11 |
@@ -97,7 +98,7 @@
 | vendorAccounts[].country | string | 可选 | 国家<br>示例值："CN"<br>数据校验规则：<br>最大长度：100 字符 |
 | vendorAccounts[].bankControlCode | string | 可选 | 银行控制码<br>示例值："99999999"<br>数据校验规则：<br>最大长度：10 字符 |
 | vendorAccounts[].extendInfo | array<object> | 可选 | 扩展字段相关信息列表<br>数据校验规则：<br>最大长度：100 |
-| vendorAccounts[].extendInfo[].fieldType | integer | 父对象存在时必填 | 文件类型<br>示例值："DOX"<br>可选值有：<br>- DOC：DOC<br>- DOCX：DOCX<br>- XLS：XLS<br>- XLSX：XLSX<br>- PNG：PNG<br>- JPG：JPG<br>- JPEG：JPEG<br>- PDF：PDF<br>- ZIP：ZIP<br>- RAR：RAR |
+| vendorAccounts[].extendInfo[].fieldType | integer | 父对象存在时必填 | 字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。 |
 | vendorAccounts[].extendInfo[].fieldValue | string | 可选 | 字段类型为 单行文本框(0)、多行文本框(1)、单选框(3)、下拉单选框(5) 时的值<br>示例值："文本值" |
 | vendorAccounts[].extendInfo[].options | array<string> | 可选 | 字段类型为 多选框(4) 下拉多选(6) 时的值<br>示例值：[""""]<br>数据校验规则：<br>最大长度：100 |
 | vendorAccounts[].extendInfo[].num | number | 可选 | 字段类型为 数字(2) 时的值<br>示例值：1.11 |
@@ -119,7 +120,7 @@
 | vendorAddresses[].county | string | 可选 | 县<br>示例值："MDCA00002746"<br>数据校验规则：<br>最大长度：64 字符 |
 | vendorAddresses[].address | string | 可选 | 详细地址<br>示例值："北京市海淀区苏州街"<br>数据校验规则：<br>最大长度：64 字符 |
 | vendorAddresses[].extendInfo | array<object> | 可选 | 扩展字段相关信息列表<br>数据校验规则：<br>最大长度：100 |
-| vendorAddresses[].extendInfo[].fieldType | integer | 父对象存在时必填 | 文件类型<br>示例值："DOX"<br>可选值有：<br>- DOC：DOC<br>- DOCX：DOCX<br>- XLS：XLS<br>- XLSX：XLSX<br>- PNG：PNG<br>- JPG：JPG<br>- JPEG：JPEG<br>- PDF：PDF<br>- ZIP：ZIP<br>- RAR：RAR |
+| vendorAddresses[].extendInfo[].fieldType | integer | 父对象存在时必填 | 字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。 |
 | vendorAddresses[].extendInfo[].fieldValue | string | 可选 | 字段类型为 单行文本框(0)、多行文本框(1)、单选框(3)、下拉单选框(5) 时的值<br>示例值："文本值" |
 | vendorAddresses[].extendInfo[].options | array<string> | 可选 | 字段类型为 多选框(4) 下拉多选(6) 时的值<br>示例值：[""""]<br>数据校验规则：<br>最大长度：100 |
 | vendorAddresses[].extendInfo[].num | number | 可选 | 字段类型为 数字(2) 时的值<br>示例值：1.11 |
@@ -141,7 +142,7 @@
 | vendorCompanyViews[].paymentTerm | string | 可选 | 付款条件信息<br>示例值："PT09"<br>数据校验规则：最大长度：255 字符 |
 | vendorCompanyViews[].downPaymentTerm | string | 可选 | 预付条件<br>示例值："PT08"<br>数据校验规则：最大长度：100 字符 |
 | vendorCompanyViews[].extendInfo | array<object> | 可选 | 扩展字段相关信息列表<br>数据校验规则：最大长度：100 |
-| vendorCompanyViews[].extendInfo[].fieldType | integer | 父对象存在时必填 | 字段类型<br>示例值：0<br>可选值有：<br>- 0：单行文本框<br>- 1：多行文本框<br>- 2：数字<br>- 3：单选框<br>- 4：多选框<br>- 5：下拉单选<br>- 6：下拉多选<br>- 7：日期<br>- 8：日期区间<br>- 12：附件 |
+| vendorCompanyViews[].extendInfo[].fieldType | integer | 父对象存在时必填 | 字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。 |
 | vendorCompanyViews[].extendInfo[].fieldValue | string | 可选 | 字段类型为 单行文本框(0)、多行文本框(1)、单选框(3)、下拉单选框(5) 时的值<br>示例值："文本值" |
 | vendorCompanyViews[].extendInfo[].options | array<string> | 可选 | 字段类型为 多选框(4) 下拉多选(6) 时的值示例值：[""""]<br>数据校验规则：最大长度：100 |
 | vendorCompanyViews[].extendInfo[].num | number | 可选 | 字段类型为 数字(2) 时的值<br>示例值：1.11 |
@@ -163,7 +164,7 @@
 | vendorContacts[].phone | string | 可选 | 手机号<br>示例值："13333323333"<br>数据校验规则：<br>最大长度：50 字符 |
 | vendorContacts[].remark | string | 可选 | 备注<br>示例值："备注"<br>数据校验规则：<br>最大长度：200 字符 |
 | vendorContacts[].extendInfo | array<object> | 可选 | 扩展字段相关信息列表数据<br>校验规则：<br>最大长度：100 |
-| vendorContacts[].extendInfo[].fieldType | integer | 父对象存在时必填 | 文件类型<br>示例值："DOX"<br>可选值有：<br>- DOC：DOC<br>- DOCX：DOCX<br>- XLS：XLS<br>- XLSX：XLSX<br>- PNG：PNG<br>- JPG：JPG<br>- JPEG：JPEG<br>- PDF：PDF<br>- ZIP：ZIP<br>- RAR：RAR |
+| vendorContacts[].extendInfo[].fieldType | integer | 父对象存在时必填 | 字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。 |
 | vendorContacts[].extendInfo[].fieldValue | string | 可选 | 字段类型为 单行文本框(0)、多行文本框(1)、单选框(3)、下拉单选框(5) 时的值<br>示例值："文本值" |
 | vendorContacts[].extendInfo[].options | array<string> | 可选 | 字段类型为 多选框(4) 下拉多选(6) 时的值示例值：["字段名称"]<br>数据校验规则：<br>最大长度：100 |
 | vendorContacts[].extendInfo[].num | number | 可选 | 字段类型为 数字(2) 时的值<br>示例值：1.11 |
@@ -214,7 +215,7 @@
 - `appendix[].fileId`（string，可选）：文件id(文件的唯一标识)<br>示例值："5c7237e821a8409d9b8b2e1041cdc9a4"
 - `appendix[].fileType`（string，可选）：文件类型<br>示例值："DOX"<br>可选值有：<br>- DOC：DOC<br>- DOCX：DOCX<br>- XLS：XLS<br>- XLSX：XLSX<br>- PNG：PNG<br>- JPG：JPG<br>- JPEG：JPEG<br>- PDF：PDF<br>- ZIP：ZIP<br>- RAR：RAR
 - `extendInfo`（array<object>，可选）：扩展字段相关信息列表,每个扩展字段需要填入【field_code】、【field_type】、【field_value】三个信息，其中【field_code】和【field_type】需要与用户【字段配置】(获取配置字段的开放平台接口：https://open.qfei.cn/open-apis/mdm/v1/config/config_list)中扩展字段（sys = 1）相关联（目前不支持附件类型的扩展信息）<br>数据校验规则：<br>- 最大长度：100
-- `extendInfo[].fieldType`（integer，父对象存在时必填）：字段类型<br>示例值：0<br>可选值有：<br>- 0：单行文本框<br>- 1：多行文本框<br>- 2：数字<br>- 3：单选框<br>- 4：多选框<br>- 5：下拉单选<br>- 6：下拉多选<br>- 7：日期<br>- 8：日期区间<br>- 12：附件
+- `extendInfo[].fieldType`（integer，父对象存在时必填）：字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。
 - `extendInfo[].options`（array<string>，可选）：字段类型为 多选框(4) 下拉多选(6) 时的值<br>示例值：["字段名称"]<br>数据校验规则：最大长度：100
 - `extendInfo[].rangeDate`（array<string>，可选）：字段类型是 日期区间(8) 时候的值 数组长度为2 0-startTime 1-endTime<br>示例值：["字段编码"]<br>数据校验规则：长度范围：2 ～ 2
 - `extendInfo[].appendix`（array<object>，可选）：附件列表 字段类型是 附件(12) 时候的值<br>数据校验规则：<br>最大长度：10
@@ -233,7 +234,7 @@
 - `vendorAccounts[].country`（string，可选）：国家<br>示例值："CN"<br>数据校验规则：<br>最大长度：100 字符
 - `vendorAccounts[].bankControlCode`（string，可选）：银行控制码<br>示例值："99999999"<br>数据校验规则：<br>最大长度：10 字符
 - `vendorAccounts[].extendInfo`（array<object>，可选）：扩展字段相关信息列表<br>数据校验规则：<br>最大长度：100
-- `vendorAccounts[].extendInfo[].fieldType`（integer，父对象存在时必填）：文件类型<br>示例值："DOX"<br>可选值有：<br>- DOC：DOC<br>- DOCX：DOCX<br>- XLS：XLS<br>- XLSX：XLSX<br>- PNG：PNG<br>- JPG：JPG<br>- JPEG：JPEG<br>- PDF：PDF<br>- ZIP：ZIP<br>- RAR：RAR
+- `vendorAccounts[].extendInfo[].fieldType`（integer，父对象存在时必填）：字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。
 - `vendorAccounts[].extendInfo[].options`（array<string>，可选）：字段类型为 多选框(4) 下拉多选(6) 时的值<br>示例值：[""""]<br>数据校验规则：<br>最大长度：100
 - `vendorAccounts[].extendInfo[].rangeDate`（array<string>，可选）：字段类型是 日期区间(8) 时候的值 数组长度为2 0-startTime 1-endTime<br>示例值：[""""]<br>数据校验规则：长度范围：2 ～ 2
 - `vendorAccounts[].extendInfo[].appendix`（array<object>，可选）：附件列表 字段类型是 附件(12) 时候的值<br>数据校验规则：最大长度：10
@@ -246,7 +247,7 @@
 - `vendorAddresses[].county`（string，可选）：县<br>示例值："MDCA00002746"<br>数据校验规则：<br>最大长度：64 字符
 - `vendorAddresses[].address`（string，可选）：详细地址<br>示例值："北京市海淀区苏州街"<br>数据校验规则：<br>最大长度：64 字符
 - `vendorAddresses[].extendInfo`（array<object>，可选）：扩展字段相关信息列表<br>数据校验规则：<br>最大长度：100
-- `vendorAddresses[].extendInfo[].fieldType`（integer，父对象存在时必填）：文件类型<br>示例值："DOX"<br>可选值有：<br>- DOC：DOC<br>- DOCX：DOCX<br>- XLS：XLS<br>- XLSX：XLSX<br>- PNG：PNG<br>- JPG：JPG<br>- JPEG：JPEG<br>- PDF：PDF<br>- ZIP：ZIP<br>- RAR：RAR
+- `vendorAddresses[].extendInfo[].fieldType`（integer，父对象存在时必填）：字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。
 - `vendorAddresses[].extendInfo[].options`（array<string>，可选）：字段类型为 多选框(4) 下拉多选(6) 时的值<br>示例值：[""""]<br>数据校验规则：<br>最大长度：100
 - `vendorAddresses[].extendInfo[].rangeDate`（array<string>，可选）：字段类型是 日期区间(8) 时候的值 数组长度为2 0-startTime 1-endTime<br>示例值：["字段名称"]<br>数据校验规则：<br>长度范围：2 ～ 2
 - `vendorAddresses[].extendInfo[].appendix`（array<object>，可选）：附件列表 字段类型是 附件(12) 时候的值<br>数据校验规则：<br>最大长度：10
@@ -259,7 +260,7 @@
 - `vendorCompanyViews[].paymentTerm`（string，可选）：付款条件信息<br>示例值："PT09"<br>数据校验规则：最大长度：255 字符
 - `vendorCompanyViews[].downPaymentTerm`（string，可选）：预付条件<br>示例值："PT08"<br>数据校验规则：最大长度：100 字符
 - `vendorCompanyViews[].extendInfo`（array<object>，可选）：扩展字段相关信息列表<br>数据校验规则：最大长度：100
-- `vendorCompanyViews[].extendInfo[].fieldType`（integer，父对象存在时必填）：字段类型<br>示例值：0<br>可选值有：<br>- 0：单行文本框<br>- 1：多行文本框<br>- 2：数字<br>- 3：单选框<br>- 4：多选框<br>- 5：下拉单选<br>- 6：下拉多选<br>- 7：日期<br>- 8：日期区间<br>- 12：附件
+- `vendorCompanyViews[].extendInfo[].fieldType`（integer，父对象存在时必填）：字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。
 - `vendorCompanyViews[].extendInfo[].options`（array<string>，可选）：字段类型为 多选框(4) 下拉多选(6) 时的值示例值：[""""]<br>数据校验规则：最大长度：100
 - `vendorCompanyViews[].extendInfo[].rangeDate`（array<string>，可选）：字段类型是 日期区间(8) 时候的值 数组长度为2 0-startTime 1-endTime<br>示例值：["字段名称"]数据校验规则：长度范围：2 ～ 2
 - `vendorCompanyViews[].extendInfo[].appendix`（array<object>，可选）：附件列表 字段类型是 附件(12) 时候的值<br>数据校验规则：最大长度：10
@@ -272,7 +273,7 @@
 - `vendorContacts[].phone`（string，可选）：手机号<br>示例值："13333323333"<br>数据校验规则：<br>最大长度：50 字符
 - `vendorContacts[].remark`（string，可选）：备注<br>示例值："备注"<br>数据校验规则：<br>最大长度：200 字符
 - `vendorContacts[].extendInfo`（array<object>，可选）：扩展字段相关信息列表数据<br>校验规则：<br>最大长度：100
-- `vendorContacts[].extendInfo[].fieldType`（integer，父对象存在时必填）：文件类型<br>示例值："DOX"<br>可选值有：<br>- DOC：DOC<br>- DOCX：DOCX<br>- XLS：XLS<br>- XLSX：XLSX<br>- PNG：PNG<br>- JPG：JPG<br>- JPEG：JPEG<br>- PDF：PDF<br>- ZIP：ZIP<br>- RAR：RAR
+- `vendorContacts[].extendInfo[].fieldType`（integer，父对象存在时必填）：字段类型；允许值 0、1、2、3、4、5、6、7、8、12、14。具体值属性以交易方字段配置解释规则为准。
 - `vendorContacts[].extendInfo[].options`（array<string>，可选）：字段类型为 多选框(4) 下拉多选(6) 时的值示例值：["字段名称"]<br>数据校验规则：<br>最大长度：100
 - `vendorContacts[].extendInfo[].rangeDate`（array<string>，可选）：字段类型是 日期区间(8) 时候的值 数组长度为2 0-startTime 1-endTime<br>示例值：["字段名称"]数据校验规则：长度范围：2 ～ 2
 - `vendorContacts[].extendInfo[].appendix`（array<object>，可选）：附件列表 字段类型是 附件(12) 时候的值<br>数据校验规则：<br>最大长度：10
