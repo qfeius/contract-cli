@@ -1,0 +1,4 @@
+interface:
+  display_name: "合同审批效率分析"
+  short_description: "任务中心归因审批效率；单人合表及Excel明细"
+  default_prompt: "使用 $contract-approval-efficiency 分析最近30天指定人员或部门的审批、盖章和归档效率；多人节点按任务中心实际处理人归因，单人查询合并为一张表，部门范围另输出总览，并生成Excel明细。"

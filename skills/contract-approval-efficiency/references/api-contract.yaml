@@ -1,0 +1,3595 @@
+version: 2
+name: contract-approval-efficiency
+business:
+  intent: 按分析对象输出审批/盖章/归档效率；具体人员只展示个人分阶段表，部门及其他范围展示总览与个人表，并交付可追溯的Excel明细
+  page:
+    route: /statistics-dashboard/efficiency
+    related_pages:
+    - /statistics-dashboard/efficiency-detail/:contractType
+    - 合同详情审批记录
+    - 合同组详情审批记录
+    route_status: 前端效率页面与后端配方已静态确认；本 Skill 不依赖页面截图抓取
+  scope:
+    includes:
+    - 按姓名或当前部门解析人员及目录larkId；逐人读取BPM原始已办/待办并以流程记录核对实际动作
+    - 用户指定业务或发现样本内的页面可见审批记录
+    - 审批人和当前部门的本地 ID 筛选
+    - 流程定义 ID + 节点 ID + 节点类型的任务均值
+    - Markdown按对象路由：单人查询合并审批/盖章/归档为一张表，多人按节点分表；部门及其他范围展示总览与洞察、三张个人阶段表、明细文件；JSON保留全部指标
+    - 个人统计优先按原始任务中心归因，多人节点中可确认实际处理人的任务纳入；全部已核验人员在三个阶段保留零行
+    excludes:
+    - 租户全量已办任务保证
+    - 历史部门还原
+    - 并行节点整体墙钟时长或节点执行轮次
+    - 工作时长或剔除节假日用时
+    - 修改审批、签章、归档、发布流程或直接查询内部 BPM/数据库
+runtime:
+  authorization: reuse_cli_mcp_authenticated_context
+  transports:
+    cli:
+      status: RUNTIME_VERIFIED
+      entrypoint: contract-cli api call --channel web --profile <profile> --as user --output json <METHOD> <open_web_path>
+      identity: USER
+      environment: test
+      version: 2.0.0-test
+      configuration_evidence: 2026-09-23同一test user已验证目录、合同详情、流程记录及CLM_OPENAPI原始人员任务查询，自动发现参与索引漏项
+      runtime_status: RUNTIME_VERIFIED
+      verified_recipes:
+      - efficiency_contracts
+      - contract_info
+      - process_records
+      - employee_lookup
+      - department_lookup
+      - department_members
+      - participant_contracts
+      - contract_brief_info
+      - raw_person_tasks
+      - historical_node_people
+      - historical_process_instance
+      - historical_form_definition
+      verification_scope: 仅记录实际test场景：目录非空及空直属成员、参与合同多页、详情与流程记录非空、原始人员任务自动发现参与索引漏项，以及历史人员/实例/表单联合核验固定单人节点和多人对照。其他发现边界、目录多页和其他租户未实测；assembly_info、employees配方仍未验证。时区头对比仅contract_info/process_records
+    mcp:
+      status: UNVERIFIED
+      identity: USER
+      environment: test
+      runtime_status: UNVERIFIED
+      required_tool: call-open-web-api
+      verified_recipes: []
+      note: 当前生成环境未发现符合 universal_open_web_call 统一契约的 MCP Tool；业务专用 MCP Tool 不替代该能力。
+  constraints:
+    default_profile: contract-test
+    authenticated_context_only: true
+    credential_inputs_forbidden: true
+    timezone_header: 'Timezone-Offset: -480'
+    timezone: Asia/Shanghai
+    timezone_header_runtime_passthrough_verified: true
+    timezone_header_runtime_verified_recipes:
+    - contract_info
+    - process_records
+    retry: 429/503有界退避；110004停止对应业务。仅contract_info的110002允许一次contract_brief_info恢复；其他失败保留覆盖缺口，不替换为零或切换身份
+  execution_mode: HYBRID
+  target_environment: test
+  required_capability: universal_open_web_call
+  channel_policy:
+    preference:
+    - cli
+    - mcp
+    when_none_available: GUIDE_INSTALL_CLI
+    resume_original_request: true
+inputs:
+  profile:
+    type: string
+    default: contract-test
+  start:
+    type: datetime
+    required: true
+    semantics: 任务完成时间下界（含），显式时区
+  end:
+    type: datetime
+    required: true
+    semantics: 任务完成时间上界（不含），显式时区
+  businesses:
+    type: array
+    required: false
+    item: 真实 businessId + businessTypeCode，或明确普通合同/合同组 ID；以详情验证类型
+  discovery_start:
+    type: datetime
+    required: false
+    semantics: 用户明确的效率看板盖章日期样本窗口下界，区别于任务完成时间
+  discovery_end:
+    type: datetime
+    required: false
+    semantics: 用户明确的效率看板盖章日期样本窗口上界，区别于任务完成时间
+  approver_ids:
+    type: array
+    required: false
+    semantics: 真实员工 ID，分析时本地过滤，不能用姓名猜 ID
+  department_ids:
+    type: array
+    required: false
+    semantics: 处理人当前部门 ID，分析时本地过滤；不是发起部门
+  node_types:
+    type: array
+    default:
+    - 1
+    - 2
+    - 3
+  max_businesses:
+    type: integer
+    default: 0
+    semantics: 0表示不设数量上限；仅用户显式指定正数时限量。raw-tasks限制本次合并后的候选流程实例数，visible-contracts限制单次可见扫描的业务数，participant-index限制每位人员累计业务数；达到上限标partial并保存续读状态
+  page_size:
+    type: integer
+    default: 100
+    semantics: 任务和合同分页大小；不构成总数量上限。原始任务第一页后端默认10，不以短页结束；组织成员仍固定每页50
+  max_pages:
+    type: integer
+    default: 0
+    semantics: 0表示不设页数上限；仅用户显式指定正数时限量。raw-tasks按每位人员和任务状态分别计页，visible-contracts按单次可见扫描计页，participant-index按每位人员计合同组页数；可在resume时增大或取消，看板fallback分页状态独立
+  trial_max_businesses:
+    type: integer
+    required: false
+    semantics: 仅用户明确要求有限试跑时采用其指定的正数，并标注样本限制；不得默认截取三份业务
+  process_definition_ids:
+    type: array
+    required: false
+    semantics: 真实流程定义ID，在每条历史record上做本地过滤；不是合同类型
+  process_instances:
+    type: array
+    required: false
+    item: 真实processInstanceId，可附来源businessId；原始任务未返回businessTypeCode时不猜测，按实例权限读取records取得真实类型
+  include_subdepartments:
+    type: boolean
+    default: true
+    semantics: 递归所选部门的已发现子部门；直属成员为空仍继续子部门
+    cli_mapping: 默认包含子部门；false对应--direct-department-only
+  max_member_pages:
+    type: integer
+    default: 0
+    semantics: 0表示不设成员页数上限；仅用户显式指定正数时限制每个部门成员页数，达到上限标注截断
+  max_departments:
+    type: integer
+    default: 0
+    semantics: 0表示不设部门数量上限；仅用户显式指定正数时限制递归部门数；始终按内部departmentId去重和防环
+  employee_name:
+    type: string
+    required: false
+    semantics: 单个人员姓名关键词，或用户已有来源的内部employeeId字符串；与department_name及resume_file互斥
+  department_name:
+    type: string
+    required: false
+    semantics: 单个部门名称关键词；与employee_name及resume_file互斥
+  selected_employee_id:
+    type: string
+    required: false
+    semantics: employee_lookup本次候选中的CLM内部employeeId，仅用于同名消歧；不接受openId/userId，不能单独跳过查找
+  selected_department_id:
+    type: string
+    required: false
+    semantics: department_lookup本次候选中的CLM内部departmentId，仅用于同名部门消歧；不接受openDepartmentId，不能单独跳过查找
+  resume_file:
+    type: string
+    required: false
+    semantics: 同profile、相同candidate-source和窗口的兼容发现状态；旧ES参与索引version不可续读为raw-tasks完整结果；组织缺口需重新解析
+  resolve_only:
+    type: boolean
+    default: false
+    semantics: 对应--resolve-only，仅查找并核验人员/部门当前成员；已有明确业务或实例时不扩大合同候选范围
+  node_participant_evidence:
+    type: array
+    required: false
+    semantics: bundle中按processInstanceId/processDefinitionId/nodeId绑定的参与人数证据；employee_ids为真实内部人员ID数组，complete=true必须有非空source和可复核的完整历史人数来源。未验证来源不得填complete=true；缺失默认不计个人统计
+  analysis_subject:
+    type: string
+    required: true
+    enum:
+    - people
+    - department
+    - other
+    semantics: people表示用户明确点名一人或多人；department表示按部门；other表示合同、流程或其他范围。只控制Markdown展示，不改变统计计算或JSON完整结构
+  candidate_source:
+    type: string
+    default: raw-tasks
+    enum:
+    - raw-tasks
+    - visible-contracts
+    - participant-index
+    semantics: raw-tasks为默认；visible-contracts用于显式合同列表范围；participant-index仅用户指定快速候选且不承诺实际审批完整性
+recipes:
+  efficiency_contracts:
+    purpose: 可选发现效率看板盖章日期窗口中的合同/合同组样本；不提供全量已办任务
+    role: OPTIONAL
+    required: false
+    endpoint:
+      family: CLM
+      method: POST
+      original_page_path: /clm/api/statistic/efficiency/contractDetail
+      open_web_path: /open-web/web/clm/statistic/efficiency/contractDetail
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: OBJECT
+      content_type: application/json
+    parameters:
+      Timezone-Offset:
+        location: HEADER
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: -480
+        type: integer
+        meaning: 请求时区偏移分钟数，Asia/Shanghai 固定为 UTC+8 对应 -480
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:StatisticEfficiencyController.java:90; clm-monorepo-fe@1e2ad2a:statistic.ts:107
+      pageIndex:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: steps.prepare_scope.pagination
+        transform: 从 0 开始递增；空页、重复页、上限或唯一业务数达总数停止
+        type: integer
+        meaning: 从接口约定起始值开始递增的分页页码
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - 值必须为大于等于 0 的整数
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:StatisticEfficiencyController.java:90; clm-monorepo-fe@1e2ad2a:statistic.ts:107
+      pageSize:
+        location: QUERY
+        source: USER_INPUT
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: inputs.page_size
+        type: integer
+        meaning: 单页读取数量
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - 值必须为正整数
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:StatisticEfficiencyController.java:90; clm-monorepo-fe@1e2ad2a:statistic.ts:107
+      startDate:
+        location: BODY
+        source: DERIVED
+        required: true
+        effectiveness: UNVERIFIED
+        stability: REQUEST_SCOPED
+        from: inputs.discovery_start
+        transform: 经明确披露的看板盖章日期窗口转换为 epoch 毫秒；不得冒充任务完成时间过滤
+        type: integer
+        meaning: 看板发现窗口开始时间的 epoch 毫秒值
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - 值必须为非负整数并保留整数精度
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:StatisticEfficiencyController.java:90; clm-monorepo-fe@1e2ad2a:statistic.ts:107
+      endDate:
+        location: BODY
+        source: DERIVED
+        required: true
+        effectiveness: UNVERIFIED
+        stability: REQUEST_SCOPED
+        from: inputs.discovery_end
+        transform: 经明确披露的看板盖章日期窗口转换为 epoch 毫秒；端点开闭规则待 test 验证
+        type: integer
+        meaning: 看板发现窗口结束时间的 epoch 毫秒值
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - 必须大于 startDate；两者均为已披露的看板发现窗口，不替代任务完成时间窗口
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:StatisticEfficiencyController.java:90; clm-monorepo-fe@1e2ad2a:statistic.ts:107
+    response:
+      success:
+        http_status:
+        - 200
+        predicates:
+        - $.success == true
+        - $.code == 200
+        runtime_status: RUNTIME_VERIFIED
+        verified_sample: EMPTY
+        note: 两次 test CLI exit_code=0；原始顶层为 success=true、code=200、data，无额外 CLI 包装。仅验证空列表，未验证非空元素或时间字段
+      fields:
+        items:
+          path: $.data.content
+          type: array
+          nullable: true
+        total_count:
+          path: $.data.totalElements
+          type: integer
+          nullable: true
+        page_index:
+          path: $.data.pageIndex
+          type: integer
+          nullable: true
+        total_pages:
+          path: $.data.totalPages
+          type: integer
+          nullable: true
+        business_id:
+          path: $.data.content[*].businessId
+          type: string
+          nullable: true
+        business_type:
+          path: $.data.content[*].businessTypeCode
+          type: integer
+          nullable: true
+        contract_id:
+          path: $.data.content[*].contractId
+          type: string
+          nullable: true
+        assembly_id:
+          path: $.data.content[*].contractAssemblyId
+          type: string
+          nullable: true
+        contract_name:
+          path: $.data.content[*].contractName
+          type: string
+          nullable: true
+      pagination:
+        strategy: CONTENT_AND_UNIQUE_BUSINESS_KEYS
+        base_index: 0
+        deduplicate_by:
+        - businessTypeCode
+        - businessId
+        has_next_reliable: false
+        total_pages_reliable: false
+        notes: hasNext 未填；totalPages 整除可多一页；失败/截断/重复页要保留覆盖诊断
+    permissions:
+      data_scope: 效率看板功能授权及当前用户的个人/部门/全部聚合数据权限
+      enforcement: STATISTICS_EFFICIENCY_PAGE_FUNCTION_AUTHORITY；最低 COLLABORATED_ENTERPRISE；StatisticService 追加聚合权限
+    execute_when: 没有显式businesses/process_instances，且没有姓名、部门或已核验人员对象；已确定并披露discovery_start/discovery_end的盖章日期样本口径
+    failure_handling:
+      authorization: 按 references/user-authorization.md 恢复 USER 授权；pending 时等待用户完成，成功后只续办原请求一次。
+      permission_denied: 记录对应人员、合同或流程的权限缺口并停止该对象；不切换身份、接口或数据库补数。
+      business_failure: 同时检查 HTTP 与业务 success/code；失败保留 partial 诊断，不改写为空集合或零。
+      timeout_or_unknown: 只读请求按采集脚本的有界策略重试，仍失败则停止该对象并标记 partial；不无限重试。
+  contract_info:
+    purpose: 读取普通合同真实业务类型与流程实例，作为记录查询前序
+    role: PREREQUISITE
+    required: false
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/contract/info
+      open_web_path: /open-web/web/clm/contract/info
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      Timezone-Offset:
+        location: HEADER
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: -480
+        type: integer
+        meaning: 请求时区偏移分钟数，Asia/Shanghai 固定为 UTC+8 对应 -480
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:ContractController.java:584
+      contractId:
+        location: QUERY
+        source: PREVIOUS_RESPONSE
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        hardcode_allowed: false
+        from: steps.select_businesses.current.contract_id
+        type: string
+        meaning: 普通合同业务 ID，按字符串保留长整数精度
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:ContractController.java:584
+      tianyancha:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+        type: boolean
+        meaning: 是否联查额外企业信息，本统计固定关闭
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:ContractController.java:584
+      generateContractName:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+        type: boolean
+        meaning: 是否执行合同名称生成逻辑，本统计固定关闭
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:ContractController.java:584
+    response:
+      success:
+        http_status:
+        - 200
+        predicates:
+        - $.success == true
+        - $.code == 200
+        runtime_status: RUNTIME_VERIFIED
+        verified_sample: NON_EMPTY
+        note: test CLI 核对原始顶层 success=true、code=200、data；132 份业务成功详情中 131 份含 approveRecord，1 份无记录。固定 4 条任务在 -480 与 0 时区头下创建/结束时间均相差 8 小时且耗时一致；无权限与系统错误响应不计入成功
+      fields:
+        process_instance_id:
+          path: $.data.processInstanceId
+          type: string
+          nullable: true
+        process_definition_key:
+          path: $.data.processDefinitionKey
+          type: string
+          nullable: true
+        business_type:
+          path: $.data.businessTypeCode
+          type: integer
+          nullable: true
+        approve_record:
+          path: $.data.approveRecord
+          type: object
+          nullable: true
+    permissions:
+      data_scope: 当前登录用户有权读取的业务与流程
+      enforcement: Controller 功能权限与 Service 业务读取权限，失败不得解释为零数据
+    execute_when: select_businesses.current 已确认为普通合同；未知类型先核对，不把合同组传入此接口
+    failure_handling:
+      authorization: 按 references/user-authorization.md 恢复 USER 授权；pending 时等待用户完成，成功后只续办原请求一次。
+      permission_denied: 记录对应人员、合同或流程的权限缺口并停止该对象；不切换身份、接口或数据库补数。
+      business_failure: 同时检查 HTTP 与业务 success/code；失败保留 partial 诊断，不改写为空集合或零。
+      timeout_or_unknown: 只读请求按采集脚本的有界策略重试，仍失败则停止该对象并标记 partial；不无限重试。
+  assembly_info:
+    purpose: 读取合同组真实业务类型与流程实例；不加载子合同
+    role: PREREQUISITE
+    required: false
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/contractAssembly/info
+      open_web_path: /open-web/web/clm/contractAssembly/info
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      Timezone-Offset:
+        location: HEADER
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: -480
+        type: integer
+        meaning: 请求时区偏移分钟数，Asia/Shanghai 固定为 UTC+8 对应 -480
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:ContractAssemblyController.java:297
+      contractAssemblyId:
+        location: QUERY
+        source: PREVIOUS_RESPONSE
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        hardcode_allowed: false
+        from: steps.select_businesses.current.assembly_id
+        type: string
+        meaning: 合同组业务 ID，按字符串保留长整数精度
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:ContractAssemblyController.java:297
+      needChildrenInfo:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+        type: boolean
+        meaning: 是否读取合同组子合同，本统计固定关闭
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:ContractAssemblyController.java:297
+    response:
+      success:
+        http_status:
+        - 200
+        predicates:
+        - $.success == true
+        - $.code == 200
+        runtime_status: UNVERIFIED
+        note: 本地 CLM 交付惯例；首个 test 响应须核对，HTTP 200 不单独代表业务成功
+      fields:
+        process_instance_id:
+          path: $.data.processInstanceId
+          type: string
+          nullable: true
+        process_definition_key:
+          path: $.data.processDefinitionKey
+          type: string
+          nullable: true
+        business_type:
+          path: $.data.businessTypeCode
+          type: integer
+          nullable: true
+        approve_record:
+          path: $.data.approveRecord
+          type: object
+          nullable: true
+        process_definition_id:
+          path: $.data.processDefinitionId
+          type: string
+          nullable: true
+    permissions:
+      data_scope: 当前登录用户有权读取的业务与流程
+      enforcement: Controller 功能权限与 Service 业务读取权限，失败不得解释为零数据
+    execute_when: select_businesses.current.businessTypeCode属于[10,17]，或用户明确提供合同组ID；详情复核实际类型，流程记录保留真实17不改为10；该配方仍未在线验证
+    failure_handling:
+      authorization: 按 references/user-authorization.md 恢复 USER 授权；pending 时等待用户完成，成功后只续办原请求一次。
+      permission_denied: 记录对应人员、合同或流程的权限缺口并停止该对象；不切换身份、接口或数据库补数。
+      business_failure: 同时检查 HTTP 与业务 success/code；失败保留 partial 诊断，不改写为空集合或零。
+      timeout_or_unknown: 只读请求按采集脚本的有界策略重试，仍失败则停止该对象并标记 partial；不无限重试。
+  process_records:
+    purpose: 获取页面可见流程任务记录及可关联的历史流程；精细效率统计唯一主数据源
+    role: PRIMARY
+    required: true
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/workflow/runtime/process/records
+      open_web_path: /open-web/web/clm/workflow/runtime/process/records
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      Timezone-Offset:
+        location: HEADER
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: -480
+        type: integer
+        meaning: 请求时区偏移分钟数，Asia/Shanghai 固定为 UTC+8 对应 -480
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:WorkflowRuntimeController.java:264
+      businessId:
+        location: QUERY
+        source: PREVIOUS_RESPONSE
+        required: false
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        hardcode_allowed: false
+        from: steps.resolve_instances.current.business_id
+        type: string
+        meaning: 流程记录所属业务 ID，按字符串保留长整数精度
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - businessId 与 businessTypeCode 必须同时提供或同时省略；processInstanceId 始终必填
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:WorkflowRuntimeController.java:264
+      businessTypeCode:
+        location: QUERY
+        source: PREVIOUS_RESPONSE
+        required: false
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        hardcode_allowed: false
+        from: steps.resolve_instances.current.business_type_code
+        type: integer
+        meaning: 流程业务类型编码
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - businessId 与 businessTypeCode 必须同时提供或同时省略；processInstanceId 始终必填
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:WorkflowRuntimeController.java:264
+      processInstanceId:
+        location: QUERY
+        source: PREVIOUS_RESPONSE
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        hardcode_allowed: false
+        from: steps.select_businesses.process_instances.processInstanceId
+        transform: 来自原始任务或业务详情的真实实例ID；仅实例已知时省略businessId/businessTypeCode，由后端校验流程readPermission
+        type: string
+        meaning: 真实流程实例 ID
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:WorkflowRuntimeController.java:264
+    response:
+      success:
+        http_status:
+        - 200
+        predicates:
+        - $.success == true
+        - $.code == 200
+        runtime_status: RUNTIME_VERIFIED
+        verified_sample: NON_EMPTY
+        note: test CLI 对 9 份详情为 110002 的合同，使用 briefInfo 返回的真实 PID 读取流程记录，全部业务成功且非空；固定 8 条任务在 -480 与 0 时区头下创建/结束时间均相差 8 小时且耗时一致。110004 无权限合同未尝试备用端点
+      fields:
+        done_nodes:
+          path: $.data.done
+          type: array
+          nullable: true
+        todo_nodes:
+          path: $.data.todo
+          type: array
+          nullable: true
+        forecast_nodes:
+          path: $.data.forecast
+          type: array
+          nullable: true
+        node_type:
+          path: $.data.{done,todo}[*].nodeTypeCode
+          type: integer
+          nullable: true
+        task_mode:
+          path: $.data.{done,todo}[*].taskModeCode
+          type: integer
+          nullable: true
+          semantics: 0或签、1串行、2会签、3组内或签、4组内串行；模式不证明人数，且可能按当前表单填充历史节点
+        record_business_id:
+          path: $.data.{done,todo}[*].records[*].businessId
+          type: string
+          nullable: true
+          semantics: BPM业务键拆解出的实际业务ID，历史记录归属优先于当前详情外层ID
+        record_business_type:
+          path: $.data.{done,todo}[*].records[*].businessTypeCode
+          type: integer
+          nullable: true
+        parent_task_instance_id:
+          path: $.data.{done,todo}[*].records[*].parentProcessTaskInstanceId
+          type: string
+          nullable: true
+          semantics: 转办或加签父任务，不是节点实例或执行轮次ID
+        parent_command:
+          path: $.data.{done,todo}[*].records[*].parentCommandTypeCode
+          type: integer
+          nullable: true
+        node_id:
+          path: $.data.{done,todo}[*].records[*].nodeId
+          type: string
+          nullable: true
+        node_name:
+          path: $.data.{done,todo}[*].records[*].nodeDisplayName
+          type: string
+          nullable: true
+        process_definition_id:
+          path: $.data.{done,todo}[*].records[*].processDefinitionId
+          type: string
+          nullable: true
+        process_instance_id:
+          path: $.data.{done,todo}[*].records[*].processInstanceId
+          type: string
+          nullable: true
+        task_instance_id:
+          path: $.data.{done,todo}[*].records[*].processTaskInstanceId
+          type: string
+          nullable: true
+        created_at:
+          path: $.data.{done,todo}[*].records[*].createTime
+          type: datetime
+          nullable: true
+        ended_at:
+          path: $.data.{done,todo}[*].records[*].endTime
+          type: datetime
+          nullable: true
+        status:
+          path: $.data.{done,todo}[*].records[*].taskStatusCode
+          type: integer
+          nullable: true
+        command:
+          path: $.data.{done,todo}[*].records[*].commandTypeCode
+          type: integer
+          nullable: true
+        assignees:
+          path: $.data.{done,todo}[*].records[*].assigneeEmployees
+          type: array
+          nullable: true
+        employee_id:
+          path: $.data.{done,todo}[*].records[*].assigneeEmployees[*].employeeId
+          type: string
+          nullable: true
+        employee_name:
+          path: $.data.{done,todo}[*].records[*].assigneeEmployees[*].name
+          type: string
+          nullable: true
+        departments:
+          path: $.data.{done,todo}[*].records[*].assigneeEmployees[*].departments
+          type: array
+          nullable: true
+      path_notation: '{done,todo} 表示两个数组分别遍历；不是直接交给 JSONPath 库的表达式。空 data 不当作零耗时；父节点没有可靠nodeInstanceId，nodeId后缀表示类型而非轮次。'
+    permissions:
+      data_scope: 当前登录用户有权读取的业务与流程
+      enforcement: Controller 功能权限与 Service 业务读取权限，失败不得解释为零数据
+    response_reuse: 前序详情已含完整 approveRecord 时可复用，记录 contract_info 或 assembly_info 来源；只能沿用经核对成功的原始 envelope，不伪造成功字段。
+    failure_handling:
+      authorization: 按 references/user-authorization.md 恢复 USER 授权；pending 时等待用户完成，成功后只续办原请求一次。
+      permission_denied: 记录对应人员、合同或流程的权限缺口并停止该对象；不切换身份、接口或数据库补数。
+      business_failure: 同时检查 HTTP 与业务 success/code；失败保留 partial 诊断，不改写为空集合或零。
+      timeout_or_unknown: 只读请求按采集脚本的有界策略重试，仍失败则停止该对象并标记 partial；不无限重试。
+  employees:
+    purpose: 仅对记录中部门缺失的真实员工补全当前部门；不替换已有部门值
+    role: OPTIONAL
+    required: false
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/employee/getEmployeesByIds
+      open_web_path: /open-web/web/clm/employee/getEmployeesByIds
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      Timezone-Offset:
+        location: HEADER
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: -480
+        type: integer
+        meaning: 请求时区偏移分钟数，Asia/Shanghai 固定为 UTC+8 对应 -480
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:EmployeeController.java:81
+      employeeIds:
+        location: QUERY
+        source: PREVIOUS_RESPONSE
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        hardcode_allowed: false
+        from: steps.find_missing_departments.comma_separated_employee_ids
+        type: string
+        meaning: 逗号分隔的内部员工 ID 列表
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:EmployeeController.java:81
+      extraDepartmentInfo:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: true
+        type: boolean
+        meaning: 是否返回员工当前部门补充信息
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:EmployeeController.java:81
+    response:
+      success:
+        http_status:
+        - 200
+        predicates:
+        - $.success == true
+        - $.code == 200
+        runtime_status: UNVERIFIED
+        note: 本地 CLM 交付惯例；首个 test 响应须核对，HTTP 200 不单独代表业务成功
+      fields:
+        employees:
+          path: $.data
+          type: array
+          nullable: true
+        employee_id:
+          path: $.data[*].employeeId
+          type: string
+          nullable: true
+        departments:
+          path: $.data[*].departments
+          type: array
+          nullable: true
+    permissions:
+      data_scope: 当前租户中记录已出现的真实员工 ID
+      enforcement: Controller 复用 tenantId；EmployeeService 按租户和 ID 列表读取，不接受跨租户或身份头
+    execute_when: process_records 存在单一真实员工且 departments 缺失，需要部门分析
+    failure_handling:
+      authorization: 按 references/user-authorization.md 恢复 USER 授权；pending 时等待用户完成，成功后只续办原请求一次。
+      permission_denied: 记录对应人员、合同或流程的权限缺口并停止该对象；不切换身份、接口或数据库补数。
+      business_failure: 同时检查 HTTP 与业务 success/code；失败保留 partial 诊断，不改写为空集合或零。
+      timeout_or_unknown: 只读请求按采集脚本的有界策略重试，仍失败则停止该对象并标记 partial；不无限重试。
+  employee_lookup:
+    purpose: 按姓名关键词或有来源的内部 employeeId 查询人员候选并消歧
+    role: OPTIONAL
+    required: false
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/employee/findEmployeesByKeyword
+      open_web_path: /open-web/web/clm/employee/findEmployeesByKeyword
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      Timezone-Offset:
+        location: HEADER
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: -480
+        type: integer
+        meaning: 请求时区偏移分钟数，Asia/Shanghai 固定为 UTC+8 对应 -480
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:EmployeeController.java:175; EmployeeService.java:504
+      keywords:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.prepare_scope.employee_lookup.keyword
+        transform: 使用inputs.employee_name作为单个非空查询词，原字符串URL编码；selected_employee_id仅在候选中选择，不作为身份上下文
+        hardcode_allowed: false
+        type: string
+        meaning: 人员姓名查询关键字
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:EmployeeController.java:175; EmployeeService.java:504
+      filterCurrentEmployee:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+        type: boolean
+        meaning: 是否只返回当前调用人，本统计固定关闭
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:EmployeeController.java:175; EmployeeService.java:504
+      noFilterDeletedEmployee:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: true
+        type: boolean
+        meaning: 是否保留非在职候选供状态核验
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:EmployeeController.java:175; EmployeeService.java:504
+    response:
+      success:
+        http_status:
+        - 200
+        predicates:
+        - $.success == true
+        - $.code == 200
+        runtime_status: RUNTIME_VERIFIED
+        verified_sample: NON_EMPTY
+        note: 已观察 test CLI 业务成功响应；仅证明本契约所记场景，不代表其他租户、权限或全部分页边界均已验证
+      fields:
+        employees:
+          path: $.data
+          type: array
+          nullable: true
+        employee_id:
+          path: $.data[*].employeeId
+          type: string
+          nullable: true
+        employee_name:
+          path: $.data[*].displayName
+          type: string
+          nullable: true
+        name:
+          path: $.data[*].name
+          type: string
+          nullable: true
+        departments:
+          path: $.data[*].departments
+          type: array
+          nullable: true
+        status:
+          path: $.data[*].status
+          type: integer
+          nullable: true
+      selection:
+        id_field: employeeId
+        forbidden_id_fields:
+        - openId
+        - userId
+        ambiguous: REQUIRE_SELECTION
+        deduplicate_by: employeeId
+        departed_name_search_guaranteed: false
+    permissions:
+      data_scope: 当前 USER 授权的租户和可见范围；不切换被查询人员身份
+      enforcement: EmployeeController 复用当前 tenantId/employeeId；Service 搜索限流并使用租户目录。noFilterDeletedEmployee 仅在数字内部ID关键词时补精确离职人员，姓名查询不保证返回离职人员
+    execute_when: 存在employee_name，且非resume_file路径；显式业务可用resolve_only核验目标人员
+    failure_handling:
+      authorization: 按 references/user-authorization.md 恢复 USER 授权；pending 时等待用户完成，成功后只续办原请求一次。
+      permission_denied: 记录对应人员、合同或流程的权限缺口并停止该对象；不切换身份、接口或数据库补数。
+      business_failure: 同时检查 HTTP 与业务 success/code；失败保留 partial 诊断，不改写为空集合或零。
+      timeout_or_unknown: 只读请求按采集脚本的有界策略重试，仍失败则停止该对象并标记 partial；不无限重试。
+  department_lookup:
+    purpose: 按部门关键词查询目录候选及已返回的子部门树
+    role: OPTIONAL
+    required: false
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/department/findDepartmentsByKeyword
+      open_web_path: /open-web/web/clm/department/findDepartmentsByKeyword
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      Timezone-Offset:
+        location: HEADER
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: -480
+        type: integer
+        meaning: 请求时区偏移分钟数，Asia/Shanghai 固定为 UTC+8 对应 -480
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:DepartmentController.java:189
+      keyword:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.prepare_scope.department_lookup.keyword
+        transform: 使用inputs.department_name单个非空关键词并URL编码；未找到或同名不扩大为空关键词全组织查找
+        hardcode_allowed: false
+        type: string
+        meaning: 部门名称查询关键字
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:DepartmentController.java:189
+      requireAll:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+        type: boolean
+        meaning: 是否要求返回全部部门，本统计固定关闭
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:DepartmentController.java:189
+      showAllStatus:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_IGNORED
+        stability: CONTRACT_STABLE
+        value: true
+        note: 此Skill只传非空keyword，该Service分支未使用statusSet；保留已实测页面参数，不宣称全状态能力
+        type: boolean
+        meaning: 是否返回全部状态的部门候选
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:DepartmentController.java:189
+    response:
+      success:
+        http_status:
+        - 200
+        predicates:
+        - $.success == true
+        - $.code == 200
+        runtime_status: RUNTIME_VERIFIED
+        verified_sample: NON_EMPTY
+        note: 已观察 test CLI 业务成功响应；仅证明本契约所记场景，不代表其他租户、权限或全部分页边界均已验证
+      fields:
+        departments:
+          path: $.data
+          type: array
+          nullable: true
+        department_id:
+          path: $.data[*].departmentId
+          type: string
+          nullable: true
+        department_name:
+          path: $.data[*].displayName
+          type: string
+          nullable: true
+        name:
+          path: $.data[*].name
+          type: string
+          nullable: true
+        parent_department_id:
+          path: $.data[*].parentDepartmentId
+          type: string
+          nullable: true
+        child_departments:
+          path: $.data[*].childDepartments
+          type: array
+          nullable: true
+        status:
+          path: $.data[*].status
+          type: integer
+          nullable: true
+      selection:
+        id_field: departmentId
+        forbidden_id_fields:
+        - openDepartmentId
+        ambiguous: REQUIRE_SELECTION
+        deduplicate_by: departmentId
+        historical_department_guaranteed: false
+    permissions:
+      data_scope: 当前 USER 授权的租户和可见范围；不切换被查询人员身份
+      enforcement: DepartmentController 执行部门选择配置与权限检查；Service 按当前租户返回目录。非空 keyword 分支未使用 statusSet，showAllStatus 不证明历史失效部门全覆盖
+    execute_when: 存在department_name，且非resume_file路径；显式业务可用resolve_only核验当前成员
+    failure_handling:
+      authorization: 按 references/user-authorization.md 恢复 USER 授权；pending 时等待用户完成，成功后只续办原请求一次。
+      permission_denied: 记录对应人员、合同或流程的权限缺口并停止该对象；不切换身份、接口或数据库补数。
+      business_failure: 同时检查 HTTP 与业务 success/code；失败保留 partial 诊断，不改写为空集合或零。
+      timeout_or_unknown: 只读请求按采集脚本的有界策略重试，仍失败则停止该对象并标记 partial；不无限重试。
+  department_members:
+    purpose: 按内部部门ID分页读取直属成员，递归读取已发现子部门
+    role: OPTIONAL
+    required: false
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/department/organization/list
+      open_web_path: /open-web/web/clm/department/organization/list
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      Timezone-Offset:
+        location: HEADER
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: -480
+        type: integer
+        meaning: 请求时区偏移分钟数，Asia/Shanghai 固定为 UTC+8 对应 -480
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:DepartmentService.java:399
+      parentDepartmentId:
+        location: QUERY
+        source: PREVIOUS_RESPONSE
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.resolve_targets.department_queue.current.department_id
+        hardcode_allowed: false
+        type: string
+        meaning: 当前待展开的内部部门 ID
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:DepartmentService.java:399
+      employeePageIndex:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: steps.resolve_targets.department_queue.current.page_index
+        transform: 每个部门从1起按页加1，分别维护游标，不复用其他部门进度
+        type: integer
+        meaning: 当前部门直属成员页码，从 1 开始
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - 值必须为大于等于 1 的整数
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:DepartmentService.java:399
+      employeePageSize:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: 50
+        type: integer
+        meaning: 当前部门直属成员单页数量，固定 50
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - 值必须为正整数
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:DepartmentService.java:399
+    response:
+      success:
+        http_status:
+        - 200
+        predicates:
+        - $.success == true
+        - $.code == 200
+        runtime_status: RUNTIME_VERIFIED
+        verified_sample: NON_EMPTY
+        note: 已观察 test CLI 业务成功响应；仅证明本契约所记场景，不代表其他租户、权限或全部分页边界均已验证
+      fields:
+        employees:
+          path: $.data.employees
+          type: array
+          nullable: true
+        employee_id:
+          path: $.data.employees[*].employeeId
+          type: string
+          nullable: true
+        employee_departments:
+          path: $.data.employees[*].departments
+          type: array
+          nullable: true
+        sub_departments:
+          path: $.data.subDepartments
+          type: array
+          nullable: true
+        ancestral_departments:
+          path: $.data.ancestralDepartments
+          type: array
+          nullable: true
+        page_index:
+          path: $.data.employeePageIndex
+          type: integer
+          nullable: true
+        page_size:
+          path: $.data.employeePageSize
+          type: integer
+          nullable: true
+        has_more:
+          path: $.data.hasMore
+          type: boolean
+          nullable: true
+      pagination:
+        start_index: 1
+        page_size: 50
+        unit: DIRECT_EMPLOYEES_PER_DEPARTMENT
+        has_more_field: has_more
+        stop: hasMore=false或employees为空时结束当前部门；重复页、hasMore缺失、页限或部门上限标partial；空直属成员仍处理子部门
+        recursive: true
+        recursive_when: inputs.include_subdepartments
+        child_sources:
+        - department_lookup.child_departments
+        - department_members.sub_departments
+        department_deduplication_key: departmentId
+        employee_deduplication_key: employeeId
+        historical_membership_guaranteed: false
+        resume_supported: false
+    permissions:
+      data_scope: 当前 USER 授权的租户和可见范围；不切换被查询人员身份
+      enforcement: Controller 验证数字内部部门ID并检查部门选择权限；Service 按租户和部门读取当前直属成员，页大小最大50；querySeat省略，不查询席位
+    execute_when: 存在已核验部门ID；每个部门即使直属成员为空也处理已发现的子部门
+    failure_handling:
+      authorization: 按 references/user-authorization.md 恢复 USER 授权；pending 时等待用户完成，成功后只续办原请求一次。
+      permission_denied: 记录对应人员、合同或流程的权限缺口并停止该对象；不切换身份、接口或数据库补数。
+      business_failure: 同时检查 HTTP 与业务 success/code；失败保留 partial 诊断，不改写为空集合或零。
+      timeout_or_unknown: 只读请求按采集脚本的有界策略重试，仍失败则停止该对象并标记 partial；不无限重试。
+  participant_contracts:
+    purpose: 仅显式快速模式的异步参与人索引候选；已验证存在真实已办任务漏项，不作为默认统计全集
+    role: OPTIONAL
+    required: false
+    endpoint:
+      family: CLM
+      method: POST
+      original_page_path: /clm/api/es/search/contractList
+      open_web_path: /open-web/web/clm/es/search/contractList
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: OBJECT
+      content_type: application/json
+    parameters:
+      Timezone-Offset:
+        location: HEADER
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: -480
+        type: integer
+        meaning: 请求时区偏移分钟数，Asia/Shanghai 固定为 UTC+8 对应 -480
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+      searchTabCode:
+        location: BODY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: 0
+        type: integer
+        meaning: 合同搜索页签编码，本候选诊断固定使用全部可见页签
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: PARTIAL
+          values:
+          - value: 0
+            meaning: 本诊断配方使用的可见合同页签
+          unknown_action: REJECT
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+      pageIndex:
+        location: BODY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: steps.prepare_participant_pages.current.page_index
+        transform: 每位人员首次为0，成功读取一页后递增；存在searchAfter时后端使用游标定位，pageIndex不作为完整性依据
+        type: integer
+        meaning: 从接口约定起始值开始递增的分页页码
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - 值必须为大于等于 0 的整数
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+      pageSize:
+        location: BODY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: 50
+        type: integer
+        meaning: 单页读取数量
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - 值必须为正整数
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+      withStatistics:
+        location: BODY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+        type: boolean
+        meaning: 是否返回额外统计，本候选读取固定关闭
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+      enableHighlight:
+        location: BODY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+        type: boolean
+        meaning: 是否返回高亮片段，本候选读取固定关闭
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+      viewTypeEnum:
+        location: BODY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: PLAIN_LIST_VIEW
+        type: string
+        meaning: 合同搜索视图类型
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: PARTIAL
+          values:
+          - value: PLAIN_LIST_VIEW
+            meaning: 普通合同列表视图
+          unknown_action: REJECT
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+      conditionUnits:
+        location: BODY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: []
+        type: array
+        meaning: 合同搜索普通条件数组，本候选诊断固定为空数组
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+        items:
+          type: object
+          meaning: 搜索过滤条件对象
+          required: true
+          nullable: false
+          default:
+            mode: NONE
+          enum:
+            kind: NONE
+          constraints:
+            status: NONE
+            rules: []
+          evidence:
+          - kind: CODE
+            ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+          binding: conditionUnits[]
+          properties: {}
+          additional_properties: false
+      filterUnits:
+        location: BODY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.prepare_participant_pages.current.employee_id
+        transform: 仅构造一个对象的数组：searchField=APPROVE_AUTHORITY，searchValue为该员工CLM内部employeeId字符串，unionType=MUST；每位人员独立请求，禁止ID数组或逗号合并
+        hardcode_allowed: false
+        template:
+        - searchField: APPROVE_AUTHORITY
+          searchValue: '{{current.employeeId}}'
+          unionType: MUST
+        type: array
+        meaning: 按目标员工构造的参与权限过滤条件数组
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - 数组必须仅包含一个目标员工过滤对象，不得合并多名员工
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+        items:
+          type: object
+          meaning: 搜索过滤条件对象
+          required: true
+          nullable: false
+          default:
+            mode: NONE
+          enum:
+            kind: NONE
+          constraints:
+            status: NONE
+            rules: []
+          evidence:
+          - kind: CODE
+            ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+          binding: filterUnits[]
+          properties:
+            searchField:
+              type: string
+              meaning: 搜索字段，固定为审批参与权限字段
+              required: true
+              nullable: false
+              default:
+                mode: NONE
+              enum:
+                kind: PARTIAL
+                values:
+                - value: APPROVE_AUTHORITY
+                  meaning: 审批参与权限索引字段
+                unknown_action: REJECT
+              constraints:
+                status: NONE
+                rules: []
+              evidence:
+              - kind: CODE
+                ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+              binding: filterUnits[].searchField
+            searchValue:
+              type: string
+              meaning: 目标员工内部 employeeId 字符串
+              required: true
+              nullable: false
+              default:
+                mode: NONE
+              enum:
+                kind: NONE
+              constraints:
+                status: NONE
+                rules: []
+              evidence:
+              - kind: CODE
+                ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+              binding: filterUnits[].searchValue
+            unionType:
+              type: string
+              meaning: 过滤条件连接方式
+              required: true
+              nullable: false
+              default:
+                mode: NONE
+              enum:
+                kind: PARTIAL
+                values:
+                - value: MUST
+                  meaning: 必须匹配
+                unknown_action: REJECT
+              constraints:
+                status: NONE
+                rules: []
+              evidence:
+              - kind: CODE
+                ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+              binding: filterUnits[].unionType
+          additional_properties: false
+      searchAfter:
+        location: BODY
+        source: DERIVED
+        required: false
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: steps.prepare_participant_pages.current.previous_response.searchAfter
+        transform: 首请求省略；后续无损复制上一页data.searchAfter，包括原整数精度和类型，禁止转浮点或自行拼接
+        type: array
+        meaning: 上一页返回的无损搜索游标数组
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - 首请求省略；后续必须无损回传上一页完整数组，禁止浮点化长整数
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+        items:
+          type: number
+          meaning: 搜索游标中的数值分量，保持原 JSON 数值及整数精度
+          required: true
+          nullable: false
+          default:
+            mode: NONE
+          enum:
+            kind: NONE
+          constraints:
+            status: NONE
+            rules: []
+          evidence:
+          - kind: CODE
+            ref: CLM@cd6ecdf:SearchController.java:57; test runtime 2026-09-23 NON_EMPTY
+          binding: searchAfter[]
+    response:
+      success:
+        http_status:
+        - 200
+        predicates:
+        - $.success == true
+        - $.code == 200
+        runtime_status: RUNTIME_VERIFIED
+        verified_sample: NON_EMPTY
+        note: 已观察 test CLI 业务成功响应；仅证明本契约所记场景，不代表其他租户、权限或全部分页边界均已验证
+      fields:
+        groups:
+          path: $.data.content
+          type: array
+          nullable: true
+        group_id:
+          path: $.data.content[*].groupId
+          type: string
+          nullable: true
+        group_type:
+          path: $.data.content[*].groupType
+          type: integer
+          nullable: true
+        contract_items:
+          path: $.data.content[*].searchContractListItems
+          type: array
+          nullable: true
+        contract_id:
+          path: $.data.content[*].searchContractListItems[*].contractId
+          type: string
+          nullable: true
+        business_type:
+          path: $.data.content[*].searchContractListItems[*].businessTypeCode
+          type: integer
+          nullable: true
+        assembly_id:
+          path: $.data.content[*].searchContractListItems[*].assemblyId
+          type: string
+          nullable: true
+        contract_name:
+          path: $.data.content[*].searchContractListItems[*].contractName
+          type: string
+          nullable: true
+        contract_number:
+          path: $.data.content[*].searchContractListItems[*].contractNumber
+          type: string
+          nullable: true
+        filtered_group_count:
+          path: $.data.filteredTotalElements
+          type: integer
+          nullable: true
+        search_after:
+          path: $.data.searchAfter
+          type: array
+          nullable: true
+        pagination_capability:
+          path: $.data.paginationCapability
+          type: object
+          nullable: true
+        tab_counts:
+          path: $.data.totalElements
+          type: array
+          nullable: true
+      filter_semantics:
+        search_field: APPROVE_AUTHORITY
+        operator: SINGLE_EMPLOYEE_TERM
+        identity_field: employeeId
+        search_value_type: scalar_string
+        one_employee_per_request: true
+        participation_only: true
+        completed_task_proof: false
+        contract_date_filters_allowed: false
+        task_window_applied_after_records: endTime
+        returned_group_siblings_require_task_filter: true
+        historical_approval_complete: false
+      pagination:
+        start_index: 0
+        unit: GROUPS
+        cursor_field: search_after
+        cursor_precision: LOSSLESS_JSON
+        cursor_scope: ONE_EMPLOYEE
+        count_field: filtered_group_count
+        count_is_contract_count: false
+        stop: 只有累计唯一groupId数等于filteredTotalElements才标该人员完成；空页但组数不足、计数漂移、重复页、下一页缺cursor、页数/业务上限或请求失败均为partial，不用短页或合同条数证明完整
+        group_deduplication_key:
+        - employeeId
+        - groupId
+        business_deduplication_key:
+        - businessTypeCode
+        - contractId
+        flatten: 展开每组searchContractListItems，保留assemblyId；合同数可能大于组数，不能用合同数判断翻页完成
+        independent_employee_pagination: true
+        page_size: 50
+        resume: continuation.searches按employeeId保存cursor/page_index/pages_read/group_ids/business_keys/pending；累计上限可提高；blocked或计数变化须重跑，不能强行继续或把部分结果标完整
+    permissions:
+      data_scope: 当前 USER 授权的租户和可见范围；不切换被查询人员身份
+      enforcement: SearchController 以当前登录tenantId/employeeId覆盖请求上下文，检查MANAGE_PAGE和FREE等级；无权限策略可返回空。Service/ES继续应用当前用户数据权限。APPROVE_AUTHORITY是参与权限索引，不等于目标人员今年已办，也不赋予查看其全部合同的权限
+    execute_when: 用户明确指定candidate_source=participant-index，或作为与原始任务对照的只读诊断；结果始终披露非完整候选
+    failure_handling:
+      authorization: 按 references/user-authorization.md 恢复 USER 授权；pending 时等待用户完成，成功后只续办原请求一次。
+      permission_denied: 记录对应人员、合同或流程的权限缺口并停止该对象；不切换身份、接口或数据库补数。
+      business_failure: 同时检查 HTTP 与业务 success/code；失败保留 partial 诊断，不改写为空集合或零。
+      timeout_or_unknown: 只读请求按采集脚本的有界策略重试，仍失败则停止该对象并标记 partial；不无限重试。
+  contract_brief_info:
+    purpose: 仅对完整合同详情110002系统错误尝试轻量详情，恢复真实流程实例ID
+    role: OPTIONAL
+    required: false
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/contract/briefInfo
+      open_web_path: /open-web/web/clm/contract/briefInfo
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      Timezone-Offset:
+        location: HEADER
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: -480
+        type: integer
+        meaning: 请求时区偏移分钟数，Asia/Shanghai 固定为 UTC+8 对应 -480
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:ContractController.java:659; test runtime 2026-09-23 NON_EMPTY
+      contractId:
+        location: QUERY
+        source: PREVIOUS_RESPONSE
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.select_failed_details.current.business_id
+        hardcode_allowed: false
+        type: string
+        meaning: 普通合同业务 ID，按字符串保留长整数精度
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:ContractController.java:659; test runtime 2026-09-23 NON_EMPTY
+    response:
+      success:
+        http_status:
+        - 200
+        predicates:
+        - $.success == true
+        - $.code == 200
+        runtime_status: RUNTIME_VERIFIED
+        verified_sample: NON_EMPTY
+        note: 已观察 test CLI 业务成功响应；仅证明本契约所记场景，不代表其他租户、权限或全部分页边界均已验证
+      fields:
+        contract_id:
+          path: $.data.contractId
+          type: string
+          nullable: true
+        business_type:
+          path: $.data.businessTypeCode
+          type: integer
+          nullable: true
+        process_instance_id:
+          path: $.data.processInstanceId
+          type: string
+          nullable: true
+    permissions:
+      data_scope: 当前 USER 授权的租户和可见范围；不切换被查询人员身份
+      enforcement: ContractController仍执行AUTHORIZED数据权限及功能权限检查；ContractQueryService查有效contractBase和cooperation，协商缺失时可能data=null；不切换身份，不对110004尝试替代端点
+    execute_when: 仅当前合同contract_info业务码为110002且此前未遇110004；data非空、类型匹配且真实PID非空才继续process_records
+    recovery:
+      allowed_business_codes:
+      - 110002
+      forbidden_business_codes:
+      - 110004
+      null_data: UNRESOLVED_NOT_ZERO
+      process_instance_id_source: response_only
+      max_attempts_per_business: 1
+    failure_handling:
+      authorization: 按 references/user-authorization.md 恢复 USER 授权；pending 时等待用户完成，成功后只续办原请求一次。
+      permission_denied: 记录对应人员、合同或流程的权限缺口并停止该对象；不切换身份、接口或数据库补数。
+      business_failure: 同时检查 HTTP 与业务 success/code；失败保留 partial 诊断，不改写为空集合或零。
+      timeout_or_unknown: 只读请求按采集脚本的有界策略重试，仍失败则停止该对象并标记 partial；不无限重试。
+  raw_person_tasks:
+    purpose: 按目录真实larkId读取BPM原始已办和待办，替代不可靠的合同参与人索引筛选
+    role: PRIMARY
+    required: false
+    endpoint:
+      family: CLM_OPENAPI
+      method: GET
+      original_page_path: /clm/openapi/platform/v1/tasks/getTasks
+      open_web_path: /open-web/web/clm-openapi/v1/tasks/getTasks
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      Timezone-Offset:
+        location: HEADER
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: -480
+        type: integer
+        meaning: 请求时区偏移分钟数，Asia/Shanghai 固定为 UTC+8 对应 -480
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: RUNTIME
+          ref: test runtime 2026-09-23 CLM_OPENAPI getTasks NON_EMPTY
+      assignee_user_id:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.prepare_raw_tasks.employee.larkId
+        hardcode_allowed: false
+        transform: Open Web使用目录返回的真实数字larkId；employeeId仅作统计关联，不能假定两者相等；不设置调用人身份
+        type: string
+        meaning: 目录返回的目标员工 larkId，仅作任务过滤
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: RUNTIME
+          ref: test runtime 2026-09-23 CLM_OPENAPI getTasks NON_EMPTY
+      task_status:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.prepare_raw_tasks.task_status
+        hardcode_allowed: false
+        transform: 对每个人分别遍历0待办和1已办，状态之间游标独立
+        type: integer
+        meaning: 原始任务状态，0 为待办、1 为已办
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: CLOSED
+          values:
+          - value: 0
+            meaning: 待办任务
+          - value: 1
+            meaning: 已办任务
+          unknown_action: REJECT
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: RUNTIME
+          ref: test runtime 2026-09-23 CLM_OPENAPI getTasks NON_EMPTY
+      sort_type:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: DESC
+        type: string
+        meaning: 任务时间排序方向
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: PARTIAL
+          values:
+          - value: DESC
+            meaning: 按任务时间倒序
+          unknown_action: REJECT
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: RUNTIME
+          ref: test runtime 2026-09-23 CLM_OPENAPI getTasks NON_EMPTY
+      cursor_size:
+        location: QUERY
+        source: DERIVED
+        required: false
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: inputs.page_size
+        hardcode_allowed: false
+        transform: 正整数单页大小；首批可能固定10，不以短页完成
+        type: integer
+        meaning: 游标分页单页数量
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - 值必须为正整数
+        evidence:
+        - kind: RUNTIME
+          ref: test runtime 2026-09-23 CLM_OPENAPI getTasks NON_EMPTY
+      last_sort_value:
+        location: QUERY
+        source: DERIVED
+        required: false
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.discover_raw_tasks.previous_response.last_task
+        hardcode_allowed: false
+        transform: 已办用end_time，待办用create_time；原始毫秒整数，不用update_time
+        type: integer
+        meaning: 上一页最后任务的时间排序值，单位为 epoch 毫秒
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - last_sort_value 与 last_cursor 必须同时提供或同时省略；两者仅来自同一人员同一状态的上一页
+        evidence:
+        - kind: RUNTIME
+          ref: test runtime 2026-09-23 CLM_OPENAPI getTasks NON_EMPTY
+      last_cursor:
+        location: QUERY
+        source: DERIVED
+        required: false
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.discover_raw_tasks.previous_response.last_task.cursor
+        hardcode_allowed: false
+        transform: 与last_sort_value同时回传，保持整数精度
+        type: integer
+        meaning: 上一页最后任务的整数游标
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: KNOWN
+          rules:
+          - last_sort_value 与 last_cursor 必须同时提供或同时省略；两者仅来自同一人员同一状态的上一页
+        evidence:
+        - kind: RUNTIME
+          ref: test runtime 2026-09-23 CLM_OPENAPI getTasks NON_EMPTY
+    response:
+      success:
+        http_status:
+        - 200
+        predicates:
+        - $.success == true
+        - $.code == 0
+        runtime_status: RUNTIME_VERIFIED
+        verified_sample: NON_EMPTY
+      fields:
+        tasks:
+          path: $.data.task_list
+          type: array
+          nullable: false
+        business_id:
+          path: $.data.task_list[*].contract_id
+          type: string
+          nullable: false
+        process_instance_id:
+          path: $.data.task_list[*].process_instance_id
+          type: string
+          nullable: false
+        task_instance_id:
+          path: $.data.task_list[*].task_instance_id
+          type: string
+          nullable: false
+        end_time:
+          path: $.data.task_list[*].end_time
+          type: integer
+          nullable: true
+        create_time:
+          path: $.data.task_list[*].create_time
+          type: integer
+          nullable: true
+        cursor:
+          path: $.data.task_list[*].cursor
+          type: integer
+          nullable: false
+      pagination:
+        cursor_scope: ONE_PERSON_AND_STATUS
+        termination: EMPTY_PAGE
+        short_page_is_complete: false
+        first_page_size: backend default 10, cursor_size applies after cursor is supplied
+        deduplication_key:
+        - process_instance_id
+        - task_instance_id
+        date_filter: 原始任务完整分页后按end_time窗口筛已办候选，发现阶段保留全部待办，下游records分析再限制createTime早于截止时刻；不按合同创建日期筛选
+        discovery_deduplication_note: 发现脚本按BPM全局task_instance_id去重并保留真实process_instance_id；记录采集和对账按实例与任务ID核验，不用节点ID去重
+        failure: 重复页、无进展、缺游标、业务失败标partial，不输出真实零结论
+      semantics: ORIGIN_TASK且visible=1；原始已办可能含提交/取消/自动动作，需读取流程records再按节点、状态、command过滤；返回business_id不能推断business_type
+    permissions:
+      data_scope: 当前已授权test租户的人员原始任务接口；随后流程records必须通过当前用户读权限校验
+      enforcement: Open Web复用当前用户上下文；仅将目标larkId作为业务过滤，不设置tenant/user认证头，不切换身份
+    execute_when: 姓名或部门解析成功且没有显式业务/实例范围；默认候选来源raw-tasks
+    failure_handling:
+      authorization: 按 references/user-authorization.md 恢复 USER 授权；pending 时等待用户完成，成功后只续办原请求一次。
+      permission_denied: 记录对应人员、合同或流程的权限缺口并停止该对象；不切换身份、接口或数据库补数。
+      business_failure: 同时检查 HTTP 与业务 success/code；失败保留 partial 诊断，不改写为空集合或零。
+      timeout_or_unknown: 只读请求按采集脚本的有界策略重试，仍失败则停止该对象并标记 partial；不无限重试。
+  historical_node_people:
+    purpose: 获取指定真实实例的历史人员到节点映射；可能缺已办共享或签候选，不能单独证明完整单人
+    role: VERIFY
+    required: false
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/workflow/runtime/listAllApprovalEmployees
+      open_web_path: /open-web/web/clm/workflow/runtime/listAllApprovalEmployees
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      businessId:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.prepare_evidence.businessId
+        transform: 原样保留有来源的真实ID，不推算或代替当前用户身份
+        hardcode_allowed: false
+        type: string
+        meaning: 流程记录所属业务 ID，按字符串保留长整数精度
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:WorkflowRuntimeService.java:3528; test runtime 2026-09-23 NON_EMPTY
+      businessTypeCode:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.prepare_evidence.businessTypeCode
+        transform: 原样保留有来源的真实ID，不推算或代替当前用户身份
+        hardcode_allowed: false
+        type: integer
+        meaning: 流程业务类型编码
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:WorkflowRuntimeService.java:3528; test runtime 2026-09-23 NON_EMPTY
+      processInstanceId:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.prepare_evidence.processInstanceId
+        transform: 原样保留有来源的真实ID，不推算或代替当前用户身份
+        hardcode_allowed: false
+        type: string
+        meaning: 真实流程实例 ID
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:WorkflowRuntimeService.java:3528; test runtime 2026-09-23 NON_EMPTY
+      filterRobot:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+        type: boolean
+        meaning: 是否过滤机器人节点，本统计固定保留并在本地识别
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:WorkflowRuntimeService.java:3528; test runtime 2026-09-23 NON_EMPTY
+      Timezone-Offset:
+        location: HEADER
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: -480
+        type: integer
+        meaning: 请求时区偏移分钟数，Asia/Shanghai 固定为 UTC+8 对应 -480
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: CODE
+          ref: CLM@cd6ecdf:WorkflowRuntimeService.java:3528; test runtime 2026-09-23 NON_EMPTY
+    response:
+      success:
+        http_status:
+        - 200
+        predicates:
+        - $.success == true
+        - $.code == 200
+        runtime_status: RUNTIME_VERIFIED
+        verified_sample: NON_EMPTY
+      fields:
+        employees:
+          path: $.data
+          type: array
+          nullable: true
+        employee_id:
+          path: $.data[*].employeeId
+          type: string
+          nullable: true
+        lark_id:
+          path: $.data[*].larkId
+          type: string
+          nullable: true
+        node_map:
+          path: $.data[*].nodeId2NameMap
+          type: object
+          nullable: true
+    permissions:
+      data_scope: 仅已通过当前用户流程读取权限的实例及其对应真实表单定义
+      enforcement: 同一test USER的Open Web通道；不传认证身份头，不因拒绝切换用户或端点
+    execute_when: 已成功取得目标流程记录，需要按节点核验历史人员，作为任务中心归因的审计和缺原始任务时的回退
+    failure_handling:
+      authorization: 按 references/user-authorization.md 恢复 USER 授权；pending 时等待用户完成，成功后只续办原请求一次。
+      permission_denied: 记录对应人员、合同或流程的权限缺口并停止该对象；不切换身份、接口或数据库补数。
+      business_failure: 同时检查 HTTP 与业务 success/code；失败保留 partial 诊断，不改写为空集合或零。
+      timeout_or_unknown: 只读请求按采集脚本的有界策略重试，仍失败则停止该对象并标记 partial；不无限重试。
+  historical_process_instance:
+    purpose: 核对真实实例历史definition及未经页面隐藏的任务、动作、人员；已办共享或签候选仍可能不完整
+    role: VERIFY
+    required: false
+    endpoint:
+      family: CLM_OPENAPI
+      method: GET
+      original_page_path: /clm/openapi/platform/v1/process_instances/{process_instance_id}
+      open_web_path: /open-web/web/clm-openapi/v1/process_instances/{process_instance_id}
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      process_instance_id:
+        location: PATH
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.prepare_evidence.processInstanceId
+        transform: 原样保留有来源的真实ID，不推算或代替当前用户身份
+        hardcode_allowed: false
+        type: string
+        meaning: 真实流程实例 ID，用于 PATH 绑定
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: RUNTIME
+          ref: test runtime 2026-09-23 CLM_OPENAPI process instance NON_EMPTY
+      Timezone-Offset:
+        location: HEADER
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: -480
+        type: integer
+        meaning: 请求时区偏移分钟数，Asia/Shanghai 固定为 UTC+8 对应 -480
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: RUNTIME
+          ref: test runtime 2026-09-23 CLM_OPENAPI process instance NON_EMPTY
+    response:
+      success:
+        http_status:
+        - 200
+        predicates:
+        - $.success == true
+        - $.code == 0
+        runtime_status: RUNTIME_VERIFIED
+        verified_sample: NON_EMPTY
+      fields:
+        instance:
+          path: $.data.process_instance
+          type: object
+          nullable: true
+        definition:
+          path: $.data.process_instance.process_definition_id
+          type: string
+          nullable: true
+        tasks:
+          path: $.data.process_instance.task_instance_list
+          type: array
+          nullable: true
+    permissions:
+      data_scope: 仅已通过当前用户流程读取权限的实例及其对应真实表单定义
+      enforcement: 同一test USER的Open Web通道；不传认证身份头，不因拒绝切换用户或端点
+    execute_when: 已成功取得目标流程记录，需要按节点核验历史人员，作为任务中心归因的审计和缺原始任务时的回退
+    failure_handling:
+      authorization: 按 references/user-authorization.md 恢复 USER 授权；pending 时等待用户完成，成功后只续办原请求一次。
+      permission_denied: 记录对应人员、合同或流程的权限缺口并停止该对象；不切换身份、接口或数据库补数。
+      business_failure: 同时检查 HTTP 与业务 success/code；失败保留 partial 诊断，不改写为空集合或零。
+      timeout_or_unknown: 只读请求按采集脚本的有界策略重试，仍失败则停止该对象并标记 partial；不无限重试。
+  historical_form_definition:
+    purpose: 读取与合同实例关联的真实formId；只有processDefinitionId与record和历史实例严格一致才用于证明固定单人配置
+    role: VERIFY
+    required: false
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/form/getFormDefinition
+      open_web_path: /open-web/web/clm/form/getFormDefinition
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      formId:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.prepare_evidence.formId
+        transform: 原样保留有来源的真实ID，不推算或代替当前用户身份
+        hardcode_allowed: false
+        type: string
+        meaning: 与历史流程实例严格匹配的表单定义 ID
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: RUNTIME
+          ref: test runtime 2026-09-23 form definition NON_EMPTY
+      Timezone-Offset:
+        location: HEADER
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: -480
+        type: integer
+        meaning: 请求时区偏移分钟数，Asia/Shanghai 固定为 UTC+8 对应 -480
+        nullable: false
+        default:
+          mode: NONE
+        enum:
+          kind: NONE
+        constraints:
+          status: NONE
+          rules: []
+        evidence:
+        - kind: RUNTIME
+          ref: test runtime 2026-09-23 form definition NON_EMPTY
+    response:
+      success:
+        http_status:
+        - 200
+        predicates:
+        - $.success == true
+        - $.code == 200
+        runtime_status: RUNTIME_VERIFIED
+        verified_sample: NON_EMPTY
+      fields:
+        form:
+          path: $.data
+          type: object
+          nullable: true
+        definition:
+          path: $.data.processDefinitionId
+          type: string
+          nullable: true
+        published:
+          path: $.data.published
+          type: boolean
+          nullable: true
+        definition_json:
+          path: $.data.processDefinitionJson
+          type: string
+          nullable: true
+    permissions:
+      data_scope: 仅已通过当前用户流程读取权限的实例及其对应真实表单定义
+      enforcement: 同一test USER的Open Web通道；不传认证身份头，不因拒绝切换用户或端点
+    execute_when: 已成功取得目标流程记录，需要按节点核验历史人员，作为任务中心归因的审计和缺原始任务时的回退
+    failure_handling:
+      authorization: 按 references/user-authorization.md 恢复 USER 授权；pending 时等待用户完成，成功后只续办原请求一次。
+      permission_denied: 记录对应人员、合同或流程的权限缺口并停止该对象；不切换身份、接口或数据库补数。
+      business_failure: 同时检查 HTTP 与业务 success/code；失败保留 partial 诊断，不改写为空集合或零。
+      timeout_or_unknown: 只读请求按采集脚本的有界策略重试，仍失败则停止该对象并标记 partial；不无限重试。
+orchestration:
+  steps:
+  - id: prepare_scope
+    type: TRANSFORM
+    depends_on: []
+    action: 区分任务结束窗口、显式业务/实例、单值employee_name或department_name以及resume_file；三种发现入口互斥。准备employee_lookup.keyword和department_lookup.keyword；已有明确业务/实例时设resolve_only=true，禁止用合同日期限制年度分析
+  - id: lookup_employees
+    type: API
+    depends_on:
+    - prepare_scope
+    recipe: employee_lookup
+    when: employee_name非空且非resume_file，仅当前单个姓名/内部ID查询
+  - id: lookup_departments
+    type: API
+    depends_on:
+    - prepare_scope
+    recipe: department_lookup
+    when: department_name非空且非resume_file，仅当前单个部门关键词查询
+  - id: resolve_targets
+    type: TRANSFORM
+    depends_on:
+    - prepare_scope
+    - lookup_employees
+    - lookup_departments
+    action: 姓名候选按employeeId去重；部门树中只选择名称实际匹配关键词的节点，不能把所有后代误作同名候选。selected_employee_id或selected_department_id必须在候选中；多个候选返回needs_selection，空候选not_found。只有唯一或明确选定候选可继续。选定部门及其子树加入按ID防环的department_queue，每部门page_index=1；数量上限默认0不限
+    when: 非resume_file路径；resume时复用同profile已解析roster及合同分页状态
+  - id: load_members
+    type: API
+    depends_on:
+    - resolve_targets
+    recipe: department_members
+    when: 非resume_file路径且department_queue非空
+    for_each: steps.resolve_targets.department_queue
+    pagination: 逐部门页码从1开始；递归队列同时合并lookup.childDepartments与response.subDepartments，include_subdepartments=true时对子部门各自分页；内部ID去重、防环；直属为空不结束子部门遍历
+  - id: resolve_employees
+    type: TRANSFORM
+    depends_on:
+    - resolve_targets
+    - load_members
+    action: 选择单个人员或合并所选部门当前成员，按employeeId去重并合并当前departments；输出employees/approver_ids，组织失败标coverage.roster_complete=false。明确业务或实例场景仅resolve_only找人；resolve-only不扩大业务范围。历史调岗/离职未还原。resume_file只继承同profile已核验roster，不恢复组织分页，组织缺口必须重新查找
+  - id: prepare_raw_tasks
+    type: TRANSFORM
+    depends_on:
+    - resolve_employees
+    action: 为每个目标employeeId核验目录larkId，初始化状态0和1独立游标；不得把employeeId/openId/userId当larkId，缺失时按真实employeeId补查目录
+  - id: discover_raw_tasks
+    type: API
+    depends_on:
+    - prepare_raw_tasks
+    recipe: raw_person_tasks
+    when: candidate_source默认为raw-tasks且resolve_only=false且未指定业务/实例
+    for_each: steps.prepare_raw_tasks.employee_and_status
+    pagination: 两状态分别翻页到空；首短页不结束、游标原样且精度不变；重复页/无进展/失败标partial
+  - id: select_raw_task_instances
+    type: TRANSFORM
+    depends_on:
+    - discover_raw_tasks
+    action: 全量任务完成分页后按窗口end_time筛已办候选，发现阶段保留全部待办；按全局task_instance_id去重并保留真实process_instance_id供下游联合核验，流程实例去重但保留每份业务关联及task_records原始任务清单。业务类型未返回时保持null，不猜0
+  - id: prepare_participant_pages
+    type: TRANSFORM
+    depends_on:
+    - resolve_employees
+    action: 为每个唯一employeeId初始化独立page_index=0、previous_response和组分页状态；运行中无损保存该人员上一页searchAfter；禁止把别人的游标或部门ID用于搜索
+  - id: discover_participants
+    type: API
+    depends_on:
+    - prepare_participant_pages
+    recipe: participant_contracts
+    when: 仅显式candidate_source=participant-index，且已核验人员且无显式业务范围；不作为默认或raw-tasks失败后的静默fallback
+    for_each: steps.prepare_participant_pages.employees
+    pagination: 逐人独立游标与累计页数/业务上限，唯一group数等于filteredTotalElements才完整；展开组内条目按业务类型/ID去重。continuation保存未消费pending条目，达到上限不能丢掉已读取当前页剩余合同
+  - id: discover
+    type: API
+    recipe: efficiency_contracts
+    depends_on:
+    - prepare_scope
+    when: 没有businesses/process_instances，且employee_name、department_name、resume_file及已核验人员/部门对象均为空；已披露盖章样本口径与discovery_start/discovery_end；not_found/needs_selection/partial不得自动转看板
+    pagination: 按recipe.response.pagination遍历至完成或异常；仅用户显式正数设置页数或业务上限时允许有限试跑
+  - id: select_businesses
+    type: TRANSFORM
+    depends_on:
+    - prepare_scope
+    - resolve_employees
+    - discover_participants
+    - discover
+    - select_raw_task_instances
+    action: 优先显式业务/实例，否则默认从原始人员任务生成process_instances并保留task_records做对账；未知类型按实例读权限取得records真实businessId/type；只有显式ES模式才使用contractList候选。不得手工插入回归合同来伪装自动发现
+  - id: load_contract
+    type: API
+    recipe: contract_info
+    depends_on:
+    - select_businesses
+    when: 当前业务为已确认的普通合同
+    for_each: steps.select_businesses.businesses
+  - id: load_assembly
+    type: API
+    recipe: assembly_info
+    depends_on:
+    - select_businesses
+    when: 当前业务为合同组申请类型10或批量合同申请类型17，保留真实业务类型；未在线验证
+    for_each: steps.select_businesses.businesses
+  - id: select_failed_details
+    type: TRANSFORM
+    depends_on:
+    - select_businesses
+    - load_contract
+    action: 仅挑出contract_info业务码110002的当前合同；110004立即标不可读并停止对应业务，不通过其他端点重试；保留失败业务ID和类型
+    allowed_business_codes:
+    - 110002
+    forbidden_business_codes:
+    - 110004
+  - id: recover_contract_instance
+    type: API
+    depends_on:
+    - select_failed_details
+    recipe: contract_brief_info
+    when: 当前合同完整详情110002且未遇权限拒绝
+    for_each: steps.select_failed_details.businesses
+  - id: resolve_instances
+    type: TRANSFORM
+    depends_on:
+    - select_businesses
+    - load_contract
+    - load_assembly
+    - recover_contract_instance
+    action: 优先接纳有来源的inputs.process_instances或steps.select_businesses.process_instances，否则使用成功contract_info/assembly_info，或仅110002恢复的contract_brief_info真实PID与业务类型绑定；原始任务未返回类型时仅按真实PID读取records。不得猜PID，data空或类型不符标未解决。合同组共享实例与历史实例在任务层去重，不能把groupId对应的所有生命周期合同视为同一流程
+  - id: read_records
+    type: API
+    recipe: process_records
+    depends_on:
+    - resolve_instances
+    when: 前序取得真实processInstanceId；已知businessId/businessTypeCode才一并传入，由服务端校验当前用户流程读取权限
+    for_each: steps.resolve_instances.instances
+  - id: find_missing_departments
+    type: TRANSFORM
+    depends_on:
+    - read_records
+    action: 只扫描 done+todo 的 records，收集部门缺失的真实 employeeId 并去重、分批逗号连接；不接受 forecast 新候选人
+  - id: enrich_departments
+    type: API
+    recipe: employees
+    depends_on:
+    - find_missing_departments
+    when: 发现缺部门且需要部门分析
+  - id: prepare_evidence
+    type: TRANSFORM
+    depends_on:
+    - read_records
+    action: scripts/collect_records.py采集时传--with-definition-metadata；按原始record实例/定义/节点分组，保留全部人员与任务。核对详情metadata的实例绑定，准备真实businessId/type/processInstanceId/formId；当前配置不能冒充历史快照
+  - id: historical_node_people
+    type: API
+    recipe: historical_node_people
+    depends_on:
+    - prepare_evidence
+    when: 目标节点需要人数核验且对应真实ID已知
+  - id: historical_process_instance
+    type: API
+    recipe: historical_process_instance
+    depends_on:
+    - prepare_evidence
+    when: 目标节点需要人数核验且对应真实ID已知
+  - id: historical_form_definition
+    type: API
+    recipe: historical_form_definition
+    depends_on:
+    - prepare_evidence
+    when: 目标节点需要人数核验且对应真实ID已知
+  - id: prove_node_people
+    type: TRANSFORM
+    depends_on:
+    - historical_node_people
+    - historical_process_instance
+    - historical_form_definition
+    action: scripts/collect_participant_evidence.py；历史record/raw instance/form三者definition严格相同且published=true；固定单提交人或可执行固定单人表达式，真实参与人/完整原始任务一致，检查任务及父动作无代理转办加签。固定定义必须非动态，当前覆盖为空仅作额外检查，不代表历史快照。任一缺失、相同任务ID冲突或矛盾不得complete=true；多人证据用于审计，个人统计仍优先按原始任务中心归因
+  - id: reconcile_records
+    type: TRANSFORM
+    depends_on:
+    - prove_node_people
+    - select_raw_task_instances
+    when: candidate_source为raw-tasks且已取得task_records
+    action: scripts/reconcile_records.py以discovery和补证bundle核对实例/任务ID、时间及窗口，保留缺失与差异；不读取报告，不把非审批节点纳入效率。缺原始任务清单的显式业务或ES模式不得宣称完成此来源对账
+  - id: analyze
+    type: TRANSFORM
+    depends_on:
+    - prove_node_people
+    - reconcile_records
+    - enrich_departments
+    - resolve_employees
+    action: 仅使用已成功读取并完成补证的记录，必要时补缺失部门；完整保留employees人员清单、approver_ids、task_records、businesses、coverage、diagnostics及有来源的node_participant_evidence。原始任务按流程实例ID+任务ID归因到discovered_for_employee_ids，再与流程记录连接节点类型、动作和时间；多人节点中可明确归因的人工任务计入对应人员。scripts/analyze_records.py输出schema2.2总览、每人三个阶段零行、明细及诊断；参与候选不等于已办
+  aggregation:
+    strategy: JOINED
+    source_recipe: process_records
+    processor: scripts/analyze_records.py
+    scan_sections:
+    - done
+    - todo
+    excluded_sections:
+    - forecast
+    node_type_codes:
+    - 1
+    - 2
+    - 3
+    completed_status_codes:
+    - 1
+    - 2
+    handled_command_codes:
+    - 1
+    - 2
+    - 10
+    in_progress_status_codes:
+    - 0
+    deduplication_key:
+    - processInstanceId
+    - processTaskInstanceId
+    conflict_policy: 同任务按统计字段规范化后比较；忽略createTimeSpan/endTimeSpan/头像/展示文字，仅真正指标或归属冲突的副本全部排除并诊断
+    time_window:
+      field: endTime
+      bounds: '[start,end)'
+      timezone: Asia/Shanghai
+    duration:
+      unit: seconds
+      formula: endTime - createTime
+      calendar: natural_elapsed
+      negative_or_missing: exclude_with_diagnostic
+      forbidden_duration_fields:
+      - createTimeSpan
+      - endTimeSpan
+    mean:
+      formula: sum(valid_duration_seconds) / count(valid_completed_tasks)
+      denominator: valid_completed_tasks
+      empty: 0
+      empty_semantics: 按用户要求，聚合表无有效样本显示0；不将缺失、无权限或未知人数解释为真实零耗时
+      detail_missing_duration: null
+      pending_in_denominator: false
+      node_mean_is: task_average_not_parallel_node_wall_clock
+    groups:
+      by_approver:
+      - employeeId
+      - nodeTypeCode
+      by_department:
+      - sorted current departmentId set
+      - nodeTypeCode
+      by_process_node:
+      - processDefinitionId
+      - nodeId
+      - nodeTypeCode
+    attribution:
+      department_basis: CURRENT
+      multiple_departments: COMPOSITE_BUCKET_NO_DUPLICATION
+      multiple_assignees: ATTRIBUTE_BY_PERSON_TASK_CENTER_OTHERWISE_EXCLUDE_PERSONAL
+      personal_node_policy: SOURCE_TASK_ATTRIBUTION_FIRST_HISTORY_SINGLETON_FALLBACK
+      source_task_attribution:
+        input: bundle.task_records
+        key:
+        - process_instance_id
+        - task_instance_id
+        employee_ids: discovered_for_employee_ids
+        completed_requires_unique_person: true
+        pending_may_count_each_visible_person_task: true
+        auto_end_or_nonhuman_action_excluded: true
+      node_key:
+      - processInstanceId
+      - processDefinitionId
+      - nodeId
+      - nodeTypeCode
+      participant_union_scope: ALL_DONE_TODO_RECORDS_AND_PARENT_ASSIGNEES_BEFORE_LOCAL_FILTERS
+      multi_person_rule: observed_employee_ids UNION evidence.employee_ids contains more than one unique employee
+      mode_proves_count: false
+      missing_round_id: CONSERVATIVELY_MERGE_SAME_INSTANCE_DEFINITION_NODE
+      unknown_participant_count: EXCLUDE_PERSONAL_WITH_SEPARATE_DIAGNOSTIC
+      participant_evidence:
+        input: bundle.node_participant_evidence
+        key:
+        - processInstanceId
+        - processDefinitionId
+        - nodeId
+        employee_ids: REAL_INTERNAL_EMPLOYEE_IDS
+        complete_required: true
+        nonempty_source_required: true
+        single_required: true
+        observed_must_be_subset: true
+        conflicting_evidence: REJECT_INPUT
+        complete_runtime_recipe_verified: true
+        fabricated_completeness_forbidden: true
+        complete_runtime_recipe_scope: EXACT_HISTORICAL_FIXED_SINGLETON_NO_REASSIGNMENT
+        participant_api_alone_proves_complete: false
+        processor: scripts/collect_participant_evidence.py
+      unknown_department: DIAGNOSTIC_NOT_ZERO
+      inconsistent_department_snapshots: KEEP_PERSON_AND_NODE_EXCLUDE_DEPARTMENT_WITH_DIAGNOSTIC
+    business_identity:
+      precedence: RECORD_BUSINESS_ID_AND_TYPE_FIRST
+      wrapper_fallback: ONLY_SAME_PROCESS_INSTANCE
+      missing: KEEP_DETAIL_AND_VALID_TASK_METRICS_EXCLUDE_CONTRACT_COUNT
+      metadata: MATCH_BUSINESS_TYPE_AND_ID_TO_VERIFIED_REGISTRY_OR_WRAPPER
+      invented_id_or_name_allowed: false
+    count_units:
+      contract_deduplication_key:
+      - businessTypeCode
+      - businessId
+      handled_counts: UNIQUE_VALID_COMPLETED_TASKS
+      approved: valid completed task with status != 2 and command != 2
+      rejected: valid completed task with status == 2 or command == 2
+      pending: status 0 with valid createTime before end and no endTime
+    roster:
+      source: bundle.employees
+      complete_required_for_all_people: true
+      initialize_all_selected_people_and_stages: true
+      default_stage_codes:
+      - 1
+      - 2
+      - 3
+      missing_roster: OBSERVED_PEOPLE_ONLY_WITH_COVERAGE_WARNING
+      aggregate_empty_values: 0
+    coverage:
+      universe: USER_BUSINESSES_OR_TARGET_BPM_TASK_INSTANCES_OR_EXPLICIT_LIST_FALLBACK
+      full_population_guaranteed: false
+      history_complete_guaranteed: false
+      all_instances_visible_audit_log: false
+      mandatory_notes:
+      - 权限范围
+      - 发现方式、选定人员/部门、是否包含子部门、成员及每人每状态任务页数；ES备用另列组/合同页数与截断，仅看板fallback另披露盖章日期窗口
+      - 请求时区及传递验证状态
+      - 原始实例数与实际历史实例覆盖
+      - 拒绝/缺失/冲突/截断记录
+      - 当前部门口径
+      - 在途为抓取时状态，不是历史积压快照
+      - 个人统计列出任务中心已归因的多人节点任务，以及仍无法归因和单人条件待确认的数量
+      - 总览可保留被个人统计排除的有效任务，不能要求两者相加一致
+      count_definitions:
+        input_response_count: 输入响应数，包含重复抓取
+        unique_business_count: 已识别(businessTypeCode,businessId)去重数量
+        unique_process_instance_count: 原始done/todo任务自身流程实例ID去重数量
+    local_filters:
+    - approver_ids
+    - department_ids
+    - process_definition_ids
+    - node_types
+  discovery:
+    processor: scripts/discover_businesses.py
+    outputs:
+    - employees
+    - businesses
+    - approver_ids
+    - coverage
+    - diagnostics
+    - continuation
+    - process_instances
+    - task_records
+    identity_namespace: EMPLOYEE_ID_FOR_ANALYSIS_DIRECTORY_LARK_ID_FOR_BPM_QUERY
+    include_subdepartments_default: true
+    employee_deduplication_key: employeeId
+    department_deduplication_key: departmentId
+    group_deduplication_key:
+    - employeeId
+    - groupId
+    business_deduplication_key:
+    - businessTypeCode
+    - businessId
+    name_ambiguity: REQUIRE_SELECTION
+    contract_date_filters_allowed: false
+    object_failure_falls_back_to_dashboard: false
+    scope: TARGET_EMPLOYEE_RAW_BPM_TASKS_WITH_CURRENT_USER_RECORD_PERMISSION
+    all_tenant_tasks_guaranteed: false
+    input_modes:
+    - employee_name
+    - department_name
+    - resume_file
+    input_modes_mutually_exclusive: true
+    resolve_only_preserves_explicit_business_scope: true
+    resume_scope: SAME_SOURCE_PERSON_STATUS_CURSOR_ONLY
+    per_employee_limits:
+    - max_pages
+    - max_businesses
+    per_employee_limits_applies_to: PARTICIPANT_INDEX_ONLY
+    raw_task_limit_semantics: max_pages按每人每状态累计；max_businesses按本次合并后的候选实例累计；默认均0不限
+    roster_limits:
+    - max_member_pages
+    - max_departments
+    default_limits: 0
+    zero_limit_semantics: UNLIMITED_UNTIL_PAGINATION_COMPLETE_OR_ERROR
+    positive_limits: EXPLICIT_USER_TRIAL_ONLY
+    business_output_fields:
+    - businessId
+    - businessTypeCode
+    - assemblyId
+    - contractName
+    - contractNumber
+    - matched_employee_ids
+    default_candidate_source: raw-tasks
+    task_deduplication_key:
+    - process_instance_id
+    - task_instance_id
+    participation_index_is_required_filter: false
+    known_contract_checkpoint: 验证正常发现包含指定业务；缺失标partial，不人工插入
+    collector: scripts/collect_records.py
+    reconciliation: scripts/reconcile_records.py
+presentation:
+  outputs:
+  - key: process_definition_id
+    label: 流程定义ID
+    recipe: process_records
+    field: process_definition_id
+    fallback: 缺失则无法进入流程节点组，列质量诊断
+  - key: node_name
+    label: 审批节点
+    recipe: process_records
+    field: node_name
+    fallback: 依次用 nodeName、父节点名称、nodeId
+  - key: node_type
+    label: 节点类型
+    recipe: process_records
+    field: node_type
+    mapping: node_type
+    fallback: 未知类型排除并诊断
+  - key: approver
+    label: 审批人
+    recipe: process_records
+    field: employee_name
+    fallback: 真实 employeeId；多人任务待归因
+  - key: departments
+    label: 当前部门
+    recipe: process_records
+    field: departments
+    fallback: 缺失部门单列诊断，不虚构
+  - key: created_at
+    label: 任务创建时间
+    recipe: process_records
+    field: created_at
+    fallback: 无效时间排除并诊断
+  - key: ended_at
+    label: 任务结束时间
+    recipe: process_records
+    field: ended_at
+    fallback: 未结束不纳入均值
+  mappings:
+    node_type:
+      '1': 审批
+      '2': 盖章
+      '3': 归档
+  format: Markdown按analysis_subject路由与schema2 JSON；审批明细优先Excel，失败回退CSV
+  schema_version: 2.2.1
+  user_visible_scope:
+    contract_count: UNIQUE_BUSINESS_KEYS_OF_VALID_COMPLETED_TASKS_ACROSS_NODE_TYPES
+    people_basis: ONLY_TASKS_ATTRIBUTED_TO_SELECTED_PEOPLE
+    show_collection_process_counts: false
+    partial_collection_notice: BRIEF_WITHOUT_COUNTS
+  default_sections:
+  - overview_and_insights
+  - personal_stage_tables
+  - details_file
+  output_modes:
+    people:
+      condition: 用户明确点名一人或多人
+      sections:
+      - personal_stage_tables
+      - details_file
+      show_overview: false
+      show_insights: false
+      numbered_section_titles: false
+      details_as_numbered_section: false
+      single_person_table: COMBINE_NODE_TYPES_WITH_NODE_TYPE_COLUMN
+      multiple_people_tables: SPLIT_BY_NODE_TYPE
+    department_or_other:
+      condition: 按部门、合同、流程或其他范围
+      sections:
+      - overview_and_insights
+      - personal_stage_tables
+      - details_file
+      show_overview: true
+      show_insights: true
+      numbered_section_titles: true
+  aggregate_tables:
+  - key: overview
+    label: 审批效率总览
+    stage_codes:
+    - 1
+    - 2
+    - 3
+  - key: by_approver
+    label: 个人审批效率统计
+    stage_codes:
+    - 1
+    - 2
+    - 3
+    split_tables_by: node_type_code_unless_people_mode_has_one_roster_person
+    display_employee_id: false
+    all_roster_people: true
+  additional_json_tables:
+  - key: by_department
+    label: 按当前部门
+  - key: by_process_node
+    label: 按流程定义与节点
+  overview_columns:
+  - node_type
+  - processed_contract_count
+  - approved_count
+  - rejected_count
+  - in_progress_contract_count
+  - total_seconds
+  - average_seconds
+  personal_columns:
+  - employee_name
+  - processed_contract_count
+  - approved_count
+  - rejected_count
+  - in_progress_count
+  - total_seconds
+  - average_seconds
+  - max_seconds
+  - min_seconds
+  single_person_columns:
+  - employee_name
+  - node_type
+  - processed_contract_count
+  - approved_count
+  - rejected_count
+  - in_progress_count
+  - total_seconds
+  - average_seconds
+  - max_seconds
+  - min_seconds
+  personal_column_labels:
+  - 姓名
+  - 处理合同数
+  - 审批通过次数
+  - 审批拒绝次数
+  - 在途待办任务数
+  - 总用时(h)
+  - 平均用时(h)
+  - 最长用时(h)
+  - 最短用时(h)
+  zero_samples:
+    aggregate_display: 0
+    unknown_or_denied_is_zero_data: false
+    detail_missing_time: null
+  details:
+    source: report.details
+    processors:
+    - scripts/export_details.py
+    - scripts/export_details.mjs
+    primary_format: XLSX
+    fallback_format: CSV
+    fallback_reason_required: true
+    include_personal_exclusions: true
+    include_pending: true
+    user_columns:
+    - contract_name
+    - contract_id
+    - contract_number
+    - node_name
+    - operator_name
+    - result
+    - created_at
+    - ended_at
+    - duration_seconds
+    audit_columns:
+    - node_type
+    - process_instance_id
+    - task_instance_id
+    - included_overview
+    - included_personal
+    - exclusion_reason
+    missing_time_or_duration: KEEP_NULL_OR_EMPTY_NOT_ZERO
+    id_cell_type: TEXT
+  display_unit: hours
+  raw_unit: seconds
+  rounding: 最终表格统一换算小时，运算保留原秒值；JSON原始字段单位为秒
+  sample_label: 节点任务平均用时，不是并行节点整体耗时
+permissions:
+  transport_identity: USER
+  data_scope: 当前登录用户在下游业务权限和效率看板聚合权限范围内的数据；不可推断为租户全量
+  impersonation_allowed: false
+  controller: 各 recipe 单独记录功能与数据权限
+  service: workflow records 检查业务或流程 readPermission；statistics 构建当前用户聚合权限；employee 按租户读取
+  unauthorized_behavior: 记录失败并停止相关对象；保留不完整范围说明，不使用空集合掩盖权限错误
+evidence:
+  code:
+    status: CODE_CONFIRMED
+    backend_commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+    frontend_commit: 1e2ad2ac245844895a366ac266a968b98c290760
+    sources:
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/StatisticEfficiencyController.java
+      line: 90
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/contract/business/ContractController.java
+      line: 584
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/contract/business/ContractAssemblyController.java
+      line: 297
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/WorkflowRuntimeController.java
+      line: 264
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/EmployeeController.java
+      line: 81
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/approval/service/WorkflowRuntimeService.java
+      line: 3136
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/vo/workflow/ApproveRecordVO.java
+      line: 274
+    - repository: contract-skill-builder
+      version: 2.0.0
+      path: references/open-web-gateway.yaml
+      status: CONFIG_CONFIRMED
+    - repository: clm-monorepo-fe
+      commit: 1e2ad2ac245844895a366ac266a968b98c290760
+      path: apps/clm/src/pages/statistics-dashboard/routes/index.tsx
+      line: 35
+    - repository: clm-monorepo-fe
+      commit: 1e2ad2ac245844895a366ac266a968b98c290760
+      path: apps/clm/src/features/statistics-dashboard/components/filters/DateRangePicker/SignDate.tsx
+      line: 117
+    - repository: clm-monorepo-fe
+      commit: 1e2ad2ac245844895a366ac266a968b98c290760
+      path: features/common/src/api/contract/statistic.ts
+      line: 107
+    - repository: clm-monorepo-fe
+      commit: 1e2ad2ac245844895a366ac266a968b98c290760
+      path: features/common/src/api/request.ts
+      line: 276
+    - repository: clm-monorepo-fe
+      commit: 1e2ad2ac245844895a366ac266a968b98c290760
+      path: features/common/src/api/request.ts
+      line: 366
+      fact: 前端以response.data.code===200判断CLM业务成功；已观察配方在runtime逐项记录，assembly_info、employees仍待核对
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/EmployeeController.java
+      line: 175
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/service/EmployeeService.java
+      line: 504
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/DepartmentController.java
+      line: 189
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/service/DepartmentService.java
+      line: 399
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/SearchController.java
+      line: 57
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/service/es/query/group/builder/impl/ApproveAuthorityBuilderProcessor.java
+      line: 36
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/service/es/generator/AuthorityApproveGenerator.java
+      line: 28
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/message/processor/task/BpmTaskMessageParticipantProcessor.java
+      line: 80
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/contract/business/ContractController.java
+      line: 659
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/ContractQueryService.java
+      line: 1012
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/enums/ApprovalType.java
+      line: 35
+      fact: taskMode是多人协商方式，不证明实际参与人数；单人节点也可配置该模式
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/bo/bpm/BpmProcessRecordBO.java
+      line: 308
+      fact: 页面审批记录删除非管理员AUTO_END任务，不能从仅剩一个操作人推定历史节点仅一人
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/vo/workflow/ApproveRecordVO.java
+      line: 164
+      fact: done按连续nodeId聚合、todo按nodeId聚合；无可靠节点实例轮次字段
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/vo/workflow/ApproveRecordVO.java
+      line: 384
+      fact: 每条任务的businessId/businessTypeCode由其BPM businessKey拆解，不能被当前详情业务覆盖
+    - repository: CLM
+      commit: cd6ecdf8672a7954a52bb68539a0464eee2e6022
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/approval/service/WorkflowRuntimeService.java
+      line: 3528
+      fact: listAllApprovalEmployees候选接口绕过页面AUTO_END移除，但返回按人员聚合的nodeId2NameMap，丢失任务/定义/轮次且依赖人员解析；不能单独证明完整历史候选，仅与精确历史实例、已发布固定单人定义及完整任务动作联合核验
+  runtime:
+  - recipe: efficiency_contracts
+    transport: CLI
+    environment: test
+    observed_between:
+      start: '2026-09-23T11:52:00+08:00'
+      end: '2026-09-23T11:55:00+08:00'
+    discovery_date_window:
+      start: '2026-08-24'
+      end: '2026-09-23'
+    request_id: qhki***b5j3
+    cli_exit_code: 0
+    http_success: true
+    http_success_basis: CLI exit_code=0；未单独保存原始 HTTP 状态行
+    business_success: true
+    sample: EMPTY
+    envelope: 原始顶层 success=true、code=200、data；没有额外 CLI 包装
+    response_summary:
+      content_count: 0
+      totalElements: 0
+      totalPages: 0
+      pageIndex: 0
+    timezone_header_sent: -480
+    timezone_passthrough_verified: false
+  - recipe: efficiency_contracts
+    transport: CLI
+    environment: test
+    observed_between:
+      start: '2026-09-23T11:52:00+08:00'
+      end: '2026-09-23T11:55:00+08:00'
+    discovery_date_window:
+      start: '2025-09-23'
+      end: '2026-09-23'
+    request_id: 1k1z***qpj5
+    cli_exit_code: 0
+    http_success: true
+    http_success_basis: CLI exit_code=0；未单独保存原始 HTTP 状态行
+    business_success: true
+    sample: EMPTY
+    envelope: 原始顶层 success=true、code=200、data；没有额外 CLI 包装
+    response_summary:
+      content_count: 0
+      totalElements: 0
+      totalPages: 0
+      pageIndex: 0
+    timezone_header_sent: -480
+    timezone_passthrough_verified: false
+  - recipe: contract_info
+    transport: CLI
+    environment: test
+    observed_date: '2026-09-23'
+    request_id: rl2u***qn7y
+    cli_exit_code: 0
+    http_success: true
+    http_success_basis: CLI 成功响应；未单独保存原始 HTTP 状态行
+    business_success: true
+    sample: NON_EMPTY
+    envelope: 原始顶层 success=true、code=200、data；approveRecord 包含任务记录
+    response_summary:
+      business_success_count: 132
+      with_approve_record_count: 131
+      without_approve_record_count: 1
+    timezone_header_sent: -480
+    timezone_passthrough_verified: true
+    timezone_verification:
+      comparison_request_id: rh8a***uwjg
+      offsets_compared:
+      - -480
+      - 0
+      matched_tasks: 4
+      create_time_difference_seconds: 28800
+      end_time_difference_seconds: 28800
+      task_duration_unchanged: true
+    scope: 仅业务成功详情及已比对任务；41 份 110004 无权限响应未计为成功，未通过其他端点尝试恢复
+  - recipe: process_records
+    transport: CLI
+    environment: test
+    observed_date: '2026-09-23'
+    request_id: 1jyg***ceqw
+    cli_exit_code: 0
+    http_success: true
+    http_success_basis: CLI exit_code=0；未单独保存原始 HTTP 状态行
+    business_success: true
+    sample: NON_EMPTY
+    envelope: 原始顶层 success=true、code=200、data；done/todo 包含任务记录
+    response_summary:
+      business_success_count: 9
+      non_empty_response_count: 9
+    input_provenance: 仅对 contract_info 返回 110002 系统错误的合同，以已有权限的 briefInfo 成功响应所返回真实 PID 查询；未猜测 PID
+    timezone_header_sent: -480
+    timezone_passthrough_verified: true
+    timezone_verification:
+      comparison_request_id: 1k20***sdia
+      offsets_compared:
+      - -480
+      - 0
+      matched_tasks: 8
+      create_time_difference_seconds: 28800
+      end_time_difference_seconds: 28800
+      task_duration_unchanged: true
+    scope: 仅 9 份系统错误合同的恢复记录；110004 无权限合同未使用其他端点重试
+  - recipe: employee_lookup
+    transport: CLI
+    environment: test
+    observed_date: '2026-09-23'
+    request_id: u803***9toi
+    http_success: true
+    http_success_basis: 已完成CLI成功响应；未单独保存原始HTTP状态行
+    business_success: true
+    sample: NON_EMPTY
+    envelope: 原始顶层success=true、code=200、data
+    scope: 姓名查询返回真实内部employeeId及当前部门；仅观察单个匹配场景，不证明离职姓名模糊检索或同名消歧已线上验证
+  - recipe: department_lookup
+    transport: CLI
+    environment: test
+    observed_date: '2026-09-23'
+    request_id: t4yh***840s
+    http_success: true
+    http_success_basis: 已完成CLI成功响应；未单独保存原始HTTP状态行
+    business_success: true
+    sample: NON_EMPTY
+    envelope: 原始顶层success=true、code=200、data
+    scope: 部门关键词返回内部departmentId及childDepartments；不证明showAllStatus覆盖历史部门
+  - recipe: department_members
+    transport: CLI
+    environment: test
+    observed_date: '2026-09-23'
+    request_id: vbpr***du6f
+    http_success: true
+    http_success_basis: 已完成CLI成功响应；未单独保存原始HTTP状态行
+    business_success: true
+    sample: EMPTY
+    envelope: 原始顶层success=true、code=200、data
+    scope: 所选部门直属成员为空、hasMore=false；继续处理已发现子部门
+  - recipe: department_members
+    transport: CLI
+    environment: test
+    observed_date: '2026-09-23'
+    request_id: 1if0***zlx6
+    http_success: true
+    http_success_basis: 已完成CLI成功响应；未单独保存原始HTTP状态行
+    business_success: true
+    sample: NON_EMPTY
+    envelope: 原始顶层success=true、code=200、data
+    scope: 子部门第一页返回成员及当前部门、hasMore=false；成员跨页边界尚未线上验证
+  - recipe: participant_contracts
+    transport: CLI
+    environment: test
+    observed_date: '2026-09-23'
+    request_id: 1jea***1j19
+    http_success: true
+    http_success_basis: 已完成CLI成功响应；未单独保存原始HTTP状态行
+    business_success: true
+    sample: NON_EMPTY
+    envelope: 原始顶层success=true、code=200、data
+    scope: 单个内部员工ID的APPROVE_AUTHORITY term；145组中的首50组，返回searchAfter
+  - recipe: participant_contracts
+    transport: CLI
+    environment: test
+    observed_date: '2026-09-23'
+    request_id: rhiw***42bz
+    http_success: true
+    http_success_basis: 已完成CLI成功响应；未单独保存原始HTTP状态行
+    business_success: true
+    sample: NON_EMPTY
+    envelope: 原始顶层success=true、code=200、data
+    scope: 同一人员沿searchAfter读取第二50组；保持每位人员独立游标
+  - recipe: participant_contracts
+    transport: CLI
+    environment: test
+    observed_date: '2026-09-23'
+    request_id: 1jif***mof5
+    http_success: true
+    http_success_basis: 已完成CLI成功响应；未单独保存原始HTTP状态行
+    business_success: true
+    sample: NON_EMPTY
+    envelope: 原始顶层success=true、code=200、data
+    scope: 同一人员末页45组，三页共145组，展开去重153份合同；组数不等于合同数
+  - recipe: contract_brief_info
+    transport: CLI
+    environment: test
+    observed_date: '2026-09-23'
+    request_id: 1h82***1h0s
+    http_success: true
+    http_success_basis: 已完成CLI成功响应；未单独保存原始HTTP状态行
+    business_success: true
+    sample: NON_EMPTY
+    envelope: 原始顶层success=true、code=200、data
+    scope: 仅完整详情110002后轻量详情业务成功并返回真实PID；未对110004权限拒绝尝试此配方
+  - recipe: raw_person_tasks
+    transport: CLI
+    environment: test
+    identity: USER
+    observed_date: '2026-09-23'
+    request_id: NOT_RECORDED
+    request_id_note: 本轮汇总未保留可引用的request/trace ID，不编造
+    http_success: true
+    http_success_basis: 已完成CLI成功响应；未单独保存原始HTTP状态行
+    business_success: true
+    sample: NON_EMPTY
+    envelope: 原始顶层success=true、code=0、data.task_list
+    task_completion_window:
+      start: '2026-09-01T00:00:00+08:00'
+      end: '2026-09-23T20:30:55+08:00'
+    response_summary:
+      pages_read: 51
+      raw_task_count: 4636
+      completed_pages: 40
+      completed_task_count: 3754
+      pending_pages: 11
+      pending_task_count: 882
+      candidate_process_instances: 895
+      checkpoint_discovered_automatically: true
+    scope: 同一test用户，人员任务两状态各自分页至空；候选自动包含参与索引漏项，不人工加入合同。待办全部保留，已办候选按实际end_time窗口筛选
+    internal_validation_artifacts:
+    - outputs/approval-efficiency-fix-20260923/discovery.json
+    artifact_distribution: 仅内部验收路径；原始数据不随skill分发
+  - recipe: process_records
+    transport: CLI
+    environment: test
+    identity: USER
+    observed_date: '2026-09-23'
+    request_id: NOT_RECORDED
+    request_id_note: 本轮汇总未保留可引用的request/trace ID，不编造
+    http_success: true
+    http_success_basis: 已完成CLI成功响应；未单独保存原始HTTP状态行
+    business_success: true
+    sample: NON_EMPTY
+    envelope: 原始顶层success=true、code=200、data.done/todo
+    response_summary:
+      candidate_process_instances: 895
+      readable_process_instances: 873
+      source_candidate_task_count: 1027
+      matched_source_task_count: 1005
+      source_completed_tasks_in_window: 145
+      matched_completed_tasks_in_window: 145
+      missing_pending_tasks: 22
+      missing_pending_permission_denied: 21
+      missing_pending_null_response: 1
+      timestamp_mismatches: 0
+      source_window_disagreements: 0
+    scope: 所有窗口源已办任务均匹配，但其包含提交等非审批节点，145不能当作审批次数。22个源待办未读，整体覆盖仍partial；不绕过110004，不把未读待办计零
+    internal_validation_artifacts:
+    - outputs/approval-efficiency-fix-20260923/reconciliation-final.json
+    - outputs/approval-efficiency-fix-20260923/bundle-evidence.json
+    artifact_distribution: 仅内部验收路径；原始数据不随skill分发
+  - recipe: historical_node_people
+    transport: CLI
+    environment: test
+    identity: USER
+    observed_date: '2026-09-23'
+    request_id: NOT_RECORDED
+    request_id_note: 本轮汇总未保留可引用的request/trace ID，不编造
+    http_success: true
+    http_success_basis: 已完成CLI成功响应；未单独保存原始HTTP状态行
+    business_success: true
+    sample: NON_EMPTY
+    envelope: 原始顶层success=true、code=200、data人员数组
+    response_summary:
+      queried_process_instances: 836
+      collection_diagnostics: 0
+    scope: 已成功读取records且需要人数核验的实例；该映射单独不证明完整单人
+    internal_validation_artifacts:
+    - outputs/approval-efficiency-fix-20260923/bundle-evidence.json
+    artifact_distribution: 仅内部验收路径；原始数据不随skill分发
+  - recipe: historical_process_instance
+    transport: CLI
+    environment: test
+    identity: USER
+    observed_date: '2026-09-23'
+    request_id: NOT_RECORDED
+    request_id_note: 本轮汇总未保留可引用的request/trace ID，不编造
+    http_success: true
+    http_success_basis: 已完成CLI成功响应；未单独保存原始HTTP状态行
+    business_success: true
+    sample: NON_EMPTY
+    envelope: 原始顶层success=true、code=0、data.process_instance
+    response_summary:
+      queried_process_instances: 836
+      raw_process_instances: 836
+      collection_diagnostics: 0
+    scope: 真实历史实例及原始任务用于校验定义、人员和变更动作；已办共享或签列表单独不证明完整候选
+    internal_validation_artifacts:
+    - outputs/approval-efficiency-fix-20260923/bundle-evidence.json
+    artifact_distribution: 仅内部验收路径；原始数据不随skill分发
+  - recipe: historical_form_definition
+    transport: CLI
+    environment: test
+    identity: USER
+    observed_date: '2026-09-23'
+    request_id: NOT_RECORDED
+    request_id_note: 本轮汇总未保留可引用的request/trace ID，不编造
+    http_success: true
+    http_success_basis: 已完成CLI成功响应；未单独保存原始HTTP状态行
+    business_success: true
+    sample: NON_EMPTY
+    envelope: 原始顶层success=true、code=200、data表单定义
+    response_summary:
+      queried_form_definitions: 223
+      collection_diagnostics: 0
+      joint_proof_node_counts:
+        proven_fixed_singleton: 724
+        multiple_historical_people: 88
+        configured_multiple_runtime_unverified: 4
+        fixed_singleton_or_override_not_proven: 80
+        historical_definition_not_matched: 5
+        raw_reassignment_or_unknown_command: 3
+    scope: 以上为三类接口及records联合核验的节点数，非单接口保证。2.2.0起这些证据用于节点参与审计；具体个人是否计入以原始任务中心的流程实例ID+任务ID归因为主。当前空覆盖不能冒充历史快照
+    internal_validation_artifacts:
+    - outputs/approval-efficiency-fix-20260923/bundle-evidence.json
+    artifact_distribution: 仅内部验收路径；原始数据不随skill分发
+  screenshot:
+    status: UNVERIFIED
+    reason: 未获取目标 test 页面截图
+  log:
+    status: UNVERIFIED
+    reason: 已保存发现、合同详情及流程记录的请求标识，但未查询或匹配后端日志；链路未验证
+  limitations:
+  - 个人统计依赖原始任务中心与流程记录按流程实例ID+任务ID成功连接；缺任务、归因多人或对账冲突时保留明细并排除。历史人数补证只作回退和审计；具体人员模式仍不输出总览
+  - taskModeCode既不证明人数也不保证对应历史版本；多人节点能否计入个人，取决于是否取得明确的个人任务及有效人工动作
+  - listAllApprovalEmployees已加入补证编排，但单独只提供人员到节点映射；必须联合匹配历史实例、已发布固定定义和原始任务动作，不能单独填写complete=true
+  - 非空运行证据覆盖人员/部门发现、参与合同分页、contract_info、contract_brief_info、process_records、原始人员任务及历史人数联合补证；assembly_info、employees均未运行验证
+  - 合同组详情代码支持10/17：BusinessType.java:135,296的isContractAssemblyType包含两者，ContractAssemblyService.java:1058,1080共用详情及批量分支；不代表test类型17已实测
+  - 时区头运行证据仅覆盖 contract_info 的 4 条和 process_records 的 8 条固定任务；efficiency_contracts 空结果无法单独验证时区效果
+  - 成功样本不代表所有合同可访问；41 份 110004 无权限合同保持未获取，未作为成功、零审批或零耗时统计
+  - 效率看板日期底层 SQL 和完成状态口径尚无运行证据
+  - 新通用发现helper离线回归不等于更多场景线上实测；已观察部门成员均在第一页结束，成员多页/深层递归/同名消歧须遵循边界而不能标已线上验证
+  - 参与权限索引在任务开始时登记，可能含历史参与者和组内其他合同；只有任务记录归属、状态/动作及endTime共同满足才计数
+  - 当前目录成员不还原历史调岗/离职；非空部门关键词不保证showAllStatus生效；无权限或搜索索引缺失不代表全年没有处理
+  - searchAfter必须无损保留19位整数，禁止以JavaScript普通Number解析后回传；组分页数与最终合同数分别报告
+readiness:
+  contract_complete: true
+  code_confirmed: true
+  cli_test_verified: true
+  non_empty_response_verified: true
+  screenshot_matched: false
+  log_chain_verified: false
+  mcp_verified: false
+  production_verified: false
+  delivery_status: RUNNABLE
+builder_provenance:
+  repository: git@git.qtech.cn:liyuanye/assistant-skill.git
+  path: skills/contract-skill-builder
+  commit: c6b072e4e4e7a9a0409237121d76d003663ef5ed
+  updated_at: '2026-10-13'
