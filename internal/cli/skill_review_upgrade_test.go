@@ -27,8 +27,8 @@ func TestSkillSyncUpgradeAddsBundledReviewSkills(t *testing.T) {
 			count++
 		}
 	}
-	if count != 16 {
-		t.Fatalf("integrated distributable Skill count = %d, want 16", count)
+	if count != 17 {
+		t.Fatalf("integrated distributable Skill count = %d, want 17", count)
 	}
 	previous := fstest.MapFS{}
 	err = fs.WalkDir(contractskills.FS, ".", func(path string, entry fs.DirEntry, walkErr error) error {
@@ -73,8 +73,8 @@ func TestSkillSyncUpgradeAddsBundledReviewSkills(t *testing.T) {
 		}
 	}
 	registry := readSkillSyncRegistry(t, filepath.Join(state, "skill-locations.json"))
-	if len(registry.Locations) != 1 || len(registry.Locations[0].Managed) != 16 || registry.Locations[0].Status != "success" {
-		t.Fatalf("registry did not synchronize all 16 Skills: %+v; output=%s", registry, output.String())
+	if len(registry.Locations) != 1 || len(registry.Locations[0].Managed) != 17 || registry.Locations[0].Status != "success" {
+		t.Fatalf("registry did not synchronize all 17 Skills: %+v; output=%s", registry, output.String())
 	}
 	content, err := os.ReadFile(thirdParty)
 	if err != nil || string(content) != "keep unrelated skill" {

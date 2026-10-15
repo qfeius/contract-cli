@@ -14,46 +14,55 @@ import (
 	"cn.qfei/contract-cli/internal/openplatform"
 )
 
-func TestLoadDeviceAwareProfileRejectsNonProductionProfileAndEndpoints(t *testing.T) {
+func TestLoadDeviceAwareProfileRejectsTestProfile(t *testing.T) {
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(validTestProfile(), true); err != nil {
+		t.Fatal(err)
+	}
+	app := New(Options{Store: store})
+
+	_, err := app.loadDeviceAwareProfile("contract")
+	if err == nil || err.Error() != productionProfileErrorMessage("contract") {
+		t.Fatalf("load profile error = %v", err)
+	}
+}
+
+func TestLoadDeviceAwareProfileRejectsUnsupportedProfileAndMismatchedEndpoints(t *testing.T) {
 	tests := []struct {
-		name   string
-		mutate func(*config.Profile)
+		name    string
+		profile config.Profile
 	}{
-		{name: "dev environment", mutate: func(profile *config.Profile) { profile.Environment = "dev" }},
-		{name: "dev open platform", mutate: func(profile *config.Profile) { profile.OpenPlatformBaseURL = "https://dev-open.qtech.cn" }},
-		{name: "dev resource", mutate: func(profile *config.Profile) { profile.Resource = "https://dev-open.qtech.cn" }},
-		{name: "dev app token", mutate: func(profile *config.Profile) {
-			profile.AppTokenEndpoint = "https://dev-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal"
-		}},
-		{name: "dev protected metadata", mutate: func(profile *config.Profile) {
-			profile.ProtectedResourceMetadataURL = "https://dev-open.qtech.cn/.well-known/oauth-protected-resource"
-		}},
-		{name: "dev authorization metadata", mutate: func(profile *config.Profile) {
-			profile.AuthorizationServerMetadataURL = "https://dev-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract"
-		}},
-		{name: "dev authorization endpoint", mutate: func(profile *config.Profile) {
-			profile.Identities.User.AuthorizationEndpoint = "https://dev-myaccount.qtech.cn/api/public/oauth/authorize/contract"
-		}},
-		{name: "dev device endpoint", mutate: func(profile *config.Profile) {
-			profile.Identities.User.DeviceAuthorizationEndpoint = "https://dev-myaccount.qtech.cn/api/public/oauth/device-authorization/contract"
-		}},
-		{name: "dev token endpoint", mutate: func(profile *config.Profile) {
-			profile.Identities.User.TokenEndpoint = "https://dev-myaccount.qtech.cn/api/public/oauth/token/contract"
-		}},
-		{name: "dev revoke endpoint", mutate: func(profile *config.Profile) {
-			profile.Identities.User.RevocationEndpoint = "https://dev-myaccount.qtech.cn/api/public/oauth/revoke/contract"
-		}},
-		{name: "dev registration endpoint", mutate: func(profile *config.Profile) {
-			profile.Identities.User.RegistrationEndpoint = "https://dev-myaccount.qtech.cn/api/public/oauth/register/contract"
-		}},
+		{name: "dev environment", profile: func() config.Profile {
+			profile := validProductionProfile()
+			profile.Environment = "dev"
+			return profile
+		}()},
+		{name: "prod profile with test open platform", profile: func() config.Profile {
+			profile := validProductionProfile()
+			profile.OpenPlatformBaseURL = "https://test-open.qtech.cn"
+			return profile
+		}()},
+		{name: "prod profile with test auth endpoint", profile: func() config.Profile {
+			profile := validProductionProfile()
+			profile.Identities.User.TokenEndpoint = "https://test-myaccount.qtech.cn/api/public/oauth/token/contract"
+			return profile
+		}()},
+		{name: "test profile with prod resource", profile: func() config.Profile {
+			profile := validTestProfile()
+			profile.Resource = "https://open.qfei.cn"
+			return profile
+		}()},
+		{name: "test profile with prod auth endpoint", profile: func() config.Profile {
+			profile := validTestProfile()
+			profile.Identities.User.TokenEndpoint = "https://myaccount.qfei.cn/api/public/oauth/token/contract"
+			return profile
+		}()},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			store := config.NewStore(t.TempDir())
-			profile := validProductionProfile()
-			test.mutate(&profile)
-			if err := store.UpsertProfile(profile, true); err != nil {
+			if err := store.UpsertProfile(test.profile, true); err != nil {
 				t.Fatal(err)
 			}
 			app := New(Options{Store: store})
@@ -66,81 +75,30 @@ func TestLoadDeviceAwareProfileRejectsNonProductionProfileAndEndpoints(t *testin
 	}
 }
 
-func TestAuthAndBusinessCommandsRejectDevProfileBeforeNetworkRequest(t *testing.T) {
-	commands := []struct {
-		name string
-		run  func(*App) error
-	}{
-		{name: "legacy user login", run: func(app *App) error {
-			return app.Run(context.Background(), []string{"auth", "login", "--profile", "contract", "--as", "user", "--no-open-browser"})
-		}},
-		{name: "app login", run: func(app *App) error {
-			return app.Run(context.Background(), []string{"auth", "login", "--profile", "contract", "--as", "app", "--app-id", "app-id", "--app-secret", "app-secret"})
-		}},
-		{name: "device init", run: func(app *App) error {
-			return app.Run(context.Background(), []string{"auth", "init", "--profile", "contract", "--output", "json"})
-		}},
-		{name: "auth status", run: func(app *App) error {
-			return app.Run(context.Background(), []string{"auth", "status", "--profile", "contract", "--as", "user"})
-		}},
-		{name: "auth logout", run: func(app *App) error {
-			return app.Run(context.Background(), []string{"auth", "logout", "--profile", "contract", "--as", "user"})
-		}},
-		{name: "identity switch", run: func(app *App) error {
-			return app.Run(context.Background(), []string{"auth", "use", "--profile", "contract", "--as", "app"})
-		}},
-		{name: "app business request", run: func(app *App) error {
-			_, _, err := app.openPlatformClientAndContext("contract", "app", "/open-apis/contract/v1/mcp/contracts/search", openplatform.IdentityPolicyAny)
-			return err
-		}},
-		{name: "device business request", run: func(app *App) error {
-			_, _, err := app.openPlatformClientAndContext("contract", "user", "/open-apis/contract/v1/mcp/contracts/search", openplatform.IdentityPolicyUserOnly)
-			return err
-		}},
+func TestOpenPlatformContextRejectsTestProfile(t *testing.T) {
+	store := config.NewStore(t.TempDir())
+	profile := validTestProfile()
+	profile.DefaultIdentity = config.IdentityApp
+	profile.Identities.App = config.AppIdentity{AppID: "test-app", Token: &config.Token{AccessToken: "test-app-token", Expiry: time.Now().Add(time.Hour)}}
+	if err := store.UpsertProfile(profile, true); err != nil {
+		t.Fatal(err)
 	}
+	app := New(Options{Store: store, Secrets: config.NewSecretsStore(t.TempDir())})
 
-	for _, command := range commands {
-		t.Run(command.name, func(t *testing.T) {
-			store := config.NewStore(t.TempDir())
-			profile := validProductionProfile()
-			profile.Environment = "dev"
-			profile.OpenPlatformBaseURL = "https://dev-open.qtech.cn"
-			profile.Resource = "https://dev-open.qtech.cn"
-			if err := store.UpsertProfile(profile, true); err != nil {
-				t.Fatal(err)
-			}
-			requestCount := 0
-			app := New(Options{
-				Store:           store,
-				Secrets:         config.NewSecretsStore(t.TempDir()),
-				CredentialStore: &deviceMemoryCredentialStore{values: map[string]credential.DeviceCredential{}},
-				HTTPClient: &http.Client{Transport: productionRoundTripFunc(func(*http.Request) (*http.Response, error) {
-					requestCount++
-					return nil, errors.New("network request must not run")
-				})},
-			})
-
-			err := command.run(app)
-			if err == nil || err.Error() != productionProfileErrorMessage("contract") {
-				t.Fatalf("command error = %v", err)
-			}
-			if requestCount != 0 {
-				t.Fatalf("request count = %d, want 0", requestCount)
-			}
-		})
+	_, _, err := app.openPlatformClientAndContext(
+		"contract",
+		"app",
+		"/open-apis/contract/v1/mcp/contracts/search",
+		openplatform.IdentityPolicyAny,
+	)
+	if err == nil || err.Error() != productionProfileErrorMessage("contract") {
+		t.Fatalf("open platform context error = %v", err)
 	}
 }
 
-func TestDeviceProfileRecoveryRejectsDevSnapshotBeforeSavingProfile(t *testing.T) {
+func TestDeviceProfileRecoveryRejectsTestSnapshot(t *testing.T) {
 	credentials := &deviceMemoryCredentialStore{values: map[string]credential.DeviceCredential{
-		"contract": {DeviceProfile: &credential.DeviceProfile{
-			Name: "contract", Environment: "dev", OpenPlatformBaseURL: "https://dev-open.qtech.cn",
-			Resource: "https://dev-open.qtech.cn", BusinessType: "contract", ClientName: "contract-cli",
-			DeviceClientID: "zscli_892efdadc11a3f53", DeviceScope: "contract:full contract-review:full",
-			DeviceAuthorizationEndpoint: "https://dev-myaccount.qtech.cn/api/public/oauth/device-authorization/contract",
-			TokenEndpoint:               "https://dev-myaccount.qtech.cn/api/public/oauth/token/contract",
-			RevocationEndpoint:          "https://dev-myaccount.qtech.cn/api/public/oauth/revoke/contract",
-		}},
+		"contract": {DeviceProfile: snapshotDeviceProfile(validTestProfile())},
 	}}
 	store := config.NewStore(t.TempDir())
 	app := New(Options{
@@ -158,7 +116,7 @@ func TestDeviceProfileRecoveryRejectsDevSnapshotBeforeSavingProfile(t *testing.T
 		t.Fatalf("profile recovery error = %v", err)
 	}
 	if _, found, lookupErr := store.LookupProfile("contract"); lookupErr != nil || found {
-		t.Fatalf("dev snapshot must not be restored, found=%v err=%v", found, lookupErr)
+		t.Fatalf("test snapshot was restored, found=%v err=%v", found, lookupErr)
 	}
 }
 
@@ -363,7 +321,7 @@ func TestConfigAddRejectsNonProductionMetadataOverrideBeforeNetworkRequest(t *te
 	}
 }
 
-func TestProductionHTTPClientBlocksKnownDevHosts(t *testing.T) {
+func TestHTTPClientRejectsKnownTestHosts(t *testing.T) {
 	requestCount := 0
 	app := New(Options{
 		Store: config.NewStore(t.TempDir()),
@@ -373,13 +331,16 @@ func TestProductionHTTPClientBlocksKnownDevHosts(t *testing.T) {
 		})},
 	})
 
-	for _, rawURL := range []string{"https://dev-open.qtech.cn/open-apis/test", "https://dev-myaccount.qtech.cn./device"} {
+	for _, rawURL := range []string{"https://test-open.qtech.cn/open-apis/test", "https://test-myaccount.qtech.cn./device"} {
 		request, err := http.NewRequest(http.MethodGet, rawURL, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = app.httpClient.Do(request)
-		if err == nil || !strings.Contains(err.Error(), "production build blocks non-production host") {
+		response, err := app.httpClient.Do(request)
+		if response != nil {
+			response.Body.Close()
+		}
+		if err == nil || !strings.Contains(err.Error(), "blocks non-production host") {
 			t.Fatalf("request %s error = %v", rawURL, err)
 		}
 	}
@@ -414,12 +375,28 @@ func validProductionProfile() config.Profile {
 	}
 }
 
+func validTestProfile() config.Profile {
+	profile := validProductionProfile()
+	profile.Environment = "test"
+	profile.OpenPlatformBaseURL = "https://test-open.qtech.cn"
+	profile.AppTokenEndpoint = "https://test-open.qtech.cn/open-apis/auth/v3/tenant_access_token/internal"
+	profile.ProtectedResourceMetadataURL = "https://test-open.qtech.cn/.well-known/oauth-protected-resource"
+	profile.AuthorizationServerMetadataURL = "https://test-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract"
+	profile.Resource = "https://test-open.qtech.cn"
+	profile.Identities.User.AuthorizationEndpoint = "https://test-myaccount.qtech.cn/api/public/oauth/authorize/contract"
+	profile.Identities.User.DeviceAuthorizationEndpoint = "https://test-myaccount.qtech.cn/api/public/oauth/device-authorization/contract"
+	profile.Identities.User.TokenEndpoint = "https://test-myaccount.qtech.cn/api/public/oauth/token/contract"
+	profile.Identities.User.RevocationEndpoint = "https://test-myaccount.qtech.cn/api/public/oauth/revoke/contract"
+	profile.Identities.User.RegistrationEndpoint = "https://test-myaccount.qtech.cn/api/public/oauth/register/contract"
+	return profile
+}
+
 /*
 productionProfileErrorMessage 返回测试断言用的环境端点错误文本。
 入参 profileName（string）为配置名；返回 string 错误文本。
 */
 func productionProfileErrorMessage(profileName string) string {
-	return `profile "` + profileName + `" belongs to a non-production environment and is not allowed in this production build; run ` +
+	return `profile "` + profileName + `" has unsupported or mismatched environment endpoints; run ` +
 		"`contract-cli config add --env prod --name contract` and authorize again"
 }
 

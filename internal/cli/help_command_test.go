@@ -164,6 +164,36 @@ func TestHelpRequestsRenderExpectedTopics(t *testing.T) {
 			},
 		},
 		{
+			name: "contract summary query user only",
+			args: []string{"contract", "summary", "query", "--help"},
+			contains: []string{
+				"contract summary query",
+				"POST /open-apis/contract/v1/summary/query",
+				"仅支持 --as user",
+				"--contract-number <number>",
+				"--contract-name <full-name>",
+			},
+		},
+		{
+			name: "contract summary generate user only",
+			args: []string{"contract", "summary", "generate", "--help"},
+			contains: []string{
+				"contract summary generate",
+				"--file <path>",
+				"multipart/form-data",
+				"POST /open-apis/contract/v1/summary/generate",
+				"不经过独立 upload 接口",
+				"仅支持 --as user",
+				"doc、docx、pdf",
+				"200MB",
+			},
+			notContains: []string{
+				"--input-file <path>",
+				"--file-id-field <field>",
+				"POST /open-apis/contract/v3/review/file/upload",
+			},
+		},
+		{
 			name: "contract sign url get help",
 			args: []string{"contract", "sign-url", "get", "--help"},
 			contains: []string{
@@ -339,12 +369,12 @@ func TestHelpRequestsRenderExpectedTopics(t *testing.T) {
 			contains: []string{
 				"config add",
 				"--env <prod>",
-				"默认 prod",
+				"仅支持 prod，默认 prod",
 				"--name <profile>",
 				"默认 contract",
 				"contract-cli config add --env prod --name contract",
 			},
-			notContains: []string{"--env <dev|prod>", "blue", "--env test"},
+			notContains: []string{"--env <dev|prod>", "--env <prod|dev>", "--env <prod|test>", "--env test", "blue"},
 		},
 		{
 			name: "update check production example",
@@ -479,6 +509,9 @@ func TestAllCurrentHelpTopicsRender(t *testing.T) {
 		"contract",
 		"contract search",
 		"contract search-v2",
+		"contract summary",
+		"contract summary query",
+		"contract summary generate",
 		"contract get",
 		"contract sync-user-groups",
 		"contract text",

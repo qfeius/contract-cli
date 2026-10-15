@@ -1067,27 +1067,27 @@ func TestConfigAddUsesProdPresetByDefault(t *testing.T) {
 TestConfigAddRejectsDevPresetBeforeNetworkRequest 验证 dev 仍在发请求前被拒绝。
 入参 t（*testing.T）为测试上下文；无返回值，失败时报告测试错误。
 */
-func TestConfigAddRejectsDevPresetBeforeNetworkRequest(t *testing.T) {
+func TestConfigAddRejectsTestPresetBeforeHTTP(t *testing.T) {
 	t.Parallel()
 
-	requestCount := 0
+	store := config.NewStore(t.TempDir())
+	requests := 0
 	app := cli.New(cli.Options{
 		Stdout: &bytes.Buffer{},
 		Stderr: &bytes.Buffer{},
-		Store:  config.NewStore(t.TempDir()),
+		Store:  store,
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			requestCount++
-			t.Fatalf("dev preset must be rejected before network request: %s", req.URL.String())
-			return nil, nil
+			requests++
+			return nil, fmt.Errorf("unexpected request to %s", req.URL)
 		})},
 	})
 
-	err := app.Run(context.Background(), []string{"config", "add", "--name", "contract", "--env", "dev"})
-	if err == nil || err.Error() != `unsupported environment "dev"; supported environments: prod` {
-		t.Fatalf("config add dev error = %v", err)
+	err := app.Run(context.Background(), []string{"config", "add", "--name", "contract", "--env", "test"})
+	if err == nil || !strings.Contains(err.Error(), "supported environments: prod") || requests != 0 {
+		t.Fatalf("config add error = %v, requests = %d", err, requests)
 	}
-	if requestCount != 0 {
-		t.Fatalf("network request count = %d, want 0", requestCount)
+	if _, found, err := store.LookupProfile("contract"); err != nil || found {
+		t.Fatalf("rejected profile saved: found = %v, error = %v", found, err)
 	}
 }
 

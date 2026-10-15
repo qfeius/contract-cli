@@ -19,6 +19,15 @@ const (
 	FormatTable Format = "table"
 )
 
+func ValidateFormat(format Format) error {
+	switch format {
+	case "", FormatJSON, FormatYAML, FormatTable:
+		return nil
+	default:
+		return fmt.Errorf("unsupported output format %q", format)
+	}
+}
+
 type Renderer struct {
 	stdout io.Writer
 	notice map[string]any
@@ -34,6 +43,9 @@ func (r *Renderer) WithNotice(notice map[string]any) *Renderer {
 }
 
 func (r *Renderer) Render(format Format, value any) error {
+	if err := ValidateFormat(format); err != nil {
+		return err
+	}
 	normalized, err := normalizeValue(value)
 	if err != nil {
 		return err

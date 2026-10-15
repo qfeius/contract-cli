@@ -6,11 +6,11 @@
 
 ## 当前状态
 
-- 当前仅内置 `prod` 环境预设；历史 test/blue/dev profile 和对应网络端点会在请求前被拒绝，不自动迁移凭据。首次配置：`contract-cli config add --env prod --name contract`
+- 当前仅内置 `prod` 环境预设；历史非生产 profile 和对应网络端点会在请求前被拒绝，不自动迁移凭据。首次配置：`contract-cli config add --env prod --name contract`
 - `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是当前同时支持 `user` 与 `app` 的结构化业务命令
 - `rule *`（包括 `approval-matrix` 别名）支持 `--as user` / `--as app`；user 当前限 contract 产品且需要合同规则管理权限。
 - `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 当前仅支持 `--as app`
-- `contract search-fields`、`contract approval comment list/create` 与 `contract approval task list/approve/reject` 仅支持 `--as user`，调用人固定来自个人 Token
+- `contract search-fields`、`contract summary query/generate`、`contract approval comment list/create` 与 `contract approval task list/approve/reject` 仅支持 `--as user`，调用人固定来自个人 Token
 - 除上述双身份和 app-only 能力外，当前其他结构化业务命令仍只支持 `--as user`
 - `app` 目前已经支持登录、状态查看、登出、默认身份切换
 - 配套 Skill 使用当前 CLI 内置内容，通过 `contract-cli skills install --target "<已确认的用户 Skill 目录>" --force` 完整安装并登记；历史 `npx skills add ...` 入口保留，但不能替代与当前 CLI 配套的版本同步
@@ -78,6 +78,7 @@ contract-cli contract get <contract-id> --help
 - `/open-apis/contract/v1/mcp/...` 路径大多仍只支持 `--as user`
 - `contract search-fields` 只支持 user，省略 `--as` 时也默认 user，不跟随 profile 的 app 默认身份。
 - `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit`、`contract resubmit`、`contract patch`、`contract delete`、`contract print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、新增写入和扩展查询型 `mdm *`、`event outbound-ip list` 当前仅支持 `--as app`
+- `contract summary query/generate` 仅支持 `--as user`，调用人固定来自用户 Token，不接受 `--user-id` 覆盖。
 - `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是例外：
 - `rule *`（包括 `approval-matrix` 别名）也支持 `--as user|app`，但 user 对 contract 产品需要合同规则管理权限。
   - `contract get --as user` 走 MCP 路径 `/open-apis/contract/v1/mcp/contracts/{contract_id}`
@@ -167,7 +168,7 @@ contract-cli config add --env prod --name contract
 
 支持参数：
 
-- `--env`：环境预设，当前仅支持 `prod`，默认 `prod`
+- `--env`：环境预设，仅支持 `prod`，默认 `prod`
 - `--name`：profile 名称，默认 `contract`
 - `--resource-metadata-url`：覆盖 protected resource metadata 地址
 - `--redirect-url`：覆盖 OAuth callback 地址
@@ -328,7 +329,7 @@ contract-cli skills install --force
 
 执行结果：
 
-- 复制内置 `auth`、`contract-cli-shared`、`contract-cli-contract-search`、`contract-cli-contract`、`contract-cli-payment`、`contract-cli-mdm-vendor`、`contract-cli-mdm-legal`、`contract-cli-mdm-fields` 等 skill
+- 复制内置 `auth`、`contract-cli-shared`、`contract-cli-contract-search`、`contract-cli-contract`、`zhishu-contract-summary`、`contract-cli-payment`、`contract-cli-mdm-vendor`、`contract-cli-mdm-legal`、`contract-cli-mdm-fields` 等 skill
 - 保留 `SKILL.md`、`agents/openai.yaml` 和 `references/*.md`
 
 ### 2. 鉴权
@@ -535,6 +536,47 @@ contract-cli contract search-v2 --profile contract --as app --input-file search-
 - 当前仅支持 `--as app`。
 - 走 `POST /open-apis/contract/v1/contracts/searchV2`。
 - `--input-file` / `--data` 必须传一个且互斥。
+
+#### `contract-cli contract summary query`
+
+用途：user 身份按合同编号或完整名称精确查询摘要；没有可用摘要时，服务端可能在本次请求中触发生成。
+
+命令：
+
+```bash
+contract-cli contract summary query --profile contract --as user --contract-number CN-001
+contract-cli contract summary query --profile contract --as user --contract-name '采购合同'
+contract-cli contract summary query --profile contract --as user --data '{"contractNumber":"CN-001"}'
+```
+
+身份规则：
+
+- 当前仅支持 `--as user`；省略 `--as` 时也固定选择 user。
+- 走 `POST /open-apis/contract/v1/summary/query`。
+- `--contract-number` 与 `--contract-name` 必须二选一，分别映射 JSON `contractNumber` 与 `contractName`；接口执行精确匹配。
+- 也可用 `--input-file` / `--data` 提供 JSON object，接受 camelCase 或 snake_case 别名；JSON body 与两个 selector flag 不得混用。
+- 查询可能触发生成，按写请求处理网络不确定性；超时、断网、5xx 或生成中时不得自动重试。
+- `status=1` 表示生成中；输出提示“摘要正在生成中，请稍后再试”，保留 `data.status`，隐藏 `data` 中的摘要内容等其他字段，`--raw` 也遵循此规则。`status=2` 继续展示完整摘要。
+- `--output` 仅支持 `json`、`yaml`、`table`；非法格式会在发送查询请求前被拒绝。
+
+#### `contract-cli contract summary generate`
+
+用途：user 身份直传单个本地文件到生成接口，生成不关联合同记录的独立摘要。
+
+命令：
+
+```bash
+contract-cli contract summary generate --profile contract --as user --file ./SMOKE-001.docx
+contract-cli contract summary generate --profile contract --as user --file ./合同.pdf --file-name SMOKE-001.pdf
+```
+
+身份规则：
+
+- 当前仅支持 `--as user`；省略 `--as` 时也固定选择 user。
+- 直接走 `POST /open-apis/contract/v1/summary/generate`，不经过独立 upload 接口。
+- 请求体使用 `multipart/form-data`，只发送字段名为 `file` 的文件；本地校验单个非空 doc、docx 或 pdf，最大 200MB。
+- 不接受 `--input-file` / `--data`；生成结果不确定时不得自动重试。
+- `--output` 仅支持 `json`、`yaml`、`table`；非法格式会在发送生成请求前被拒绝。
 
 #### `contract-cli contract get`
 

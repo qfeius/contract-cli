@@ -314,7 +314,7 @@ func addConfigHelp(registry map[string]helpTopic) {
 		Summary: "初始化或更新 profile，并写入开放平台、user OAuth 和 app token endpoint 配置。",
 		Usage:   []string{"contract-cli config add [flags]"},
 		Flags: []helpFlag{
-			{"--env <prod>", "环境预设；当前仅支持 prod，默认 prod"},
+			{"--env <prod>", "环境预设；仅支持 prod，默认 prod"},
 			{"--name <profile>", "profile 名称，默认 contract"},
 			{"--resource-metadata-url <url>", "覆盖 protected resource metadata 地址"},
 			{"--redirect-url <url>", "覆盖 OAuth callback 地址"},
@@ -514,6 +514,8 @@ func addContractHelp(registry map[string]helpTopic) {
 			{"contract-cli contract search [flags]", "搜索合同"},
 			{"contract-cli contract search-fields [flags]", "按展示名查询合同搜索字段元数据"},
 			{"contract-cli contract search-v2 [flags]", "app 身份搜索合同 V2"},
+			{"contract-cli contract summary query [flags]", "user 身份按编号或完整名称查询合同摘要"},
+			{"contract-cli contract summary generate [flags]", "user 身份直传文件生成摘要"},
 			{"contract-cli contract get <contract-id> [flags]", "获取合同详情"},
 			{"contract-cli contract sync-user-groups [flags]", "同步用户分组"},
 			{"contract-cli contract text <contract-id> [flags]", "获取合同文本"},
@@ -589,6 +591,56 @@ func addContractHelp(registry map[string]helpTopic) {
 			"app-only: 当前仅支持 --as app。",
 			"走 POST /open-apis/contract/v1/contracts/searchV2。",
 			"复杂条件如 combine_condition、logic_search 直接放入 JSON body。",
+		},
+	}
+	registry["contract summary"] = helpTopic{
+		Name:  "contract summary",
+		Usage: []string{"contract-cli contract summary <subcommand> [flags]"},
+		Commands: []helpCommand{
+			{"contract-cli contract summary query [flags]", "user 身份按编号或完整名称查询合同摘要"},
+			{"contract-cli contract summary generate [flags]", "user 身份直传文件生成合同摘要"},
+		},
+	}
+	registry["contract summary query"] = helpTopic{
+		Name:    "contract summary query",
+		Summary: "user 身份按合同编号或完整名称精确查询摘要；没有可用摘要时服务端可能触发生成。",
+		Usage:   []string{"contract-cli contract summary query --contract-number <number>|--contract-name <full-name> [flags]"},
+		Flags: concatHelpFlags(userMCPCommonFlags(), jsonBodyFlags(), []helpFlag{
+			{"--contract-number <number>", "合同编号，与 --contract-name 二选一；精确匹配"},
+			{"--contract-name <full-name>", "合同完整名称，与 --contract-number 二选一；精确匹配"},
+		}),
+		Examples: []string{
+			"contract-cli contract summary query --profile contract --as user --contract-number CN-001",
+			"contract-cli contract summary query --profile contract --as user --contract-name '采购合同'",
+			"contract-cli contract summary query --profile contract --as user --data '{\"contractNumber\":\"CN-001\"}'",
+		},
+		Notes: []string{
+			"仅支持 --as user；调用人来自用户 Token。",
+			"走 POST /open-apis/contract/v1/summary/query。",
+			"contractNumber 与 contractName 必须二选一；同时也接受 snake_case JSON 别名。",
+			"接口可能触发生成；超时、断网、5xx 或状态为生成中时不要自动重复调用。",
+			"status=1 表示生成中；输出提示“摘要正在生成中，请稍后再试”和状态，不展示此时返回的摘要字段（包括 --raw）。",
+			"--output 仅支持 json、yaml、table；非法格式会在请求前被拒绝。",
+		},
+	}
+	registry["contract summary generate"] = helpTopic{
+		Name:    "contract summary generate",
+		Summary: "user 身份直传本地文件到生成接口，生成独立摘要。",
+		Usage:   []string{"contract-cli contract summary generate --file <path> [flags]"},
+		Flags: concatHelpFlags(userMCPCommonFlags(), []helpFlag{
+			{"--file <path>", "必填，非空 doc、docx 或 pdf 文件；最大 200MB"},
+			{"--file-name <name>", "可选，form-data 文件名；不传使用本地文件名"},
+		}),
+		Examples: []string{
+			"contract-cli contract summary generate --profile contract --as user --file ./SMOKE-001.docx",
+			"contract-cli contract summary generate --profile contract --as user --file ./合同.pdf --file-name SMOKE-001.pdf",
+		},
+		Notes: []string{
+			"仅支持 --as user；调用人来自用户 Token。",
+			"直接走 POST /open-apis/contract/v1/summary/generate，不经过独立 upload 接口。",
+			"请求体使用 multipart/form-data，只发送字段名为 file 的文件；仅支持 doc、docx、pdf，最大 200MB。",
+			"不接受 --input-file / --data；结果不确定时不要自动重试。",
+			"--output 仅支持 json、yaml、table；非法格式会在请求前被拒绝。",
 		},
 	}
 	registry["contract get"] = helpTopic{

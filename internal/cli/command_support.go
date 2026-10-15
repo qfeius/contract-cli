@@ -73,6 +73,9 @@ func parseArgs(args []string, valueFlags map[string]struct{}, boolFlags map[stri
 		}
 		return parsedArgs{}, fmt.Errorf("unknown flag %q", name)
 	}
+	if err := output.ValidateFormat(output.Format(parsed.String("--output"))); err != nil {
+		return parsedArgs{}, err
+	}
 
 	return parsed, nil
 }
@@ -191,12 +194,19 @@ func (a *App) executeOpenPlatformCommand(ctx context.Context, options commandOpt
 	if err != nil {
 		return err
 	}
-	// 只规范规则行搜索的成功空结果；--raw 始终保留服务端原文，其余命令不改变响应结构。
+	// 规则行搜索只规范成功空结果；摘要查询生成中只保留状态和提示语（包括 --raw），其余响应保持原文。
 	if !options.raw && request.Method == http.MethodPost && isRuleOpenPlatformPath(request.Path) && strings.HasSuffix(request.Path, "/table_rows/search") {
 		response.Body = normalizeEmptyRuleTableRowSearchResponse(response.Body)
 	}
+	if request.Method == http.MethodPost && request.Path == contractOpenAPIPathPrefix+"/summary/query" {
+		visibleBody, generating := summaryQueryVisibleBody(response.Body)
+		if generating {
+			a.logger.Info("contract summary query is generating")
+			response.Body = visibleBody
+		}
+	}
 
-	// 先输出原始业务响应，便于调用方读取服务端错误详情；再把矩阵业务码转换为命令错误。
+	// 先输出业务响应，便于调用方读取服务端错误详情；再把矩阵业务码转换为命令错误。
 	outputErr := a.renderOpenPlatformResponse(options, response)
 	if isRuleOpenPlatformPath(request.Path) && len(response.Body) > 0 {
 		var envelope struct {

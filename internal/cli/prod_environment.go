@@ -20,11 +20,12 @@ const (
 )
 
 /*
-environmentOrigins 只返回线上 prod 环境域名，避免旧配置跨环境复用。
+environmentOrigins 返回当前构建支持环境的开平和账号域名，避免旧配置跨环境复用。
 入参 environment（string）为环境名；返回 API 域名、账号域名（string）及是否支持（bool）。
 */
 func environmentOrigins(environment string) (string, string, bool) {
-	if environment == productionEnvironment {
+	switch environment {
+	case productionEnvironment:
 		return productionOpenPlatformOrigin, productionAccountOrigin, true
 	}
 	return "", "", false
@@ -32,16 +33,16 @@ func environmentOrigins(environment string) (string, string, bool) {
 
 // 已移除的 dev/test/blue 域名继续拦截，避免历史配置或重定向重新启用旧环境。
 var blockedProductionBuildHosts = map[string]struct{}{
-	"dev-open.qtech.cn":       {},
-	"dev-myaccount.qtech.cn":  {},
 	"test-open.qtech.cn":      {},
 	"test-myaccount.qtech.cn": {},
+	"dev-open.qtech.cn":       {},
+	"dev-myaccount.qtech.cn":  {},
 	"open-b.qfei.cn":          {},
 	"myaccount-b.qfei.cn":     {},
 }
 
 /*
-validateProductionProfile 校验配置及认证端点都属于线上 prod 环境。
+validateProductionProfile 校验配置及认证端点都属于 profile 声明的受支持环境。
 入参 profile（config.Profile）为配置；返回 error 表示环境或端点不合法。
 */
 func validateProductionProfile(profile config.Profile) error {
@@ -161,12 +162,12 @@ func parseProductionURL(rawURL string) (*url.URL, error) {
 }
 
 /*
-productionProfileError 返回非生产配置的统一错误，提示重新初始化 prod profile。
+productionProfileError 返回环境配置不合法的统一错误，提示重新初始化 profile。
 入参 profileName（string）为配置名；返回 error。
 */
 func productionProfileError(profileName string) error {
 	return fmt.Errorf(
-		"profile %q belongs to a non-production environment and is not allowed in this production build; run `contract-cli config add --env prod --name contract` and authorize again",
+		"profile %q has unsupported or mismatched environment endpoints; run `contract-cli config add --env prod --name contract` and authorize again",
 		profileName,
 	)
 }
@@ -191,7 +192,7 @@ type productionGuardTransport struct {
 }
 
 /*
-RoundTrip 在传输层拒绝已知 dev/test/blue 域名，避免旧配置绕过生产 profile 校验。
+RoundTrip 在传输层拒绝已知未支持环境域名，避免旧配置绕过 profile 校验。
 入参 request（*http.Request）为请求；返回 HTTP 响应和 error。
 */
 func (transport productionGuardTransport) RoundTrip(request *http.Request) (*http.Response, error) {

@@ -107,7 +107,7 @@ contract-cli --version
 
 ### 2. 初始化本地 profile
 
-当前源码构建和正式构建都只支持 `prod`，默认 profile 为 `contract`；将 `--env` 指定为 `test`、`blue` 或 `dev` 会在发请求前拒绝，历史非 prod profile 也不会自动迁移或复用凭据。API 地址为 `https://open.qfei.cn`，账号地址为 `https://myaccount.qfei.cn`。
+当前源码构建仅支持 `prod`，默认 profile 为 `contract`；其他环境会在发请求前被拒绝，旧环境的同名 profile 重新配置时会清理旧认证，避免复用凭据。prod API 地址为 `https://open.qfei.cn`、账号地址为 `https://myaccount.qfei.cn`。
 
 若需验证 npm 包构建流程，可生成独立的本地预发布包；版本中的 `-test` 只是包标记，运行时仅支持 `prod`，也不发布到 npm：
 
@@ -186,6 +186,8 @@ contract-cli auth login --profile contract --as user --no-open-browser
 contract-cli auth login --profile contract --as app --app-id <app_id> --app-secret <app_secret>
 contract-cli auth status --profile contract --as app
 ```
+
+正式包默认使用 `contract` profile 和 `prod` 环境；CLI 不会使用历史非生产 profile 发起授权或业务请求，也不会把旧凭据迁入 prod。更新 Skills 后必须完全退出并重新启动，然后新建任务；已有任务不会热加载新 Skill。
 
 也可以通过环境变量提供应用凭证：
 
@@ -636,6 +638,7 @@ Agent 查询并汇总出口 IP；分页未完成时说明清单不完整。该 s
 | **授权与身份管理**<br>`auth` | 授权、状态查询、退出及默认身份切换 | 1.1 完成授权后继续任务 | **统一授权入口**<br>分别管理个人授权与应用授权；完成一种不会自动获得另一种 |
 | **合同搜索**<br>`contract-cli-contract-search` | 关键词、编号、文本、日期、状态、金额、对象及自定义字段筛选，分页 | 2.1 关键词查找；2.2 组合筛选 | **两种授权，按操作区分**<br>搜索均支持；字段发现仅个人，V2 搜索仅应用；查询参数不同 |
 | **合同管理**<br>`contract-cli-contract` | 详情与文件下载；文件/模板创建及变更、终止申请；提交/重提、流程操作、个人任务与评论；归档材料更新与打印；签署及认证链接、纸质签切换；分享授权、协商、字段选项、枚举、用户组同步与草稿删除 | 3.1 详情；3.2～3.4 创建与变更/终止；3.5～3.7 审批；3.8 归档与打印；3.9 签署；3.10 分享与授权；3.11 协商；3.12～3.14 配置、分组与草稿清理 | **两种授权，按操作区分**<br>详情、创建等均支持；个人任务/评论和枚举仅个人；提交/重提、归档更新、签署等仅应用 |
+| **智书合同摘要**<br>`zhishu-contract-summary` | 按合同编号或完整名称查询摘要，或为单个本地合同文件生成独立摘要 | 合同摘要查询与生成 | **仅个人授权** |
 | **人员查询**<br>`contract-cli-employee` | 按姓名或部门查询人员及状态，取得真实候选 | 4.1 同名人员消歧 | **仅个人授权** |
 | **部门查询**<br>`contract-cli-department` | 查询部门候选、层级和状态 | 5.1 定位业务部门 | **仅个人授权** |
 | **合同智能审查**<br>`contract-cli-review` | 单份外部文件与系统合同审查，主体提取、任务续查、风险展示 | 6.1 外部文件审查；6.2 系统合同审查 | **仅个人授权**<br>还需具备相应合同、正文和审查权限 |
@@ -656,6 +659,7 @@ Agent 查询并汇总出口 IP；分页未完成时说明清单不完整。该 s
 | `auth login/status/use/logout` | user/app | 用于登录、检查授权、切换默认身份和退出登录 |
 | `contract get/search` | user/app | user 搜索按当前用户权限查询；app 搜索支持合同编号精确查询和组合条件 |
 | `contract search-v2` | app-only | 按合同编号做 ES 模糊或分号批量搜索 |
+| `contract summary query/generate` | user-only | 按合同编号或完整名称查询摘要，或上传单个 doc/docx/pdf 文件生成独立摘要 |
 | `contract create/sync-user-groups/text` | user/app | app 创建时请求体需要自行包含 `create_user_id` |
 | `contract upload-file/category list` | user/app | 创建合同前可查询分类树，取当前身份可用末级分类的 `abbreviation` |
 | `contract template list/get/instantiate` | user/app | 模板实例命令只接收请求体，不接模板 ID 位置参数 |
@@ -713,14 +717,12 @@ CLI 版本正确、命令执行成功或 `skills list` 显示完整，都不能�
 
 ```text
 contract-cli --help
-
 ```
 
 查看具体命令参数：
 
 ```text
 contract-cli contract search --help
-
 ```
 
 常用命令：
@@ -735,6 +737,7 @@ contract-cli contract search --help
 | user 权限内搜索合同 | `contract-cli contract search --profile contract --as user --input-file contract-search.json` |
 | app 精确/组合搜索合同 | `contract-cli contract search --profile contract --as app --input-file contract-search.json` |
 | app 模糊/批量搜索合同编号 | `contract-cli contract search-v2 --profile contract --as app --input-file contract-search-v2.json` |
+| 查询/生成合同摘要 | `contract-cli contract summary query --profile contract --as user --contract-number <number>`<br>`contract-cli contract summary generate --profile contract --as user --file ./合同.pdf` |
 | 查询分类并创建合同 | `contract-cli contract category list --profile contract --as app --lang zh-CN`<br>`contract-cli contract create --profile contract --as app --input-file contract-create.json` |
 | 提交/重新提交合同 | `contract-cli contract submit <contract-id> --profile contract --as app`<br>`contract-cli contract resubmit <contract-id> --profile contract --as app --input-file resubmit.json` |
 | 更新/删除草稿合同 | `contract-cli contract patch <contract-id> --profile contract --as app --input-file patch.json`<br>`contract-cli contract delete <contract-id> --profile contract --as app` |

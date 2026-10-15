@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/openplatform"
+	contractsvc "cn.qfei/contract-cli/internal/openplatform/contract"
 )
 
 func (a *App) runContractSearchV2(ctx context.Context, args []string) error {
@@ -26,6 +29,209 @@ func (a *App) runContractSearchV2(ctx context.Context, args []string) error {
 		return err
 	}
 	return a.executeAppOpenPlatformRequest(ctx, options, http.MethodPost, contractOpenAPIPathPrefix+"/contracts/searchV2", nil, body)
+}
+
+func (a *App) runContractSummary(ctx context.Context, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing contract summary subcommand")
+	}
+	switch args[0] {
+	case "query":
+		return a.runContractSummaryQuery(ctx, args[1:])
+	case "generate":
+		return a.runContractSummaryGenerate(ctx, args[1:])
+	default:
+		return fmt.Errorf("unknown contract summary subcommand %q", args[0])
+	}
+}
+
+func (a *App) runContractSummaryQuery(ctx context.Context, args []string) (err error) {
+	a.logger.Info("query contract summary")
+	defer func() {
+		if err != nil {
+			a.logger.Error("query contract summary failed", "error_type", fmt.Sprintf("%T", err))
+		}
+	}()
+	parsed, err := parseArgs(args, commonValueFlags("--contract-number", "--contract-name"), commonBoolFlags())
+	if err != nil {
+		return err
+	}
+	if len(parsed.positionals) != 0 {
+		return fmt.Errorf("usage: contract-cli contract summary query --contract-number <number>|--contract-name <full-name> [flags]")
+	}
+	options := parseCommandOptions(parsed)
+	body, err := resolveContractSummaryQueryBody(parsed, options)
+	if err != nil {
+		return err
+	}
+	return a.executeOpenPlatformCommand(ctx, options, openplatform.Request{
+		Method:         http.MethodPost,
+		Path:           contractOpenAPIPathPrefix + "/summary/query",
+		Body:           body,
+		IdentityPolicy: openplatform.IdentityPolicyUserOnly,
+		// 查询在无可用摘要时会触发后端生成，必须按写请求处理网络不确定性。
+		OperationKind: openplatform.OperationWrite,
+	})
+}
+
+func summaryQueryVisibleBody(body []byte) ([]byte, bool) {
+	var envelope map[string]json.RawMessage
+	if json.Unmarshal(body, &envelope) != nil || strings.TrimSpace(string(envelope["code"])) != "0" || strings.TrimSpace(string(envelope["success"])) == "false" {
+		return body, false
+	}
+	var data map[string]json.RawMessage
+	if json.Unmarshal(envelope["data"], &data) != nil || strings.TrimSpace(string(data["status"])) != "1" {
+		return body, false
+	}
+	visible := map[string]json.RawMessage{"data": json.RawMessage(`{"status":1}`)}
+	for _, key := range []string{"code", "success"} {
+		if value, exists := envelope[key]; exists {
+			visible[key] = value
+		}
+	}
+	visible["msg"] = json.RawMessage(`"摘要正在生成中，请稍后再试"`)
+	filtered, err := json.Marshal(visible)
+	if err != nil {
+		return body, false
+	}
+	return filtered, true
+}
+
+func resolveContractSummaryQueryBody(parsed parsedArgs, options commandOptions) ([]byte, error) {
+	contractNumber := strings.TrimSpace(parsed.String("--contract-number"))
+	contractName := strings.TrimSpace(parsed.String("--contract-name"))
+	hasJSONBody := options.inputFile != "" || options.data != ""
+	if hasJSONBody && (contractNumber != "" || contractName != "") {
+		return nil, fmt.Errorf("contract summary query accepts either selector flags or a JSON body, not both")
+	}
+	if hasJSONBody {
+		body, err := resolveJSONObjectBody(options, true)
+		if err != nil {
+			return nil, err
+		}
+		contractNumber, contractName, err = contractSummarySelectorsFromBody(body)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if (contractNumber == "") == (contractName == "") {
+		return nil, fmt.Errorf("exactly one of --contract-number or --contract-name is required")
+	}
+	if contractNumber != "" {
+		return marshalJSONObject(map[string]any{"contractNumber": contractNumber})
+	}
+	return marshalJSONObject(map[string]any{"contractName": contractName})
+}
+
+func contractSummarySelectorsFromBody(body map[string]any) (string, string, error) {
+	contractNumber, err := contractSummarySelectorValue(body, "contractNumber", "contract_number")
+	if err != nil {
+		return "", "", err
+	}
+	contractName, err := contractSummarySelectorValue(body, "contractName", "contract_name")
+	if err != nil {
+		return "", "", err
+	}
+	return contractNumber, contractName, nil
+}
+
+func contractSummarySelectorValue(body map[string]any, camelKey string, snakeKey string) (string, error) {
+	camelValue, hasCamel := body[camelKey]
+	snakeValue, hasSnake := body[snakeKey]
+	if hasCamel && hasSnake {
+		return "", fmt.Errorf("contract summary query JSON must not contain both %q and %q", camelKey, snakeKey)
+	}
+	value := camelValue
+	if hasSnake {
+		value = snakeValue
+	}
+	if !hasCamel && !hasSnake {
+		return "", nil
+	}
+	text, ok := value.(string)
+	if !ok {
+		return "", fmt.Errorf("contract summary query JSON field %q must be a string", camelKey)
+	}
+	return strings.TrimSpace(text), nil
+}
+
+func (a *App) runContractSummaryGenerate(ctx context.Context, args []string) (err error) {
+	a.logger.Info("generate contract summary")
+	defer func() {
+		if err != nil {
+			a.logger.Error("generate contract summary failed", "error_type", fmt.Sprintf("%T", err))
+		}
+	}()
+	parsed, err := parseArgs(args, commonValueFlags("--file", "--file-name"), commonBoolFlags())
+	if err != nil {
+		return err
+	}
+	if len(parsed.positionals) != 0 {
+		return fmt.Errorf("usage: contract-cli contract summary generate --file <path> [flags]")
+	}
+	options := parseCommandOptions(parsed)
+	if options.inputFile != "" || options.data != "" {
+		return fmt.Errorf("contract summary generate does not accept --input-file or --data; use --file for binary upload")
+	}
+	uploadPath := strings.TrimSpace(parsed.String("--file"))
+	if uploadPath == "" {
+		return fmt.Errorf("--file is required")
+	}
+	fileName := strings.TrimSpace(parsed.String("--file-name"))
+	if fileName == "" {
+		fileName = filepath.Base(uploadPath)
+	}
+	if strings.TrimSpace(fileName) == "" {
+		return fmt.Errorf("--file-name must not be empty")
+	}
+	if err := validateContractSummaryFileName(fileName); err != nil {
+		return err
+	}
+	fileInfo, err := validateContractUploadFile(uploadPath)
+	if err != nil {
+		return err
+	}
+	if fileInfo.Size() == 0 {
+		return fmt.Errorf("contract summary file must not be empty")
+	}
+	a.logger.Info("contract summary generate request started", "profile", emptyFallback(options.profileName, "<current>"), "identity", emptyFallback(options.identity, "<default>"), "file_name", fileName, "size_bytes", fileInfo.Size())
+	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, contractOpenAPIPathPrefix+"/summary/generate", openplatform.IdentityPolicyUserOnly)
+	if err != nil {
+		return err
+	}
+	file, err := os.Open(uploadPath)
+	if err != nil {
+		return fmt.Errorf("open summary generate file: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	bodyReader, contentType := contractsvc.UploadSessionContentBody(fileName, file)
+	defer func() { _ = bodyReader.Close() }()
+	response, err := client.Do(ctx, requestContext, openplatform.Request{
+		Method:     http.MethodPost,
+		Path:       contractOpenAPIPathPrefix + "/summary/generate",
+		BodyReader: bodyReader,
+		Headers: http.Header{
+			"Content-Type": {contentType},
+		},
+		IdentityPolicy: openplatform.IdentityPolicyUserOnly,
+		OperationKind:  openplatform.OperationWrite,
+	})
+	if err != nil {
+		return err
+	}
+	a.logger.Info("contract summary generate completed", "profile", requestContext.Profile.Name, "identity", requestContext.Identity, "file_name", fileName)
+	return a.renderOpenPlatformResponse(options, response)
+}
+
+func validateContractSummaryFileName(fileName string) error {
+	extension := strings.ToLower(strings.TrimPrefix(filepath.Ext(strings.TrimSpace(fileName)), "."))
+	switch extension {
+	case "doc", "docx", "pdf":
+		return nil
+	default:
+		return fmt.Errorf("contract summary generate only supports doc, docx, or pdf files")
+	}
 }
 
 func (a *App) runContractField(ctx context.Context, args []string) error {

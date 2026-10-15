@@ -1,7 +1,7 @@
 interface:
   display_name: "Contract CLI Contract"
   short_description: "Run contract commands with identity-aware field references"
-  default_prompt: "Use $contract-cli-contract to run contract get/create/text/template/file/action/esign/authorization/cooperation commands from bundled references; route contract search and search-v2 to $contract-cli-contract-search. Route intelligent review to $contract-cli-review and review checklist/rule/group management to $contract-cli-review-rule without changing historical identity rules."
+  default_prompt: "Use $contract-cli-contract to run contract get/create/text/template/file/action/esign/authorization/cooperation commands from bundled references; route contract search and search-v2 to $contract-cli-contract-search, summary query/generate to $zhishu-contract-summary, intelligent review to $contract-cli-review, and review checklist/rule/group management to $contract-cli-review-rule without changing historical identity rules."
 
 policy:
   allow_implicit_invocation: true

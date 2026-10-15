@@ -30,6 +30,8 @@ func (a *App) runContract(ctx context.Context, args []string) error {
 		return a.runContractSearchFields(ctx, args[1:])
 	case "search-v2":
 		return a.runContractSearchV2(ctx, args[1:])
+	case "summary":
+		return a.runContractSummary(ctx, args[1:])
 	case "get":
 		return a.runContractGet(ctx, args[1:])
 	case "sync-user-groups":
@@ -341,8 +343,8 @@ func (a *App) runContractDownloadFile(ctx context.Context, args []string) error 
 	}
 
 	format := output.Format(parsed.String("--output"))
-	if format != "" && format != output.FormatJSON && format != output.FormatYAML && format != output.FormatTable {
-		return fmt.Errorf("unsupported output format %q", format)
+	if err := output.ValidateFormat(format); err != nil {
+		return err
 	}
 	if options.raw && parsed.HasValue("--output") {
 		return fmt.Errorf("--raw cannot be combined with --output for file downloads")

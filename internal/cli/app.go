@@ -633,13 +633,9 @@ func (a *App) providerFor(identity config.IdentityKind) authProvider {
 	}
 }
 
-/*
-resolveEnvironment 只提供线上 prod 环境预设，非生产环境在任何网络请求前被拒绝。
-入参 name（string）为环境名；返回 environmentPreset 和 error。
-*/
 func resolveEnvironment(name string) (environmentPreset, error) {
 	switch name {
-	case "prod":
+	case productionEnvironment:
 		return environmentPreset{
 			OpenPlatformBaseURL:            "https://open.qfei.cn",
 			AppTokenEndpoint:               "https://open.qfei.cn/open-apis/auth/v3/tenant_access_token/internal",

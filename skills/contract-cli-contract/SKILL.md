@@ -1,6 +1,6 @@
 ---
 name: contract-cli-contract
-description: "contract-cli 合同命令技能：支持 user/app 双身份下的合同详情、创建、文本、分类、模板、上传、下载和审批详情；支持 user 身份查询/创建审批评论、查询个人任务、通过/拒绝任务；并支持 app 身份下的合同与审批管理。当用户要读取已知合同、创建、更新、下载或办理合同时触发；搜索和筛选合同使用 contract-cli-contract-search，智能审查及审查配置请求分派至独立审查 Skill。"
+description: "contract-cli 合同命令技能：支持 user/app 双身份下的合同详情、创建、文本、分类、模板、上传、下载和审批详情；支持 user 身份查询或生成合同摘要、查询/创建审批评论、查询个人任务、通过/拒绝任务；并支持 app 身份下的合同与审批管理。当用户要读取已知合同、查询摘要、创建、更新、下载或办理合同时触发；搜索和筛选合同使用 contract-cli-contract-search，智能审查及审查配置请求分派至独立审查 Skill。"
 ---
 
 # contract-cli Contract
@@ -13,6 +13,8 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - `contract-cli contract create`
 - `contract-cli contract sync-user-groups`
 - `contract-cli contract text <contract-id>`
+- `contract-cli contract summary query`
+- `contract-cli contract summary generate`
 - `contract-cli contract field update`
 - `contract-cli contract sign switch-to-paper`
 - `contract-cli contract sign-url get <contract-id>`
@@ -53,6 +55,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - 想查询/维护审查清单、规则或规则分组：读 [../contract-cli-review-rule/SKILL.md](../contract-cli-review-rule/SKILL.md)；仅选择已有清单仍属于审查流程。
 - 想直接拿合同详情：用 `contract get`
 - 想搜索或筛选合同（包括合同文本关键词）：读 [合同搜索 Skill](../contract-cli-contract-search/SKILL.md)，由它选择 user、app V1 或 app V2。
+- 想按合同编号/完整名称查询摘要，或为本地文件生成摘要：读 [智书合同摘要 Skill](../zhishu-contract-summary/SKILL.md)
 - 想更新字段选项、拿签署链接、查询流程字段、合同授权、电子签链接或协商列表：读 [references/openapi-gap-commands.md](references/openapi-gap-commands.md)
 - 想直接透传创建合同请求体：用 `contract create`
 - 想拿正文文本：用 `contract text`
@@ -98,7 +101,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - 上传、下载、提交、重提、删除等轻量动作：读 [references/contract-actions-fields.md](references/contract-actions-fields.md)
 - 审批发起请求体：读 [references/approval-fields.md](references/approval-fields.md)
 - user MCP 审批详情、评论、任务和统一文件下载：读 [references/approval-mcp-fields.md](references/approval-mcp-fields.md)
-- 新增 app-only 补齐接口命令：读 [references/openapi-gap-commands.md](references/openapi-gap-commands.md)
+- 新增开放平台补齐接口命令：读 [references/openapi-gap-commands.md](references/openapi-gap-commands.md)
 - `contract sync-user-groups`、`contract text`、`contract enum list` 当前只补命令级约束；本技能未找到可补到 `contract create` 级别的官方字段页
 
 ### P3 接口参数参考
@@ -120,7 +123,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 - `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get` 同时支持 `--as user` 和 `--as app`
 - `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit`、`contract resubmit`、`contract patch`、`contract delete`、`contract print-file`、`contract share get`、`contract share batch-create`、`contract cooperation link get`、`contract cooperation record get`、`contract cooperation search`、`contract cooperation file get/download`、`contract approval start` 当前仅支持 `--as app`
-- `contract approval comment list/create`、`contract approval task list/approve/reject` 当前仅支持 `--as user`
+- `contract summary query/generate`、`contract approval comment list/create`、`contract approval task list/approve/reject` 当前仅支持 `--as user`
 - `contract create` 当前直接接收原始创建请求体，不额外暴露 `--template`
 - `contract create --as app` 走 `POST /open-apis/contract/v1/contracts`
 - `contract create --as app` 的请求体必须自己带 `create_user_id`
@@ -152,6 +155,8 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - `contract upload-file` 不接受 `--input-file` / `--data`
 - `contract upload-file` 本地限制文件大小小于等于 `200MB`
 - `contract submit --as app` 走 `POST /open-apis/contract/v1/contracts/{contract_id}/submit`，`--input-file` / `--data` 可选
+- `contract summary query --as user` 走 `POST /open-apis/contract/v1/summary/query`，按合同编号或完整名称精确匹配；查询可能触发生成，结果不确定时不自动重试
+- `contract summary generate --as user` 直接走 `POST /open-apis/contract/v1/summary/generate`，使用单个非空 doc/docx/pdf `--file <path>` 作为 multipart/form-data 字段 `file`；最大 200MB，不接受 `--input-file` / `--data`
 - `contract field update --as app` 走 `PUT /open-apis/contract/v1/attribute_definition`，请求体直接透传
 - `contract sign switch-to-paper --as app` 走 `POST /open-apis/contract/v1/contracts/signType/switchToPaper`，用 query `business_id` 和 `business_type_code`
 - `contract sign-url get --as app` 走 `GET /open-apis/contract/v1/contracts/{contract_id}/sign_url`

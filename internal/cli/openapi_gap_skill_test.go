@@ -23,6 +23,8 @@ func TestOpenAPIGapSkillsCoverNewCommands(t *testing.T) {
 			path: filepath.Join(root, "skills", "contract-cli-contract", "references", "openapi-gap-commands.md"),
 			fragments: []string{
 				"contract-cli contract search-v2",
+				"contract-cli contract summary query --profile contract --as user --contract-number",
+				"contract-cli contract summary generate --profile contract --as user --file",
 				"contract-cli contract field update",
 				"contract-cli contract cooperation file download",
 				"--force",
@@ -152,9 +154,11 @@ func TestOpenAPIGapSkillsDoNotKeepObsoleteCoverageClaims(t *testing.T) {
 			path: filepath.Join(root, "skills", "contract-cli-shared", "SKILL.md"),
 			forbidden: []string{
 				"当前结构化命令里只有",
+				"app-only 命令包括 `contract search-v2`、`contract summary query/generate`",
 			},
 			required: []string{
 				"同时支持 `user` 与 `app` 的结构化业务命令",
+				"user-only 命令包括 `contract search-fields`、`contract summary query/generate`",
 				"app-only 命令包括",
 				"`contract search-v2`",
 				"`contract authorization grant`",
@@ -218,6 +222,8 @@ func TestContractSkillReferencesStayAlignedWithOpenAPIGapCommands(t *testing.T) 
 	commands := readTextFile(t, filepath.Join(root, "skills", "contract-cli-contract", "references", "commands.md"))
 	for _, required := range []string{
 		"contract-cli contract search-v2 --profile contract --as app --input-file search-v2.json",
+		"contract-cli contract summary query --profile contract --as user --contract-number CN-001",
+		"contract-cli contract summary generate --profile contract --as user --file ./SMOKE-001.docx",
 		"contract-cli contract field update --profile contract --as app --input-file field-update.json",
 		"contract-cli contract authorization grant --profile contract --as app --input-file authorization.json",
 		"contract-cli contract esign personal-auth-url --profile contract --as app --input-file psn-auth-url.json",
@@ -226,6 +232,7 @@ func TestContractSkillReferencesStayAlignedWithOpenAPIGapCommands(t *testing.T) 
 		"contract-cli contract cooperation file get <contract-id> --profile contract --as app",
 		"contract-cli contract cooperation file download <file-id> --profile contract --as app --output-file ./cooperation.docx",
 		"`contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`",
+		"`contract summary query/generate` 当前仅支持 user 身份",
 		"`contract share get`、`contract share batch-create`、`contract cooperation link get`、`contract cooperation record get`、`contract cooperation search`、`contract cooperation file get/download`",
 	} {
 		if !strings.Contains(commands, required) {

@@ -94,6 +94,9 @@ type UncertainWriteError struct {
 }
 
 func (e *UncertainWriteError) Error() string {
+	if e != nil && e.Cause != nil {
+		return fmt.Sprintf("执行结果不确定，请先查询确认: %s", e.Cause)
+	}
 	return "执行结果不确定，请先查询确认"
 }
 

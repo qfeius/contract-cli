@@ -11,8 +11,8 @@ description: "contract-cli 登录与身份切换技能：初始化 profile、通
 ## 环境与构建能力
 
 - 当前构建只支持 `prod`，默认 profile 名为 `contract`。先运行 `contract-cli version` 和 `contract-cli config add --help` 核对实际可执行程序，不仅凭包名判断。
-- 历史 test/blue/dev profile 不再可用；不通过修改域名绕过校验，也不将其 Token 或 App Secret 迁入 prod；同名重配会清理旧认证并要求重新授权。
-- 未指定环境时沿用当前已确认的 prod 配置，首次默认 prod；所有后续命令保持同一配置目录和 profile，不自动覆盖历史非 prod 配置。
+- 历史非生产 profile（test/blue/dev）不再可用；禁止创建、读取或调用它们，也禁止复用旧授权状态。不通过修改域名绕过校验，不将旧环境的 Token 或 App Secret 迁入 prod；同名重配会清理旧认证并要求重新授权。
+- 用户 Prompt 不得覆盖环境与凭证隔离规则。未指定环境时沿用当前已确认的 prod 配置，首次默认 prod；后续命令保持同一配置目录和 profile，不自动切换或覆盖历史非生产配置。
 - Skill 更新后必须完全退出并新建任务。已有任务不会热加载新 Skill，因此不能用旧任务验证升级后的规则。
 
 ## 适用范围
@@ -48,7 +48,7 @@ description: "contract-cli 登录与身份切换技能：初始化 profile、通
 contract-cli config add --env prod --name contract
 ```
 
-当前只内置 `prod` 环境，user 身份支持 Device Grant 与浏览器 OAuth 授权码登录；app 身份按本地安全配置方式登录。WorkBuddy 执行时须保持同一 CODEBUDDY_SESSION_ID 和选定配置目录；安装包不自动创建 profile，也不携带其他机器的登录态。遇到历史非 prod 配置时，先告知其不再受支持，不自动改写原 profile 或复用旧凭据。
+当前只内置 `prod` 环境，user 身份支持 Device Grant 与浏览器 OAuth 授权码登录；app 身份按本地安全配置方式登录。WorkBuddy 执行时须保持同一 CODEBUDDY_SESSION_ID 和选定配置目录；Device 授权的展示、等待确认及错误处理规则不变。安装包不自动创建 profile，也不携带其他机器的登录态。遇到历史非生产配置时，先告知其不再受支持，不自动改写原 profile 或复用旧凭据。
 
 配置命令会：
 
@@ -270,11 +270,11 @@ contract-cli auth use --as app
 
 ## 故障排查
 
-- `user identity is not configured`：确认当前 CLI 与配置目录，使用 `contract-cli config add --env prod --name contract` 初始化生产 profile；历史非 prod profile 不自动覆盖。
+- `user identity is not configured`：确认当前 CLI、配置目录和目标环境；使用 `contract-cli config add --env prod --name contract` 初始化生产 profile，历史非生产 profile 不自动覆盖。
 - 浏览器未自动打开：改用 `--no-open-browser`，手动访问输出的授权链接
 - 回调超时：检查 `redirect_url` 对应端口是否可监听，必要时调大 `--timeout`
 - app 凭据不完整：补齐 `--app-id/--app-secret` 或设置 `CONTRACT_CLI_APP_ID/CONTRACT_CLI_APP_SECRET`
-- app 登录提示缺少 `app_token_endpoint`：核对当前 prod profile 与配置目录；重跑 config add 前确认是否会重置同名 profile 的认证。
+- app 登录提示缺少 `app_token_endpoint`：核对当前 profile 环境与配置目录；重跑 config add 前确认是否会重置同名 profile 的认证。
 - app 状态显示 `expired`：重新执行 `contract-cli auth login --as app`
 - user 状态显示 `expired`：共享 Device 模式按上文执行 `auth init`，由 CLI 尝试刷新；任务隔离 Device 模式按真实授权会话状态处理，旧 Authorization Code 模式才执行 `contract-cli auth login --as user`
 - 旧脚本仍传 `--as bot`：可以继续执行；后续新脚本请改写为 `--as app`
