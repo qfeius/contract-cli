@@ -94,7 +94,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - `import apply --rows 1,3 --batch-size 10` 仅执行所选计划行和本次上限。交互执行可用 `--batch-size 1`。运行中收到暂停要求时调用 `import pause --plan-id`，当前行写入与回读结束后停批；`resume` 清除暂停标记，并将可续跑计划更新为 `status=ready`、清空旧 reason，再次 apply 继续。`needs_verification` 仍须先调用 `verify`，`resume` 不会放行未核验行。get 查询进度，cancel 取消尚未执行的后续操作。
 - 不确定结果立即停批。用 get/list/search 核验后重新整理未完成输入并确认新计划。不直接编辑本地计划；已停用的旧 guarded 计划先核验再重建。
 - plan 绑定列头和全量规则行摘要、身份、应用与环境指纹，24 小时过期；user 额外绑定凭证摘要，重新登录或 Token 轮换后重新生成并确认（不保存原始 Token）。每次 apply 前行快照变化使计划失效，本计划经回读验证的写入会推进快照；仍没有服务端原子 revision 条件写。结构变更后重新计划。
-- 新接口已提供结构化命令，继续遵守项目 api call 关闭约定。
+- 审批矩阵接口已提供结构化命令，本 Skill 继续使用这些命令。项目的 `api call --channel web` 已开放为已验证业务配方的 Open Web 执行通道，不替代矩阵命令及其写入确认、计划与回读规则。
 - 缺信息、歧义、重复导入、部分确认、暂停恢复、结果不确定或目标切换时，参见 [交互与组合操作契约](references/interaction-contract.md)。
 
 ## 参数文档

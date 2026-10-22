@@ -22,7 +22,7 @@ func TestReviewUpload50MiB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	for _, size := range []int64{(2 << 20) + 1, limit, limit + 1} {
 		if err := file.Truncate(size); err != nil {
 			t.Fatal(err)

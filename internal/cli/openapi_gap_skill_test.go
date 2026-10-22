@@ -256,7 +256,7 @@ func TestContractSkillRoutingDoesNotCollapseCooperationCommandsToGet(t *testing.
 	}
 	for _, required := range []string{
 		"想查分享、批量分享、协商链接/记录：用 `contract share ...`、`contract share batch-create`、`contract cooperation link get` 或 `contract cooperation record get --as app`",
-		"想查协商列表或协商文件：用 `contract cooperation search`、`contract cooperation file get` 或 `contract cooperation file download --as app`",
+		"想查个人协商列表、详情或历史文件：使用 [contract-cooperation](../contract-cooperation/SKILL.md)，显式传 `--as user`；app 查询列表或文件使用 `contract cooperation search --as app`、`contract cooperation file get` 或 `contract cooperation file download --as app`",
 	} {
 		if !strings.Contains(skill, required) {
 			t.Fatalf("contract skill missing precise cooperation routing %q", required)
@@ -275,7 +275,7 @@ func TestSharedSkillRoutesAllCurrentContractCapabilities(t *testing.T) {
 	}
 }
 
-func TestDisabledAPICallAgentMetadataDoesNotSuggestInvocation(t *testing.T) {
+func TestNonStandaloneAPICallAgentMetadataDoesNotSuggestInvocation(t *testing.T) {
 	t.Parallel()
 
 	content := readTextFile(t, filepath.Join("..", "..", "skills", "contract-cli-api-call", "agents", "openai.yaml"))
@@ -284,7 +284,7 @@ func TestDisabledAPICallAgentMetadataDoesNotSuggestInvocation(t *testing.T) {
 		"allow_implicit_invocation: true",
 	} {
 		if strings.Contains(content, forbidden) {
-			t.Fatalf("disabled api-call agent metadata should not suggest invocation: %q", forbidden)
+			t.Fatalf("non-standalone api-call metadata should not suggest direct invocation: %q", forbidden)
 		}
 	}
 }

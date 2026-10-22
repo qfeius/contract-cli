@@ -81,8 +81,8 @@ func RewriteVersion(content []byte, version string) []byte {
 			lines = append(lines[:i], append([]string{"version: " + version}, lines[i:]...)...)
 			return []byte(strings.Join(lines, "\n"))
 		}
-		key, _, ok := strings.Cut(line, ":")
-		if ok && strings.TrimSpace(key) == "version" {
+		key, _, ok := strings.Cut(lines[i], ":")
+		if ok && strings.TrimRight(key, " \t") == "version" {
 			lines[i] = "version: " + version
 			return []byte(strings.Join(lines, "\n"))
 		}

@@ -1,0 +1,2889 @@
+# Development draft. Ordinary explicit test validates selected entries; full-impact readiness remains separate.
+version: 2
+name: contract-handover
+business:
+  intent: 将合同管理页面的合同交接转为可审核的Skill流程，复用内部页面接口；不增加专用CLI命令。
+  page:
+    route: /management/mine
+    related_routes:
+    - /management/all
+    entry: 勾选合同列表底部交接；选择合同接收人后提交
+  scope:
+    includes:
+    - 单个合同入口
+    - 多个合同入口
+    - 全部搜索结果经完整枚举冻结后的指定清单
+    - 合同组及模板多合同组，前提是完整影响预检可证明
+    - 混合清单排除不适合项并确认可交接项
+    - Codex首轮适配与待测试验证清单
+    excludes:
+    - 审批任务转交/审批干预
+    - 管理员离职一键交接
+    - 独立变更需求人列表
+    - 跨租户交接
+    - app身份执行
+    - 自动重试写请求
+    - 动态异步搜索交接
+    - 未说明关联影响或未获得对应授权的实际写入
+    - 将普通指定入口核心测试结果宣称为全量关联或全部搜索结果通过
+  ordinary_core_test:
+    enabled: true
+    environment: test
+    priority: PRIMARY_ORDINARY_HANDOVER
+    scope_mode: ORDINARY_SELECTED_ENTRIES
+    selection_mode: EXPLICIT
+    result_scope: SELECTED_ENTRIES_ONLY
+    complete_related_inventory_required: false
+    related_effects_management: SERVER_MANAGED
+    side_effect_evidence_required_for_core_pass: false
+    single_batch_only: true
+    prerequisites:
+    - 当前用户身份、租户、功能权限和唯一接收人已读取；内部ID无损，沿用既有个人授权
+    - 指定入口详情已读取，真实业务类型由普通处理器处理；assemblyId字段明确为null或0，不含实际合同组及成员
+    - 读取状态、当前归属人和申请人；按普通同人/不同人规则展示预期，服务端最终判定准入
+    - 指定入口有可用的只读回读及本次授权/新增交接记录核验方法
+    confirmation: 在一份清单中确认指定测试入口、接收人、角色变化，并知悉同group关联记录和相关草稿由后端按现有规则处理；不要求第二次确认同一影响说明
+    disclosure: 接口可能联动同组关联记录，并按系统规则处理相关草稿；完整关联范围未独立枚举，本次核验指定合同的交接结果。
+    stop_if: 用户要求其他任何关联记录/草稿均不变且无法证明；或身份、目标、真实类型、必要角色、回读路径不明确；或关键状态变化；或执行不确定。
+    result_requirements:
+    - 本次响应授权或写前不存在的新增记录与指定合同、接收人对应
+    - 写后归属人和申请人按交接前关系核对，不能只凭总success
+    - 部门、需求人、流程和通知有现成观察则另报；缺独立副作用证据不阻塞指定合同核心结果
+    evidence_format:
+      run: scope_mode=ORDINARY_SELECTED_ENTRIES、environment=test、result_scope=SELECTED_ENTRIES_ONLY、all_related_effects_verified=false
+      related_effects: management=SERVER_MANAGED、disclosed=true、strict_no_related_changes=false、非空evidence_ref
+      resources: entries/affected/before/after每条资源行显式resource_type和handler均为ORDINARY_CONTRACT，assembly_id保留真实读取的null或字符串0
+      manifest: affected与entries的ID集合相同，每个entry.impact_ids只指自身；这是指定核验集合，不是后端全部实际影响范围
+      write: impact_complete=false，实际调用只传原handover参数，不把验收字段发送给后端
+      confirmation: 正常user_confirmed与清单绑定之外，related_effects_accepted=true来源于同一次用户确认
+    limits: 仅受控test单批指定普通入口；不适用于ALL_RESULTS、合同组、跨批自动续发或正常生产执行。不升级全包RUNNABLE，不宣称全部关联副作用通过。
+  execution_policy:
+    selection_mode: FROZEN_RESOURCE_MANIFEST
+    all_results_strategy: ENUMERATE_CONFIRM_SYNC_BATCHES
+    write_recipe: handover
+    async_dynamic_search_allowed: false
+    max_entry_resources_per_batch: 100
+    entry_count_unit: DEDUPLICATED_ENTRY_RESOURCES
+    expanded_impact_count_separate: true
+    keep_group_together: true
+    mixed_batch_policy: EXPLAIN_EXCLUSIONS_THEN_CONFIRM_ELIGIBLE
+    reconfirm_on_drift: true
+    blind_retry_allowed: false
+    cross_channel_replay_allowed: false
+    batches_serial: true
+    batches_execution: SERIAL
+    stop_remaining_batches_on_uncertain_result: true
+    stop_on_uncertain_write: true
+    sync_batching_is_page_limit_provenance: true
+    limit_note: 100来自页面页内勾选限制；不是服务端验证出的安全容量/事务/性能保证。单个影响闭包超过100入口不拆组，列入排除。
+  impact_gate:
+    ordinary_test_override: business.ordinary_core_test；此范围不要求完整关联枚举，必须保留impact_complete=false及影响说明。其余场景按本节完整范围要求。
+    required: true
+    complete_group_membership_required: true
+    assembly_membership_required: true
+    draft_effects_required: true
+    current_status: UNRESOLVED
+    applies_before: handover
+    closed_by: 完整范围场景按处理器证明完整影响集合及回查方法；指定普通test优先按ordinary_core_test核验指定入口，不把本节全量关联缺口套成其统一拒绝条件。组成员真实部门仍不校验。实际副作用在写后核实，不要求写前已有成功证据。
+    fail_closed: true
+    unresolved_scenarios:
+    - 普通ContractHandover按groupId展开全部valid资源，尚无已证明完整枚举页面配方
+    - assembly有后继时可展开同groupId全部valid assembly；成员分页只覆盖单个assembly
+    - 普通ContractHandover灰度关闭时，信息修改/作废/正常终止草稿及特定归档后继补充协议草稿可能valid=false，尚无完整枚举；该清理分支不套用到ContractAssemblyHandover
+    - 确认后到写入之间无原子版本锁，成员或状态可能变化
+    known_read_coverage:
+      single_assembly_children: CODE_CONFIRMED_PAGINATION_WITH_COUNT_RECONCILIATION
+      all_valid_contracts_by_group: UNRESOLVED
+      all_valid_assemblies_by_group: UNRESOLVED
+      all_affected_drafts: UNRESOLVED
+      current_gray_flag: SOURCE_FIELD_FOUND_NOT_RUNTIME_VERIFIED
+      single_assembly_member_roles: CODE_CONFIRMED_PARENT_AUTHORIZED_CHILDREN_INFO
+    forbidden_inferences:
+    - checkDrafts只返回第一个候选，不是全量预检
+    - relation不是group资源清单
+    - contractChange/records排除非合同类型且过滤正常终止草稿
+    - 普通处理器的previousId/nextId为空不能证明无其他group成员；assembly须按已核分支单独判断
+    - ES聚合成员不等于数据库全部valid影响资源
+    - 成员department缺省/null不能解释成合同未设置部门
+    - 员工部门或父组部门不能代替成员真实合同部门
+    - 父组info.contracts与childrenInfo同源，成员部门缺省时不猜值；该字段无需补读或核验
+    - 尚无本次BPM/授权/通知成功证据不单独构成写前循环门禁；其他必需事实缺失仍按原门禁处理，组成员部门缺读明确不属于门禁
+    evaluation_unit: PER_RESOURCE_IMPACT_CLOSURE
+    impact_scope_complete: false
+    scenario_closure:
+      single_assembly_without_successor:
+        source_branch: ContractAssemblyHandover.java:87-95
+        conditions:
+        - 本体type10/17、内部ID/tenant/group由详情核实
+        - nextId明确为空或<=0，且这是assembly处理器已核仅取自身分支，不推广至普通合同
+        - 全部有效children分页+前后childrenCount一致并按contractId保存身份/状态/角色/需求人写前快照
+        - 按父组当前角色计算ownerFlag/submitterFlag，确认本体字段和成员角色/需求人变化及BPM、授权、通知预期；明确执行后核验方式
+        - status3无后继组不强加普通ContractHandover草稿失效枚举，也不要求用于草稿准入的灰度；其他状态按实际准入分支判断
+        - 写前重新读取仍满足；本次BPM、授权、通知实际结果在执行后核实，不要求写前已有本次成功证据
+        scope: 一个assembly本体+该assemblyId全部有效子合同；不据此宣布整个页面范围完成
+        current_blockers: []
+        membership_closure_is_not_full_execution_readiness: true
+        member_department_validation_required: false
+      assembly_with_successor: UNRESOLVED_ALL_VALID_ASSEMBLIES_BY_GROUP
+      non_assembly_group: 完整关联枚举仍未解决；指定普通入口可按ordinary_core_test受控验证，仅核验指定入口
+    branch_requirements:
+      ContractHandover:
+        ordinary_core_test: 指定普通入口的关联/草稿由后端现有规则处理，客户端说明潜在影响；下列完整枚举要求仅用于全量影响验收，不阻塞已确认核心test
+        group_membership: 全部valid同group资源必须完整
+        draft_cleanup: 代码255-283的灰度关闭分支须完整识别信息修改/作废/正常终止及特定后继补充协议草稿
+        gray_flag: 在状态准入或草稿失效判断依赖灰度时必须读取确证
+      ContractAssemblyHandover:
+        membership: nextId<=0仅该assembly及其全部有效成员；有后继时须完整识别同group全部assembly及成员
+        ordinary_draft_cleanup_applies: false
+        gray_flag: 只在当前状态准入依赖灰度时要求；status3按固定允许范围判定，不因未查普通handler草稿而拒绝
+        member_department: 由后端按父组ownerFlag自动联动，无旧部门入参；按用户决定不读取或校验成员真实部门，不纳入预检、场景闭合或交接结果判据。
+      side_effect_verification_phase:
+        before_write: 推导本次父组ownerFlag/submitterFlag、BPM/授权/通知具体预期，并明确合法可用的写后核验方法
+        after_write: 核对本次真实执行结果；不能用历史成功代替，也不能把尚未发生的本次结果设为写前必备事实
+  role_rules:
+    current_owner_source: CURRENT_RESOURCE
+    demand_employee_ids_unchanged: true
+    department_rule: FIRST_RECIPIENT_DEPARTMENT_OR_PRESERVE
+    role_specific_update: true
+    contract_assembly_rules_separate: true
+    submitter_only_handover_allowed: false
+    submitter_only_rule_scope: NON_ASSEMBLY_CONTRACT_HANDOVER_HANDLER
+    owner_submitter_update:
+      equal:
+        owner: RECIPIENT
+        submitter: RECIPIENT
+      different:
+        owner: RECIPIENT
+        submitter: PRESERVE
+    owner_submitter_update_scope: 普通处理器的owner交接路径；第三方按旧owner计算角色，不能把规则推广到assembly。
+    initial_owner_rule:
+      scope: ORDINARY_CREATE_AND_DRAFT_INITIALIZATION
+      equals_creator: true
+      exceptions:
+      - HISTORICAL_SNAPSHOT
+      - AUTOMATIC_COMPLETION_RECORD
+      note: 普通新建/复制初始化成立；历史原合同快照继承原owner，自动办结记录createEmployee可能机器人而owner继承原owner；交接时始终取当前owner。
+    assembly:
+      handler_specific: true
+      submitter_only_handover_allowed: true
+      members_follow_assembly_role_booleans: true
+      note: 父组按flags改owner/submitter；有效交接后父组总按接收人首部门更新，空部门保留。全部有效子合同继承父组flags，只有ownerFlag时改子合同部门；不按子合同自身角色重算。
+      third_party_actual_actor: OLD_ASSEMBLY_OWNER
+      flags_source: ASSEMBLY_BEFORE_STATE
+      parent_department_update: ANY_EFFECTIVE_HANDOVER
+      child_department_update: OWNER_FLAG_ONLY
+      parent_authorization_covers_verified_children: true
+      owner_flag: actualActor == oldAssemblyOwner && receiver != oldAssemblyOwner
+      submitter_flag: actualActor == oldAssemblySubmitter && receiver != oldAssemblySubmitter
+      actual_actor: 'serverAdmin && operator != oldAssemblyOwner && operator != oldAssemblySubmitter ? oldAssemblyOwner
+        : operator'
+      no_flags: NO_CHANGE
+  permission_rules:
+    server_final_decision: true
+    agent_admin_override_allowed: false
+    third_party_requires_not_owner_and_not_submitter: true
+    relationship_alone_sufficient: false
+    third_party_requires_all_handover_function: true
+    personal_scope_note: ContractBase.isOwner包含owner或demandEmployees；关系仅参与过滤，不保证实际可交接。多项Service过滤局部变量未写回DTO，不能当成可靠逐项成功结果。
+  status_rules:
+    normal_code_range:
+    - 2
+    - 17
+    extra_allowed_codes:
+    - 23
+    cancelled_code: 1
+    draft_cooperation: 依赖灰度或补充协议专门分支；未读取当前灰度不得猜测可交接
+    revoked_rejected: 代码可允许，与页面历史提示存在差异；运行待验证
+    assembly_members: 子合同位于进行中的assembly时普通入口可能被拒绝；应按真实组与流程状态判断
+  result_policy:
+    match_current_execution: true
+    match_resource_id: true
+    match_receiver: true
+    match_tenant: true
+    compare_before_after: true
+    require_current_handover_record: true
+    missing_record: UNVERIFIED
+    preexisting_target_owner: NOT_NEW_SUCCESS
+    http_success_only: UNVERIFIED
+    empty_authorizations: UNVERIFIED
+    missing_authorization: UNVERIFIED
+    read_permission_lost: UNVERIFIED
+    side_effects_not_observed: UNVERIFIED
+    allow_batch_atomic_success_assumption: false
+    states:
+    - VERIFIED_CHANGED
+    - NOT_NEW_SUCCESS
+    - EXCLUDED
+    - FAILED
+    - UNVERIFIED
+    - NOT_EXECUTED
+    ordinary_fields:
+    - ownerEmployee.employeeId
+    - submitterEmployee.employeeId
+    - department.departmentId
+    - demandEmployees[*].employeeId
+    assembly_fields:
+    - ownerEmployee.employeeId
+    - submitterEmployee.employeeId
+    - department.departmentId
+    - childrenCount
+    - contracts[*].contractId
+    - contracts[*].assemblyId
+    - contracts[*].ownerEmployee.employeeId
+    - contracts[*].submitterEmployee.employeeId
+    - contracts[*].demandEmployees[*].employeeId
+    record_matching: 本次返回authorizations中的businessId/businessTypeCode/authorizedEmployeeId/authorizedTenantId及新增记录时间，与写前快照中不存在的handover记录相互印证；仅当前owner相等或旧记录不算。
+    require_current_handover_record_scope: 直接交接资源/assembly本体；组内被更新成员不强求独立授权记录
+    assembly_child_evidence:
+      parent_authorization_required: true
+      complete_membership_required: true
+      child_readback_required: true
+      child_authorization_record_required: false
+      membership_count_reconciliation_required: true
+      actual_contract_department_readback_required: false
+      missing_department: NOT_APPLICABLE_TO_RESULT
+      department_null_semantics: UNKNOWN_NOT_PROVIDED
+      parent_or_employee_department_substitution_allowed: false
+      required_member_fields:
+      - contractId
+      - assemblyId
+      - businessTypeCode
+      - contractStatusCode
+      - ownerEmployee.employeeId
+      - submitterEmployee.employeeId
+      - demandEmployees[*].employeeId
+      required_snapshot_fields_exclude:
+      - department
+      - department.departmentId
+      success_criteria_exclude:
+      - member_contract_department
+      department_validation_policy: business.assembly_member_department_policy
+    assembly_fields_scope: department.departmentId仅指父组本体；成员字段按assembly_child_evidence.required_member_fields核对，不将成员部门缺读计作失败或UNVERIFIED。
+    side_effects_not_observed_scope: 普通核心test仅指该副作用未核实，不降低已有证据的指定合同角色结果；其他场景仅适用于仍要求核验的副作用，组成员部门不必核验。
+  side_effects:
+  - 归属人交接可改部门；需求人列表不改。
+  - 旧OWNER/SUBMITTER交接授权停用并建立新授权；阅读权限还受流程/分享/数据权限影响，不能承诺旧owner必失去或必保留阅读。
+  - 普通流程BPM owner切换失败可能仅记日志而不中断；组流程BPM失败会抛错，事务/跨服务一致性须实际验证。
+  - 普通ContractHandover仅撤回/拒绝等特定分支尝试转移旧申请人首个任务，不是全部审批待办统一交接。
+  - 可能更新协商角色、通知及履约参与/提醒；提醒自定义规则和跨服务结果未全量验证。
+  - 普通ContractHandover灰度关闭的相关草稿可能被置为无效，不能把交接描述成只有负责人字段变化。
+  error_recovery:
+    before_write_failure: 停止依赖写入，展示缺少的权限、候选、详情或影响事实；可继续无依赖的只读准备。
+    business_rejected: 记录响应code/message、该批未知项并回读；不要假设整批回滚；停止后续批次。
+    network_timeout_or_process_loss: 将当前批标UNVERIFIED，停止后续批次；只读回查本次影响项与授权记录，不自动重试也不切通道重放。
+    partial_result: 逐项保留完成、跳过、失败、待核实和未执行。自动执行在不确定时停止；收到明确续办指令后按resume_policy创建独立新清单，原不确定项不重放。
+    authorization_expired: 只通过现有CLI/MCP官方授权流程恢复；恢复后重读租户和身份，不记录或要求粘贴凭证。
+    post_write_no_access: 报告回读权限不足，保持UNVERIFIED；不切换到接收人/管理员伪装回查。
+  unselected_candidates:
+  - path: /clm/api/permission/asyncHandoverContractList
+    reason: 执行时动态搜索，框架可重试，未找到适配交接的完整任务结果/逐项失败查询；用户已选固定清单同步批次。
+  - path: /clm/api/contract/checkDrafts
+    reason: 返回首个草稿/协商候选，不是完整影响集合。
+  - path: /clm/api/contractChange/records
+    reason: 过滤业务类型与正常终止草稿，不能枚举全部valid group资源。
+  - path: /clm/api/relation
+    reason: 关系表视图不等于交接group资源闭包。
+  - path: /clm/api/composition/contractAndTask
+    reason: 页面当前聚合详情含checkAndUpdateTradingPartyStatus；不选作最小预检/回查。
+  - path: /clm/api/sso/getUser
+    reason: systemConfigVO.isSupportNonOwnerStartProcess可定位当前灰度候选字段；完整响应可含身份敏感字段，尚未做最小字段读取及运行核验，不拿缺失值当false。
+  development_validation_enabled: true
+  development_validation:
+    environment: test
+    require_closed_scenario: true
+    require_read_recipes_runtime_verified: true
+    require_explicit_test_confirmation: true
+    requires_dedicated_test_manifest: true
+    normal_business_execution_allowed: false
+    promote_package_readiness_automatically: false
+    closed_scenario_definition: 普通核心测试为指定入口、接收人、当前角色和回读方法明确且关联处理已向用户说明并确认；不宣称完整关联范围闭合。其余场景仍要求完整影响集合。
+    purpose: 优先按ordinary_core_test验证指定普通合同单份与多份调用链；完整范围场景另按impact_gate。写操作仍需具体test清单确认，全包缺口和测试结果分别记录，不自动开放正常业务执行。
+  resume_policy:
+    requires_explicit_user_instruction: true
+    preflight_remaining_again: true
+    exclude_uncertain_resources: true
+    require_no_overlap_with_uncertain_impacts: true
+    reuse_existing_confirmation_if_unchanged: true
+    reconfirm_only_if_scope_receiver_or_impact_changed: true
+    new_execution_linked_to_previous: true
+    repeat_uncertain_write_allowed: false
+    note: 明确指向原清单剩余独立对象的续办指令可作为授权；先保留并说明原不确定结果，新执行仅包含重新预检合格的独立对象。重复原请求需先查清实际结果，不能仅凭用户说再试一次而盲目重放。
+  readback_dispatch:
+    normal_handler_resources:
+      before: contract_detail
+      after: verify_contract_detail
+    assembly_handler_parent:
+      before: assembly_detail
+      after: verify_assembly_detail
+    assembly_handler_members:
+      before: assembly_children
+      after: verify_assembly_children
+      force_normal_contract_info: false
+      department_validation_required: false
+      department_missing_value_effect: NONE_ON_PREFLIGHT_OR_HANDOVER_RESULT
+    unclassified_resource: BLOCK_UNTIL_HANDLER_AND_MEMBERSHIP_CONFIRMED
+  assembly_side_effects:
+    derivation: 按父组写前owner/submitter、接收人、当前操作人及服务端权限产生的admin标记计算父组flags；组内成员继承flags。
+    phase_policy:
+      preflight: 识别具体适用分支、预期对象和核验方法
+      post_write: 核实本次实际结果；没有本次执行证据时不得宣称副作用成功
+      requires_future_success_before_write: false
+    bpm:
+      execute_when: 父组submitterFlag=true且父组不是流程终态；status3适用非终态分支
+      expected: 调用changeProcessInstanceOwner将父组流程owner切到接收人，随后更新父组与有效成员submitter
+      failure_behavior: 返回false触发CODE_110512；不能承诺已执行的跨服务BPM与本地事务原子回滚
+      verification: 执行后通过已确证的受权流程读取或服务执行证据核验；未确证具体查询配方时记录核验能力缺口，不猜端点，也不把本次写入前没有结果当失败
+      verification_methods:
+        controlled_test:
+          prerequisites: 已确认适用组submitterHandover且父组非终态；本次同步响应成功并有匹配的父组新授权，完整父子成员角色回读符合预期。
+          conclusion: CLM角色变更可按本次记录和回读判断；按已核实现的执行顺序，可推断该分支获得BPM成功响应。该推断不是独立读取流程当前owner，服务部署版本也未由源码快照证明。
+          independent_runtime_owner_status: NOT_INDEPENDENTLY_VERIFIED
+        authorized_service_evidence:
+          method: 需要进一步验收时，由有权限的研发按本次时间窗口、tenant、processInstanceId和目标employeeId关联changeProcessInstanceOwner请求和成功响应日志；需要验证持久状态时再提供BPM实际owner读取证据。
+          boundary: 不猜查询端点、不借用他人身份；没有消息授权时不自动联系研发。日志成功响应与实际持久状态分别记录。
+        unavailable_fields: assembly/info的ownerEmployee与submitterEmployee是合同组角色；approveRecord、noticeRecord和processProgress不是流程owner，不能代用。
+        source_basis:
+        - clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/access/handover/ContractAssemblyHandover.java:142-146
+        - clm-core/src/main/java/com/bytedance/ea/saas/clm/core/api/BpmEngineApi.java:1821-1835
+        - clm-core/src/main/java/com/bytedance/ea/saas/clm/core/api/BpmEngineApi.java:2009-2018
+    authorization:
+      execute_when: 父组任一flag有效
+      expected: 按父组ownerFlag/submitterFlag停用对应旧OWNER/SUBMITTER交接授权，保存父组新授权；成员不各自生成独立授权记录
+      verification: 关联本次返回父组authorizations及父组新增记录，以完整成员关系逐成员核对当前角色/需求人；成员真实部门不列核验项。旧授权enabled状态若现有读取不暴露则单独标未核验。
+    notification:
+      dispatch: PermissionService合并处理器结果后发布成功事件，listener异步调用通知服务；接口成功不证明消息已送达
+      recipient: 接收人会进入LARK_CARD_HANDOVER_COMPLETE发送分支
+      previous_owner: server handoverByAdmin=true时遍历preOwnerResourcesMap发送LARK_CARD_HANDOVER_TO_PRE_OWNER；本组preOwner为ownerFlag时旧owner，否则旧submitter
+      leader: manual=true且server handoverByAdmin=false时，如找到直属上级且其不是接收人，向该上级发通知
+      admin_flag_note: manage_contract_handover_all会由服务端设置admin=true；它与operator既非owner又非submitter的实际第三人判定不同
+      verification: 执行后按实际适用通知对象核实异步发送/送达证据；未观察到时标UNVERIFIED，不重发handover请求来补通知
+      verification_methods:
+        manual_observation:
+          method: 写后由用户在收件人实际飞书智书合同机器人会话观察新卡片；旧归属人若也是本次操作者，可观察本人会话，接收人一侧由用户协调提供证据。写前无需取得接收人账号或直接访问其消息。
+          correlation: 留存观察账号、本次时间、操作者、接收人及合同数量，并与本次父组新记录和固定成员清单关联；旧卡片不算本次证据。type10组通知不展示合同详情，数量按成员数计算，不把父组加成员的资源总数直接作为通知数量。
+          boundary: 未看到卡片记通知待核实，不能判交接失败；不猜站内消息中心就是此飞书通知的入口。
+        authorized_service_evidence:
+          method: 必要时由有权限的研发关联本次时间、通知类型、收件人及发送日志中的msgId；没有消息授权时不自动联系研发。
+          boundary: 通知记录默认businessId和businessType可为空，不保证仅按合同ID能找到；发送返回msgId不等于接收人已阅读。
+        filtering: 发送链路过滤飞书合同来源租户及platform=lark的员工，也可能发生过滤异常或发送失败；未观察到消息时不臆测具体原因，确认被过滤需相应配置或日志证据。
+        source_basis:
+        - clm-core/src/main/java/com/bytedance/ea/saas/clm/core/service/async/listener/ResourceHandoverSuccessEventListener.java:49-101
+        - clm-core/src/main/java/com/bytedance/ea/saas/clm/core/api/NotificationApi.java:273-334
+        - clm-core/src/main/java/com/bytedance/ea/saas/clm/core/service/notification/lark/LarkNotificationRecipientFilter.java:47-108
+        - clm-core/src/main/java/com/bytedance/ea/saas/clm/core/service/notification/lark/AbstractLarkCardNotificationHandler.java:240-284
+    controlled_test_evidence_policy:
+      before_write: 具体清单须说明适用副作用及以上核验安排；可安排写后现有接口回读和人工观察，不要求先取得尚未发生的成功证据，也不要求所有副作用先新增查询API。
+      after_write: 合同角色结果、BPM调用或持久状态、通知发送或送达分项记录。只有代码推断或没有消息观察时，相关副作用保留未独立核验或待核实；不以主记录变化宣称全项通过。
+      incomplete_effects: 一次受控test可以收集主记录真实执行证据，同时留下未取得的副作用证据；本次整体仍未完整验收，不继续自动执行后续批次，不自动重放，不升级全包readiness。
+    ordinary_handler_draft_cleanup:
+      applies: false
+      reason: ContractHandover255-283的草稿valid=false分支不在ContractAssemblyHandover中；不得为status3无后继组强制普通草稿预检
+    remaining_delivery_gap: 仍列必需核验的BPM、授权、通知等副作用可用证据及真实执行尚未全部验证；成员部门联动不列核验项，其缺读不计入交接阻塞或成熟度缺口。全包不因本次规则调整升级readiness。
+    member_department:
+      expected: 由后端按父组ownerFlag自动联动有效成员的部门；接收人第一部门非空时设置，否则后端保留原部门。
+      request_contract: handover无需且不传成员旧部门
+      verification_required: false
+      mandatory_test: false
+      missing_value_effect: NONE_ON_PREFLIGHT_OR_HANDOVER_RESULT
+      note: 保留后端行为事实；不读取成员旧部门、不强制普通详情、不推断缺失字段值，也不把此项视为待修复的Skill能力。
+  assembly_member_department_policy:
+    required: false
+    source: EXPLICIT_USER_DECISION
+    scope: CONTRACT_ASSEMBLY_HANDOVER_CHILD_MEMBERS
+    preflight_required: false
+    post_write_required: false
+    required_snapshot_field: false
+    required_success_criterion: false
+    mandatory_test: false
+    extra_detail_read_required: false
+    missing_value_effect: NONE_ON_PREFLIGHT_OR_HANDOVER_RESULT
+    missing_value_semantics: UNKNOWN_NOT_PROVIDED
+    infer_value_when_missing: false
+    server_managed: true
+    old_department_request_parameter: false
+    server_behavior: 父组ownerFlag为true时，后端将有效成员部门更新为接收人返回的第一部门；接收人无部门时后端保留成员原部门。Skill无须读取成员旧部门，也不据此额外调用普通详情。
+    preserved_checks:
+    - 当前角色和需求人
+    - 本次父组授权或新增记录
+    - 完整成员关系及数量对账
+    - 权限、范围、接收人和确认
+    - 不自动重放和其他真实门禁
+    parent_and_normal_contract_policy_changed: false
+runtime:
+  execution_mode: HYBRID
+  target_environment: test
+  authorization: reuse_cli_mcp_authenticated_context
+  required_capability: universal_open_web_call
+  channel_policy:
+    preference:
+    - mcp
+    - cli
+    when_none_available: GUIDE_INSTALL_CLI
+    resume_original_request: true
+  transports:
+    cli:
+      status: RUNTIME_VERIFIED
+      identity: USER
+      entrypoint: contract-cli api call --channel web
+      environment: test
+      note: 通用通道及本次8类读取接口有成功证据；不表示交接写入、后置核对或全部业务场景已验证。具体本机入口见包外报告。
+    mcp:
+      status: UNVERIFIED
+      identity: USER
+      entrypoint: null
+      environment: test
+  id_encoding: 所有Long内部ID保留十进制字符串；禁止JavaScript浮点解析；日志以不可逆一致脱敏别名关联。
+  gateway_notes:
+  - CLM家族中本次记录的8类只读入口已有test运行证据；写接口和未调用入口仍待验证。
+  - 不写死网关域名、MCP URL、token、identity header或租户/用户ID。
+inputs:
+  contract_scope:
+    type: string
+    enum:
+    - mine
+    - all
+    source: 用户明确范围或页面对应范围
+  contract_ids:
+    type: array
+    items: 内部ID字符串
+    required: false
+  search_expression:
+    type: object
+    required: false
+    allowed_fields:
+    - CONTRACT_NAME_FIELD
+    - CONTRACT_NUMBER_FIELD
+    note: 综合关键词/更多筛选必须先验证对应页面字段和语义
+  verified_filters:
+    type: array
+    required: false
+  receiver_query:
+    type: string
+    required: false
+    required_for: HANDOVER
+    note: 仅交接预检和写入需要接收人；只读查询当前角色及历史不要求此输入。
+    non_empty: true
+  confirmed_manifest:
+    type: object
+    required_before_write: true
+    fields:
+    - environment
+    - tenant_ref
+    - operator_ref
+    - receiver
+    - entry_resources
+    - expected_affected_resources
+    - before_snapshot
+    - excluded_resources
+    - batches
+    - fingerprint
+    - confirmed_at
+recipes:
+  current_employee:
+    purpose: 读取当前运行身份的内部 employeeId/tenantId，避免混用开放平台 ID
+    role: PREREQUISITE
+    required: true
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/employee/info
+      open_web_path: /open-web/web/clm/employee/info
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters: {}
+    response:
+      success:
+        http_status: 200
+        predicates:
+        - $.code == 200
+        - $.success == true
+      fields:
+        employee_id:
+          path: $.data.employeeId
+          type: string
+          nullable: false
+        tenant_id:
+          path: $.data.tenantId
+          type: string
+          nullable: false
+        name:
+          path: $.data.name
+          type: string
+          nullable: true
+        departments:
+          path: $.data.departments
+          type: array
+          nullable: true
+    permissions:
+      data_scope: 当前已授权用户所在租户及服务端数据权限范围
+      enforcement: Controller 和 Service 权限独立判定；接口可调用不代表可交接任意合同。
+  function_permissions:
+    purpose: 读取当前用户功能权限码，不构造管理员或代办身份
+    role: PREREQUISITE
+    required: true
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/permission/function/list
+      open_web_path: /open-web/web/clm/permission/function/list
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters: {}
+    response:
+      success:
+        http_status: 200
+        predicates:
+        - $.code == 200
+        - $.success == true
+      fields:
+        authorities:
+          path: $.data
+          type: array
+          nullable: false
+        codes:
+          path: $.data[*].code
+          type: array
+          nullable: false
+    permissions:
+      data_scope: 当前已授权用户所在租户及服务端数据权限范围
+      enforcement: Controller 仅检查当前登录；handover Service 再检查 manage_contract_handover_all/personal，并由服务端设置 handoverByAdmin。
+  employee_candidates:
+    purpose: 按姓名查找合同接收人候选，展示消歧后选择一个当前内部员工 ID
+    role: PREREQUISITE
+    required: true
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/employee/findEmployeesByKeywords
+      open_web_path: /open-web/web/clm/employee/findEmployeesByKeywords
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      keywords:
+        location: QUERY
+        source: USER_INPUT
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: inputs.receiver_query
+      includeInvalid:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+    response:
+      success:
+        http_status: 200
+        predicates:
+        - $.code == 200
+        - $.success == true
+      fields:
+        employees:
+          path: $.data
+          type: array
+          nullable: false
+        employee_ids:
+          path: $.data[*].employeeId
+          type: array
+          nullable: false
+        tenant_ids:
+          path: $.data[*].tenantId
+          type: array
+          nullable: false
+        display_names:
+          path: $.data[*].displayName
+          type: array
+          nullable: true
+        departments:
+          path: $.data[*].departments
+          type: array
+          nullable: true
+        statuses:
+          path: $.data[*].status
+          type: array
+          nullable: true
+          item_type: integer
+          source_enum: com.bytedance.ea.sass.enterprise.center.common.enumerate.StatusEnum
+          meaning: 平台员工状态枚举的getValue结果；候选服务在includeInvalid=false分支只保留NORMAL，不能把任意员工详情中的1自行解释为HR在职。
+    permissions:
+      data_scope: 当前已授权用户所在租户及服务端数据权限范围
+      enforcement: Controller 和 Service 权限独立判定；接口可调用不代表可交接任意合同。
+    notes:
+    - 页面仅传 keywords；此配方显式 includeInvalid=false 与页面默认一致。
+    - 接口标记 Deprecated 但仍是当前交接页调用；不替换为另一同名近似接口。
+    - 未传 filterCurrentEmployee/filterVisibleEmployee，不能宣称已排除自己或强制可见员工过滤。
+    - data=[] 是查询成功但没有候选，不是接收人已有效；候选限额也不代表租户完整人员清单。
+    - 本分支经EmployeeService.findEmployeesByKeyword过滤StatusEnum.NORMAL；底层搜索请求active=EmployeeSearchEnum.NOT_RESIGNED，含义是按平台未离职条件请求候选，不是独立核实HR劳动关系。
+    - 当前ClmEmployeeTemplate.findByKeyword显式关闭这一层关键词缓存、enableDegrade=true；底层enterprise服务的降级/缓存细节未在本仓证明，不能保证瞬时组织状态快照。
+    - 返回候选只能作为该查询时点的平台可选证据；需按同一内部employeeId/tenantId回读详情并核对status一致，不仅按姓名或单个status整数认定接收人有效。
+  employee_details:
+    purpose: 重新读取唯一接收人的当前租户、状态、部门；确认部门实际取第一项
+    role: PREREQUISITE
+    required: true
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/employee/getEmployeesByIds
+      open_web_path: /open-web/web/clm/employee/getEmployeesByIds
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      employeeIds:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.choose_receiver.employee_id
+        transform: 保留十进制内部ID字符串；单个ID，不使用开放user_id
+        hardcode_allowed: false
+      extraDepartmentInfo:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: true
+    response:
+      success:
+        http_status: 200
+        predicates:
+        - $.code == 200
+        - $.success == true
+      fields:
+        employees:
+          path: $.data
+          type: array
+          nullable: false
+        employee_id:
+          path: $.data[0].employeeId
+          type: string
+          nullable: true
+        tenant_id:
+          path: $.data[0].tenantId
+          type: string
+          nullable: true
+        status:
+          path: $.data[0].status
+          type: integer
+          nullable: true
+          source_type: java.lang.Integer
+          source_enum: com.bytedance.ea.sass.enterprise.center.common.enumerate.StatusEnum
+          mapping: EmployeeMapper使用CommonMapper.map(StatusEnum)，返回status.getValue()，源枚举为空则返回null。
+          semantic_scope: 平台组织员工状态；此整数本身不证明HR在职、不证明账号未禁用/未锁定/未过期，也不是合同交接权限。
+        expired:
+          path: $.data[0].expired
+          type: boolean
+          nullable: true
+          meaning: 账号是否过期；本查询的EpcEmployeeDto/EpcEmployeeInfoDto映射忽略该字段，空值不能当false。
+        locked:
+          path: $.data[0].locked
+          type: boolean
+          nullable: true
+          meaning: 账号是否锁定；本查询的EpcEmployeeDto/EpcEmployeeInfoDto映射忽略该字段，空值不能当false。
+        departments:
+          path: $.data[0].departments
+          type: array
+          nullable: true
+        first_department_id:
+          path: $.data[0].departments[0].departmentId
+          type: string
+          nullable: true
+    permissions:
+      data_scope: 当前已授权用户所在租户及服务端数据权限范围
+      enforcement: Controller 和 Service 权限独立判定；接口可调用不代表可交接任意合同。
+    preconditions:
+    - 必须返回且只匹配所选 employeeId；tenantId 必须等于 current_employee.tenantId。
+    - 确认同租户、同内部ID的当前平台有效候选，并核对详情status与本次includeInvalid=false候选中同一人员的非空status一致；写前重新执行这两次读取，候选中仍存在唯一选定ID且详情一致，才能认定当前返回符合平台正常/未离职筛选。无需掌握全部枚举整数表；不把status=1单独写成真实在职。已知离职、删除、停用、禁用、expired/locked为true或候选/详情冲突时排除；必要有效性仍无法确认时停止对应写入。
+    - departments 非空使用其返回第一项；为空保留原合同部门。不得自行选择其他部门。
+    status_semantics:
+      authoritative_enum: com.bytedance.ea.sass.enterprise.center.common.enumerate.StatusEnum
+      dependency: com.bytedance.ea.saas:enterprise-center-common:0.3.2.9-qfei-SNAPSHOT
+      numeric_mapping:
+        NORMAL: null
+        DELETE: null
+        DEACTIVATE: null
+        UNKNOWN: null
+      numeric_mapping_status: DEPENDENCY_ENUM_VALUES_NOT_PRESENT_IN_CACHED_CLM_SOURCE
+      numeric_mapping_note: 已核CLM使用上述枚举符号和getValue转换，但外部依赖的枚举实现未包含在此缓存仓中，数值故意留空。仓库内common.enums.operation.StatusEnum是另一个同名类，不得拿它的NORMAL(1)替代；机器人构造器setStatus(1)也不构成当前员工状态全表证据。
+      runtime_normal_value_rule: 无完整整数表时，可利用已核includeInvalid=false候选服务只返回NORMAL这一语义，将本次唯一匹配候选的非空整数status记为本次环境NORMAL实测值，并要求同租户同ID详情值一致；例如候选实际返回1只能支持本次平台NORMAL值为1，不能推广为HR在职或推断其他数字。必须留存该候选与详情两次真实响应证据，不能靠旧样本或示例代入。
+      detail_filtering: getEmployeesByIds -> getEmployeesWithLimit -> getEmployees -> ClmEmployeeTemplate.findByIdIn，仅按ID与租户读取并可补部门祖先信息；该链未做NORMAL/NOT_RESIGNED过滤，返回某员工不等于接收资格通过。详情可能来自EmployeeVO缓存。
+      employment_status: 候选底层请求NOT_RESIGNED提供平台未离职查询语义，但本详情未暴露独立HR在职状态、离职时间或禁用原因。只能陈述平台候选/状态证据，不能称已验证真实在职；已有离职或禁用证据不能被NORMAL覆盖。
+      account_flags: Epc员工映射明确忽略expired/locked，详情链只补openId与部门/展示名，不证明补齐账号有效性。true必须排除，null标注未提供；若场景要求确定未锁定/未过期而无证据，则阻断该场景写入。
+      evidence_limits:
+      - 外部enterprise-center-common精确版本的枚举整数全表未包含在缓存仓中；若要解释非NORMAL代码需研发提供可验证契约，不能猜测。这不是上述当前有效候选证据链成立时的额外阻断条件。
+      - 现有两配方不独立证明真实HR劳动关系、账号锁定/过期状态；按本流程只陈述正常/未离职筛选结果，不新增这些字段必须非空的全局门禁。若业务明确额外要求这些事实，需单独补证再执行该场景。
+      execution_boundary: H21a只读预检可凭本轮受过滤唯一候选和同ID同租户详情的非空status一致，输出当前符合正常/未离职筛选；未知全表和expired/locked空值如实说明。写前重查同样证据链；缺候选、字段冲突或明确失效时阻断，不以仅有详情的status整数放行。
+  search_contracts:
+    purpose: 复现全部合同/我的合同页搜索；生成待确认固定入口清单
+    role: OPTIONAL
+    required: false
+    endpoint:
+      family: CLM
+      method: POST
+      original_page_path: /clm/api/es/search/contractList
+      open_web_path: /open-web/web/clm/es/search/contractList
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: OBJECT
+      content_type: application/json
+    parameters:
+      pageIndex:
+        location: BODY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        value: 0
+      pageSize:
+        location: BODY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: 100
+      searchTabCode:
+        location: BODY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: inputs.contract_scope
+        transform: all -> 0; mine -> 1；只接受这两个页面范围
+      conditionUnits:
+        location: BODY
+        source: DERIVED
+        required: false
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: inputs.search_expression
+        transform: 仅使用已核字段；名称CONTRACT_NAME_FIELD，编号CONTRACT_NUMBER_FIELD，searchValue保留用户输入，unionType=SHOULD；用户给出名称或编号时必须传非空数组，禁止省略条件试查全部。
+        schema:
+          type: array
+          items:
+            type: object
+            required:
+            - searchField
+            - searchValue
+            - unionType
+            additionalProperties: false
+            properties:
+              searchField:
+                type: string
+                enum:
+                - CONTRACT_NAME_FIELD
+                - CONTRACT_NUMBER_FIELD
+              searchValue:
+                type: string
+                minLength: 1
+                source: 用户本次明确给出的名称或编号，不将值拆成条件对象或字段名
+              unionType:
+                type: string
+                enum:
+                - SHOULD
+        empty_policy: 只有用户明确要求无关键词范围枚举时才允许空数组；缺失字段映射时停止并澄清，不退化为无条件查询。
+      filterUnits:
+        location: BODY
+        source: DERIVED
+        required: false
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: inputs.verified_filters
+        transform: 仅保留已由页面/字段定义验证的MUST条件；未知字段先澄清，不猜code
+      allConditionUnits:
+        location: BODY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+      searchAfter:
+        location: BODY
+        source: DERIVED
+        required: false
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: steps.enumerate_candidates.previous_search_after
+        transform: 首轮省略；之后逐字保留前页返回数组及每项类型，不将大整数经过浮点转换
+      sortType:
+        location: BODY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: SUBMITTED_TIME
+      order:
+        location: BODY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: DESC
+      withStatistics:
+        location: BODY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+    response:
+      success:
+        http_status: 200
+        predicates:
+        - $.code == 200
+        - $.success == true
+      fields:
+        groups:
+          path: $.data.content
+          type: array
+          nullable: true
+        entry_resources:
+          path: $.data.content[*].searchContractListItems[*]
+          type: array
+          nullable: true
+        entry_contract_id:
+          path: $.data.content[*].searchContractListItems[*].contractId
+          type: string
+          nullable: true
+        entry_contract_number:
+          path: $.data.content[*].searchContractListItems[*].contractNumber
+          type: string
+          nullable: true
+        entry_contract_name:
+          path: $.data.content[*].searchContractListItems[*].contractName
+          type: string
+          nullable: true
+        entry_business_type_code:
+          path: $.data.content[*].searchContractListItems[*].businessTypeCode
+          type: integer
+          nullable: true
+        entry_assembly_id:
+          path: $.data.content[*].searchContractListItems[*].assemblyId
+          type: string
+          nullable: true
+          meaning: 已确认为组成员时定位真实父组；不是外层groupId，父组自身的占位负值不可当父组ID。
+        filtered_group_total:
+          path: $.data.filteredTotalElements
+          type: integer
+          nullable: true
+        search_after:
+          path: $.data.searchAfter
+          type: array
+          nullable: true
+        pagination_capability:
+          path: $.data.paginationCapability
+          type: object
+          nullable: true
+        tab_totals:
+          path: $.data.totalElements
+          type: array
+          nullable: true
+    permissions:
+      data_scope: 当前已授权用户所在租户及服务端数据权限范围
+      enforcement: Controller 和 Service 权限独立判定；接口可调用不代表可交接任意合同。
+    execute_when: 输入没有已确证内部合同ID，或选择全部搜索结果
+    read_only_number_lookup:
+      body_example:
+        pageIndex: 0
+        pageSize: 100
+        searchTabCode: 0
+        conditionUnits:
+        - searchField: CONTRACT_NUMBER_FIELD
+          searchValue: <USER_PROVIDED_CONTRACT_NUMBER>
+          unionType: SHOULD
+        filterUnits: []
+        allConditionUnits: false
+        sortType: SUBMITTED_TIME
+        order: DESC
+        withStatistics: false
+      substitutions:
+        <USER_PROVIDED_CONTRACT_NUMBER>: 使用用户本次提供的完整合同编号替换；这是占位符，不得原样发送，也不得固化历史测试编号。
+        searchTabCode: 示例0表示当前用户可见的全部合同；用户指定我的合同时改为1，不超出其明确范围。
+      execution:
+      - 使用JSON序列化器将完整body保存为本地请求文件，通过已授权通道POST到本配方open_web_path；CLI传--input-file <请求文件>，不要以shell字符串拼接用户编号。
+      - 提交前断言conditionUnits为数组且其编号searchValue等于本次用户输入；第一轮就带编号条件，不先发空条件查询，也不以未映射字段探测请求。
+      - 按pagination读取候选全部页，逐条保留contractId、contractNumber、businessTypeCode的同一对象对应关系；按返回contractNumber精确核对编号，零项报告未找到，多项请用户消歧。
+      - 按业务类型和已核组关系分流：type10/17父组用assembly_detail；已确认的组内成员用其真实assemblyId读取父组和assembly_children，并按成员contractId定位，不要求该成员再走普通info；仅ContractHandover普通处理资源用contract_detail。外层groupId、父组占位assemblyId不得当真实父组或合同ID；组关系未确认时保持待核实。
+      - 按对应配方读取其有填充保证的当前角色与历史，普通详情遵守contract_detail.history_interpretation；如展示组成员部门，缺省保持未知，不补读或校验，父组历史属于父组记录，不能冒充成员独立历史或推断成员字段变化。该只读请求不要求接收人或交接确认。
+      failure_policy: 结构缺失、编号不符或历史字段不能解释时报告具体缺项；业务运行不以访问Java源码或verification目录中的预期答案补全配方。
+    pagination:
+      unit: CONTRACT_GROUP
+      offset_window: 10000
+      strategy: PRESERVE_SEARCH_AFTER
+      completion: 连续分页直到空/终止页并核对 filteredTotalElements 聚合组数量；异常、重复游标、计数漂移、窗口上限且无有效游标都停止，不宣称查全。
+      snapshot_warning: 搜索分页不是数据库快照；冻结的是枚举后的显式资源，不保证分页中途一致；写前重读关键字段。
+      page_index_base: 0
+      page_index_during_cursor_scan: 0
+    notes:
+    - filteredTotalElements 是聚合组计数，totalElements 是各tab数组，不是合同入口数量。
+    - 外层 groupId 不是 contractAssemblyId；资源从 searchContractListItems 提取，按详情确认 businessId/businessTypeCode/parentId。
+    - 名称和无分号的编号搜索是模糊候选；逐条核对名称/编号，必要时由用户消歧。只有分号编号策略不同也不能省略核对。
+    - 本配方覆盖明确字段搜索；页面综合全部搜索的 allConditionUnits=true 需要单独显式选择及字段验证，不自动扩大搜索语义。
+    - 不发送 tenantId/employeeId/searchIndex；Controller/服务从登录上下文补齐。
+    - 游标方式每次pageIndex=0，原样传回searchAfter，固定排序；此组合已在test完成含空末页的12组样本枚举。后续页paginationCapability可为空，不能因此丢弃已获游标或伪造能力。
+  contract_detail:
+    purpose: 读取普通处理器资源的当前角色、需求人、部门、状态和关联标识；已确认组成员由父组成员接口分流
+    role: PREREQUISITE
+    required: true
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/contract/info
+      open_web_path: /open-web/web/clm/contract/info
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      contractId:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: steps.resolve_resources.resource.contract_id
+        transform: 遍历已核由ContractHandover处理的内部合同ID字符串；不包含本次由父组处理器更新的成员，不以名称/编号/ES外层groupId代替ID
+      tianyancha:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+      generateContractName:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+    response:
+      success:
+        http_status: 200
+        predicates:
+        - $.code == 200
+        - $.success == true
+      fields:
+        contract_id:
+          path: $.data.contractId
+          type: string
+          nullable: false
+        name:
+          path: $.data.contractName
+          type: string
+          nullable: true
+        business_type_code:
+          path: $.data.businessTypeCode
+          type: integer
+          nullable: false
+        status_code:
+          path: $.data.contractStatusCode
+          type: integer
+          nullable: false
+        status_name:
+          path: $.data.contractStatusName
+          type: string
+          nullable: true
+        group_id:
+          path: $.data.groupId
+          type: string
+          nullable: true
+        assembly_id:
+          path: $.data.assemblyId
+          type: string
+          nullable: true
+        previous_id:
+          path: $.data.previousId
+          type: string
+          nullable: true
+        next_id:
+          path: $.data.nextId
+          type: string
+          nullable: true
+        owner_id:
+          path: $.data.ownerEmployee.employeeId
+          type: string
+          nullable: true
+        owner_name:
+          path: $.data.ownerEmployee.name
+          type: string
+          nullable: true
+        owner_display_name:
+          path: $.data.ownerEmployee.displayName
+          type: string
+          nullable: true
+        submitter_id:
+          path: $.data.submitterEmployee.employeeId
+          type: string
+          nullable: true
+        submitter_name:
+          path: $.data.submitterEmployee.name
+          type: string
+          nullable: true
+        submitter_display_name:
+          path: $.data.submitterEmployee.displayName
+          type: string
+          nullable: true
+        creator_id:
+          path: $.data.createEmployee.employeeId
+          type: string
+          nullable: true
+        creator_name:
+          path: $.data.createEmployee.name
+          type: string
+          nullable: true
+        creator_display_name:
+          path: $.data.createEmployee.displayName
+          type: string
+          nullable: true
+        department_id:
+          path: $.data.department.departmentId
+          type: string
+          nullable: true
+        demand_employee_ids:
+          path: $.data.demandEmployees[*].employeeId
+          type: array
+          nullable: true
+        handover_records:
+          path: $.data.handover.records
+          type: array
+          nullable: true
+          items:
+            type: object
+            source_type: HandoverVO.HandoverRecordVO
+            nullable: true
+        handover_previous_employee:
+          path: $.data.handover.records[*].preAuthorizedEmployee
+          type: object
+          nullable: true
+          meaning: 本条交接前拥有权限的人员；不是操作人，也不必等于合同创建人。
+        handover_receiver_employee:
+          path: $.data.handover.records[*].authorizedEmployee
+          type: object
+          nullable: true
+          meaning: 本条交接后被授权的人员；不以历史最后一人覆盖详情当前归属人字段。
+        handover_operator_employee:
+          path: $.data.handover.records[*].approvedEmployee
+          type: object
+          nullable: true
+          meaning: 授权执行人/操作人；不得当成交接前人员，第三方代交接时尤其需要分列。
+        handover_create_time:
+          path: $.data.handover.records[*].createTime
+          type: string
+          nullable: true
+          source_type: java.util.Date；前端HandoverRecordVO声明string，展示组件另兼容对象time字段。
+          compatibility: 保留接口原值；若返回数值或对象time，仅在时间单位与时区明确时转换。无法确定则原样展示并标注待核实，不猜秒/毫秒。
+        handover_source_type_code:
+          path: $.data.handover.records[*].authorizationSourceTypeCode
+          type: integer
+          nullable: true
+          meaning: 授权来源类型；保留真实code，不能把任意授权记录直接称为一次本次交接。
+    permissions:
+      data_scope: 当前已授权用户所在租户及服务端数据权限范围
+      enforcement: Controller 和 Service 权限独立判定；接口可调用不代表可交接任意合同。
+    history_interpretation:
+      employee_object: 三类人员均为EmployeeVO对象；employeeId为内部ID十进制字符串，name为姓名，displayName为展示名，tenantId为内部租户ID字符串。用ID判定是否同人，展示优先displayName再name，不能通过同名合并。
+      current_roles: 创建人取createEmployee、当前归属人取ownerEmployee、当前申请人取submitterEmployee；任何一项为空就报告为空，不从创建人或历史记录推补。
+      record_shape: records在已核源码中为扁平HandoverRecordVO数组；逐条以同一record索引关联前人、后人、操作人、时间和来源。出现多条或同时间多人记录时保留分组及每条对应关系，不压成一条，也不拼接不同记录的字段；若实际出现嵌套数组等结构漂移则停止推断并报告。
+      null_handling: handover/records为空只说明本接口未返回可用历史，不证明从未交接；前人或操作人对象可能因缺ID/缺员工映射为空，保持未知，不能互相替代。空record跳过并报告数量，不能虚构人员。
+      source_codes: 已核授权来源：0=DEFAULT，1=OPEN_PLATFORM，2=MANUAL_HANDOVER，3=DIMISSION_HANDOVER；其他或未知code保留原码并标注来源待核实，不猜类型。
+      ordering_and_time: 保存原始顺序与时间；需要排序时只能使用可解释的createTime。显示北京时间时明确Asia/Shanghai，缺时区/时间格式不明则保留原文，不隐式假定UTC。
+      write_evidence_boundary: 历史查询仅回答已返回的交接历史；现存记录、当前归属人等于接收人、历史交接双方相符，都不能证明本次写入成功。写后仍需按result_policy匹配本次返回授权、写前不存在的新记录以及逐份回读。
+    notes:
+    - 当前Drawer另有 composition/contractAndTask；该聚合入口包含交易方状态更新，未选为本配方。/contract/info 是现存受权详情接口，test 只读调用已有成功证据，交接写后的回查仍待验证。
+    - generateContractName=false，tianyancha=false；未承诺所有详情内部逻辑零副作用。
+    - assemblyId/previousId/nextId 空或0均不能证明 groupId 下没有其他有效资源/关联草稿。
+    - 本配方适用的普通处理资源仍须通过详情权限；已确认组成员采用父组受权childrenInfo读取有保障字段，不以普通info系统错误推断权限被拒。
+    - H21a只读验证中，两个type11组成员调用本路径分别返回110002系统错误；未查明异常根因，不归因为缺参数、无权限或类型必然不支持，不通过猜参数/改身份/改用composition重试。 该历史读取现象不列为Skill待修复项或组交接阻塞；已确认组成员不再强制走此路径。
+    resource_scope:
+      handler: ContractHandover
+      exclude_confirmed_assembly_members: true
+      assembly_member_read_recipe: assembly_children
+      dispatch_rule: 按本次已核处理器分流；由ContractAssemblyHandover更新的组内成员不强制经普通contract/info。类型或归属处理器未确证时先停在识别步骤，不能借此放行未知资源。
+    execute_when: 本次由ContractHandover处理的资源；不含已确认由父组处理器更新的组内成员
+  assembly_detail:
+    purpose: 读取合同组/模板多合同本体，取得有效子合同总数及组专用回查字段
+    role: PREREQUISITE
+    required: true
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/contractAssembly/info
+      open_web_path: /open-web/web/clm/contractAssembly/info
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      contractAssemblyId:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: steps.resolve_resources.resource.assembly_id
+        transform: 从已核businessType=10/17的内部入口ID或明确assemblyId获取；不可使用ES聚合groupId
+      batchContractChildrenPageIndex:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: 0
+      batchContractChildrenPageSize:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: 100
+      needChildrenInfo:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+    response:
+      success:
+        http_status: 200
+        predicates:
+        - $.code == 200
+        - $.success == true
+      fields:
+        assembly_id:
+          path: $.data.contractAssemblyId
+          type: string
+          nullable: false
+        name:
+          path: $.data.contractAssemblyName
+          type: string
+          nullable: true
+        business_type_code:
+          path: $.data.businessTypeCode
+          type: integer
+          nullable: false
+        status_code:
+          path: $.data.contractStatusCode
+          type: integer
+          nullable: false
+        group_id:
+          path: $.data.groupId
+          type: string
+          nullable: true
+        previous_id:
+          path: $.data.previousId
+          type: string
+          nullable: true
+        next_id:
+          path: $.data.nextId
+          type: string
+          nullable: true
+        owner_id:
+          path: $.data.ownerEmployee.employeeId
+          type: string
+          nullable: true
+        submitter_id:
+          path: $.data.submitterEmployee.employeeId
+          type: string
+          nullable: true
+        department_id:
+          path: $.data.department.departmentId
+          type: string
+          nullable: true
+        children_count:
+          path: $.data.childrenCount
+          type: integer
+          nullable: true
+        contracts:
+          path: $.data.contracts
+          type: array
+          nullable: true
+        handover_records:
+          path: $.data.handover.records
+          type: array
+          nullable: true
+    permissions:
+      data_scope: 当前已授权用户所在租户及服务端数据权限范围
+      enforcement: Controller 和 Service 权限独立判定；接口可调用不代表可交接任意合同。
+    notes:
+    - needChildrenInfo=false 对非batch组仍可能返回首批子合同；不得把 contracts 长度当全部。
+    - childrenCount 由当前 tenantId+assemblyId+valid=true 实时计数；不是同groupId全部assembly版本数量。
+    - Controller数据权限businessTypeCodeKey固定10；type17真实网关与权限表现待运行验证。
+  assembly_children:
+    purpose: 按父组权限完整分页读取有效成员的身份、状态、当前角色和需求人；不要求成员部门读取或核验
+    role: PREREQUISITE
+    required: true
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/contractAssembly/childrenInfo
+      open_web_path: /open-web/web/clm/contractAssembly/childrenInfo
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      contractAssemblyId:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: steps.resolve_resources.resource.assembly_id
+        transform: 使用已核合同组本体ID
+      batchContractChildrenPageIndex:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: steps.enumerate_assembly_children.page_index
+        transform: 从0开始逐页加1
+      batchContractChildrenPageSize:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: 100
+      needApproveRecord:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+    response:
+      success:
+        http_status: 200
+        predicates:
+        - $.code == 200
+        - $.success == true
+      fields:
+        contracts:
+          path: $.data.contracts
+          type: array
+          nullable: false
+        contract_ids:
+          path: $.data.contracts[*].contractId
+          type: array
+          nullable: false
+        tenant_ids:
+          path: $.data.contracts[*].tenantId
+          type: array
+          nullable: true
+        assembly_ids:
+          path: $.data.contracts[*].assemblyId
+          type: array
+          nullable: true
+        group_ids:
+          path: $.data.contracts[*].groupId
+          type: array
+          nullable: true
+        business_type_codes:
+          path: $.data.contracts[*].businessTypeCode
+          type: array
+          nullable: true
+        contract_numbers:
+          path: $.data.contracts[*].contractNumber
+          type: array
+          nullable: true
+        contract_names:
+          path: $.data.contracts[*].contractName
+          type: array
+          nullable: true
+        status_codes:
+          path: $.data.contracts[*].contractStatusCode
+          type: array
+          nullable: true
+        status_names:
+          path: $.data.contracts[*].contractStatusName
+          type: array
+          nullable: true
+        previous_ids:
+          path: $.data.contracts[*].previousId
+          type: array
+          nullable: true
+        next_ids:
+          path: $.data.contracts[*].nextId
+          type: array
+          nullable: true
+        owner_ids:
+          path: $.data.contracts[*].ownerEmployee.employeeId
+          type: array
+          nullable: true
+        owner_names:
+          path: $.data.contracts[*].ownerEmployee.name
+          type: array
+          nullable: true
+        owner_display_names:
+          path: $.data.contracts[*].ownerEmployee.displayName
+          type: array
+          nullable: true
+        submitter_ids:
+          path: $.data.contracts[*].submitterEmployee.employeeId
+          type: array
+          nullable: true
+        submitter_names:
+          path: $.data.contracts[*].submitterEmployee.name
+          type: array
+          nullable: true
+        submitter_display_names:
+          path: $.data.contracts[*].submitterEmployee.displayName
+          type: array
+          nullable: true
+        creator_ids:
+          path: $.data.contracts[*].createEmployee.employeeId
+          type: array
+          nullable: true
+        creator_names:
+          path: $.data.contracts[*].createEmployee.name
+          type: array
+          nullable: true
+        creator_display_names:
+          path: $.data.contracts[*].createEmployee.displayName
+          type: array
+          nullable: true
+        demand_employees:
+          path: $.data.contracts[*].demandEmployees
+          type: array
+          nullable: true
+        demand_employee_ids:
+          path: $.data.contracts[*].demandEmployees[*].employeeId
+          type: array
+          nullable: true
+        department_ids:
+          path: $.data.contracts[*].department.departmentId
+          type: array
+          nullable: true
+          availability: UNKNOWN_NOT_PROVIDED
+          meaning: 该assemblySwitch路径没有填充成员真实department的保障；缺省/null保持未知。按用户决定不纳入必需读取、快照、测试或成功判据，不影响预检和交接结果。
+          required_for_preflight: false
+          required_for_verification: false
+          missing_value_effect: NONE_ON_PREFLIGHT_OR_HANDOVER_RESULT
+        handover_records:
+          path: $.data.contracts[*].handover.records
+          type: array
+          nullable: true
+          availability: NOT_PROVIDED_BY_ASSEMBLY_SWITCH
+          meaning: 该路径关闭handover字段填充；不要求组内成员各自产生独立交接授权或记录。
+      row_interpretation:
+        collection: $.data.contracts
+        key: contractId
+        preserve_member_correlation: true
+        rule: 按每个成员对象的contractId关联字段；不可将独立扁平数组按索引拼接，也不可把某一成员缺字段补成父组/其他成员字段。成员ID、assemblyId、type、状态和角色均以实际响应核对；缺项保持未知。
+    permissions:
+      data_scope: 当前登录租户内，当前用户有AUTHORIZED权限的父assembly及其全部valid=true成员
+      enforcement: Controller按contractAssemblyId、businessTypeCodeKey=10校验父组AUTHORIZED及首页/合同管理/任务页功能权限；Service按tenantId+assemblyId+valid=true分页。保留该官方父组权限边界，不伪造身份或跳过校验；type17网关和权限行为按其自身证据验证。
+    pagination:
+      page_index_base: 0
+      page_size: 100
+      query_scope: tenantId + assemblyId + valid=true
+      sort: sequence
+      completion: 去重收集全部页直至空页，并与前后 assembly_detail.children_count 相等；重复/缺项/数量变化时重新读取，不得把差异解释成空。
+      limitation: 仅完整枚举一个assembly的有效ContractBase成员；不能枚举同groupId其他assembly。灰度/草稿要求按实际处理器及状态分支判定。成员department未保障填充属已知字段限制，不影响本配方预检和交接结果。
+    field_coverage:
+      member_identity_status: CODE_CONFIRMED_CURRENT_CONTRACT_BASE
+      owner_submitter_creator: CODE_CONFIRMED_EMPLOYEE_MAP
+      demand_employees: CODE_CONFIRMED_EMPLOYEE_MAP
+      department: UNKNOWN_NOT_PROVIDED
+      independent_handover_record: NOT_PROVIDED_BY_ASSEMBLY_SWITCH
+      department_null_means_unset: false
+      employee_departments_are_contract_department: false
+      parent_department_is_child_department: false
+      department_validation_required: false
+      department_missing_value_effect: NONE_ON_PREFLIGHT_OR_HANDOVER_RESULT
+    preconditions:
+    - 必须先以assembly_detail核实父组ID、处理器、本体权限与状态；用全部成员分页和前后childrenCount证明成员集合。
+    notes:
+    - getContractInfoOfAssembly使用assemblySwitch；基础VO填当前人员和需求人，但该switch关闭handover，不执行同时负责department填充的fillEmployeeInfoAndHandover。
+    - 成员ownerEmployee.departments属于员工信息，不能替代合同持久化departmentId；父组department也不能代替成员department。
+    - 父组info.contracts与本成员接口调用同一组内详情分支，成员部门缺省不要求补读或修复。
+    - 组处理器只创建父组本次授权；成员交接以本次父组授权/记录+完整成员关系+当前角色/需求人回读核对，成员部门不列门槛或成功判据。
+    - 部门由后端自动联动，无成员旧部门入参；该字段缺读不能导致预检或交接结果失败、UNVERIFIED或阻塞，不强制额外普通info调用。
+  handover:
+    purpose: 对用户确认的固定入口资源执行合同交接，每批至多100个入口且同影响组不拆分
+    role: PRIMARY
+    required: true
+    endpoint:
+      family: CLM
+      method: POST
+      original_page_path: /clm/api/permission/handover
+      open_web_path: /open-web/web/clm/permission/handover
+    operation:
+      read_or_write: WRITE
+      identity: USER
+      confirmation: REQUIRED_BEFORE_EXECUTION
+    request:
+      body_mode: OBJECT
+      content_type: application/json
+    parameters:
+      manual:
+        location: BODY
+        type: boolean
+        meaning: 是否手动发起交接；本Skill固定为true，不用于选择变更哪种人员角色。
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: true
+      reason:
+        location: BODY
+        type: string
+        meaning: 交接原因；本配方沿用页面空字符串。
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: ''
+      targetEmployeeId:
+        location: BODY
+        type: string
+        backend_type: Long
+        meaning: 接收人的内部员工ID；十进制字符串保真，不使用开放user_id。
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.confirm_manifest.receiver.employee_id
+        transform: 使用确认且写前重新核对的内部员工ID字符串
+        hardcode_allowed: false
+      targetTenantId:
+        location: BODY
+        type: string
+        backend_type: Long
+        meaning: 接收人所在租户ID；本Skill显式传当前同租户值。
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: USER_SCOPED
+        from: steps.confirm_manifest.receiver.tenant_id
+        transform: 必须等于当前运行租户；不得跨租户代入
+        hardcode_allowed: false
+      resourceList:
+        location: BODY
+        type: array
+        meaning: 固定的交接入口清单；单份一个入口，多份多个入口；合同组以父组为入口，由后端展开其有效成员。
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: steps.confirm_manifest.current_batch.entry_resources
+        transform: 去重并冻结[{businessId,businessTypeCode,parentId}]；parentId从详情groupId取得；不添加admin/operator/tenant身份覆盖
+        item_schema:
+          businessId: 内部合同ID或合同组本体ID字符串
+          businessTypeCode: 当前详情返回的整数类型码
+          parentId: 当前详情groupId字符串；不能以ES外层ID替代
+        item_backend_types:
+          businessId: Long
+          businessTypeCode: Integer
+          parentId: Long
+        business_type_examples:
+        - code: 0
+          name: 合同申请
+          entry: 独立合同时取合同ID；如实际属于模板多合同组，先根据assemblyId和成员关系定位父组，本Skill按整组范围确认后提交，不能仅凭type0判为独立合同。
+        - code: 10
+          name: 合同组申请
+          entry: 父合同组ID
+        - code: 17
+          name: 批量合同申请（模板多合同）
+          entry: 父批量合同组ID
+        - code: 11
+          name: 合同组下的主合同
+          entry: 不直接提交该子项；核实所属父组后，以父组真实ID及类型码交接，并确认整组影响。
+        type_selection: 上述仅为已核类型示例，不是完整类型清单或可交接白名单。以当前详情真实businessTypeCode及组关系决定入口，不能把所有单合同硬填0，也不能只凭type0排除组成员身份。parentId取该入口的groupId，不是子合同assemblyId。
+        group_entry_scope: 整组提交是本Skill当前范围规则；后端普通处理器对父组已终态的type0成员另有允许分支，不能将当前Skill规则描述为后端一律禁止子项交接。该独立分支不因本文示例而新增到已验证场景。
+        constraints:
+        - 1..100个去重入口
+        - 组及重叠影响闭包不拆分
+        - 整体成员超100入口则先排除该组并说明限制
+    response:
+      success:
+        http_status: 200
+        predicates:
+        - $.code == 200
+        - $.success == true
+      fields:
+        authorizations:
+          path: $.data.authorizations
+          type: array
+          nullable: true
+        authorization_ids:
+          path: $.data.authorizations[*].authorizationId
+          type: array
+          nullable: true
+        business_ids:
+          path: $.data.authorizations[*].businessId
+          type: array
+          nullable: true
+        business_type_codes:
+          path: $.data.authorizations[*].businessTypeCode
+          type: array
+          nullable: true
+        recipient_ids:
+          path: $.data.authorizations[*].authorizedEmployeeId
+          type: array
+          nullable: true
+        authorized_tenant_ids:
+          path: $.data.authorizations[*].authorizedTenantId
+          type: array
+          nullable: true
+        approved_employee_ids:
+          path: $.data.authorizations[*].approvedEmployeeId
+          type: array
+          nullable: true
+        creation_times:
+          path: $.data.authorizations[*].createTime
+          type: array
+          nullable: true
+    permissions:
+      data_scope: 当前已授权用户所在租户及服务端数据权限范围
+      enforcement: Controller 和 Service 权限独立判定；接口可调用不代表可交接任意合同。
+    preconditions:
+    - 函数权限和当前角色允许；本地仅预判，服务端终判。
+    - 接收人和每个入口详情是当前环境、租户，ID未混用开放ID。
+    - 指定普通test按business.ordinary_core_test核实必要事实并说明服务端关联处理；其他场景仍需完整影响集合和适用配置证据。组成员真实部门不列门槛。
+    - 展示指定可交接、排除项及理由、接收人和角色变化后取得确认；普通核心test同时说明后端关联及草稿影响，未知总量不填写为零。完整范围场景另列展开数量。
+    - 确认覆盖本次冻结清单指纹、接收人、角色/部门规则和全部批次；写前字段漂移重新确认。
+    - 全包未完成时禁止正常业务执行；development_validation条件满足且用户确认具体清单时，可受控验证普通指定入口或完整范围场景，不自动提升包状态。
+    - 普通核心test只强制本次授权及双角色回读；BPM/旧授权/通知不另加前置调用或核心通过门槛。其他场景的适用副作用分项核实，不形成未来成功证据的前置循环。
+    notes:
+    - reason 空字符串复现页面：DTO虽有NotBlank但Controller没有@Valid，不凭注解强加页面未要求原因。
+    - businessType 是DTO由businessTypeCode推导的枚举getter；页面另传名称，执行只使用已核code，不猜名称枚举。
+    - 请求没有onlyOwner/onlySubmitter或其他指定只变更某人员角色的参数；后端根据操作人、当前归属人、申请人、接收人及实际权限计算角色变化，不能通过修改类型码选择角色。
+    - handoverByAdmin 不发送。Service根据当前权限覆盖，不能把该字段用于客户端提权。
+    - 响应只有 authorizations，没有逐项失败/跳过清单；data为空或authorizations少于影响项不能报告全成功。
+    - 每项处理有事务，handler采用并行资源处理，无整体批次事务；失败、超时、进程中断可能已经部分成功。
+    - 未发现请求幂等键/安全重试凭据；绝不自动重放，也不因CLI超时切MCP重发。
+    - 组内成员部门由后端自动联动，Skill无成员旧部门入参；无需为交接读取或校验成员真实部门，其他权限、完整范围、角色、确认与不重放要求不变。
+  verify_contract_detail:
+    purpose: 回读普通处理器的影响资源并对照本次授权；组处理器成员改用组成员回读
+    role: VERIFY
+    required: true
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/contract/info
+      open_web_path: /open-web/web/clm/contract/info
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      contractId:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: steps.execute_batch.expected_affected_resources.contract_id
+        transform: 遍历已核由ContractHandover处理的内部合同ID字符串；不包含本次由父组处理器更新的成员，不以名称/编号/ES外层groupId代替ID
+      tianyancha:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+      generateContractName:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+    response:
+      success:
+        http_status: 200
+        predicates:
+        - $.code == 200
+        - $.success == true
+      fields:
+        contract_id:
+          path: $.data.contractId
+          type: string
+          nullable: false
+        name:
+          path: $.data.contractName
+          type: string
+          nullable: true
+        business_type_code:
+          path: $.data.businessTypeCode
+          type: integer
+          nullable: false
+        status_code:
+          path: $.data.contractStatusCode
+          type: integer
+          nullable: false
+        status_name:
+          path: $.data.contractStatusName
+          type: string
+          nullable: true
+        group_id:
+          path: $.data.groupId
+          type: string
+          nullable: true
+        assembly_id:
+          path: $.data.assemblyId
+          type: string
+          nullable: true
+        previous_id:
+          path: $.data.previousId
+          type: string
+          nullable: true
+        next_id:
+          path: $.data.nextId
+          type: string
+          nullable: true
+        owner_id:
+          path: $.data.ownerEmployee.employeeId
+          type: string
+          nullable: true
+        owner_name:
+          path: $.data.ownerEmployee.name
+          type: string
+          nullable: true
+        owner_display_name:
+          path: $.data.ownerEmployee.displayName
+          type: string
+          nullable: true
+        submitter_id:
+          path: $.data.submitterEmployee.employeeId
+          type: string
+          nullable: true
+        submitter_name:
+          path: $.data.submitterEmployee.name
+          type: string
+          nullable: true
+        submitter_display_name:
+          path: $.data.submitterEmployee.displayName
+          type: string
+          nullable: true
+        creator_id:
+          path: $.data.createEmployee.employeeId
+          type: string
+          nullable: true
+        creator_name:
+          path: $.data.createEmployee.name
+          type: string
+          nullable: true
+        creator_display_name:
+          path: $.data.createEmployee.displayName
+          type: string
+          nullable: true
+        department_id:
+          path: $.data.department.departmentId
+          type: string
+          nullable: true
+        demand_employee_ids:
+          path: $.data.demandEmployees[*].employeeId
+          type: array
+          nullable: true
+        handover_records:
+          path: $.data.handover.records
+          type: array
+          nullable: true
+          items:
+            type: object
+            source_type: HandoverVO.HandoverRecordVO
+            nullable: true
+        handover_previous_employee:
+          path: $.data.handover.records[*].preAuthorizedEmployee
+          type: object
+          nullable: true
+          meaning: 本条交接前拥有权限的人员；不是操作人，也不必等于合同创建人。
+        handover_receiver_employee:
+          path: $.data.handover.records[*].authorizedEmployee
+          type: object
+          nullable: true
+          meaning: 本条交接后被授权的人员；不以历史最后一人覆盖详情当前归属人字段。
+        handover_operator_employee:
+          path: $.data.handover.records[*].approvedEmployee
+          type: object
+          nullable: true
+          meaning: 授权执行人/操作人；不得当成交接前人员，第三方代交接时尤其需要分列。
+        handover_create_time:
+          path: $.data.handover.records[*].createTime
+          type: string
+          nullable: true
+          source_type: java.util.Date；前端HandoverRecordVO声明string，展示组件另兼容对象time字段。
+          compatibility: 保留接口原值；若返回数值或对象time，仅在时间单位与时区明确时转换。无法确定则原样展示并标注待核实，不猜秒/毫秒。
+        handover_source_type_code:
+          path: $.data.handover.records[*].authorizationSourceTypeCode
+          type: integer
+          nullable: true
+          meaning: 授权来源类型；保留真实code，不能把任意授权记录直接称为一次本次交接。
+    permissions:
+      data_scope: 当前已授权用户所在租户及服务端数据权限范围
+      enforcement: Controller 和 Service 权限独立判定；接口可调用不代表可交接任意合同。
+    history_interpretation:
+      employee_object: 三类人员均为EmployeeVO对象；employeeId为内部ID十进制字符串，name为姓名，displayName为展示名，tenantId为内部租户ID字符串。用ID判定是否同人，展示优先displayName再name，不能通过同名合并。
+      current_roles: 创建人取createEmployee、当前归属人取ownerEmployee、当前申请人取submitterEmployee；任何一项为空就报告为空，不从创建人或历史记录推补。
+      record_shape: records在已核源码中为扁平HandoverRecordVO数组；逐条以同一record索引关联前人、后人、操作人、时间和来源。出现多条或同时间多人记录时保留分组及每条对应关系，不压成一条，也不拼接不同记录的字段；若实际出现嵌套数组等结构漂移则停止推断并报告。
+      null_handling: handover/records为空只说明本接口未返回可用历史，不证明从未交接；前人或操作人对象可能因缺ID/缺员工映射为空，保持未知，不能互相替代。空record跳过并报告数量，不能虚构人员。
+      source_codes: 已核授权来源：0=DEFAULT，1=OPEN_PLATFORM，2=MANUAL_HANDOVER，3=DIMISSION_HANDOVER；其他或未知code保留原码并标注来源待核实，不猜类型。
+      ordering_and_time: 保存原始顺序与时间；需要排序时只能使用可解释的createTime。显示北京时间时明确Asia/Shanghai，缺时区/时间格式不明则保留原文，不隐式假定UTC。
+      write_evidence_boundary: 历史查询仅回答已返回的交接历史；现存记录、当前归属人等于接收人、历史交接双方相符，都不能证明本次写入成功。写后仍需按result_policy匹配本次返回授权、写前不存在的新记录以及逐份回读。
+    notes:
+    - 当前Drawer另有 composition/contractAndTask；该聚合入口包含交易方状态更新，未选为本配方。/contract/info 是现存受权详情接口，test 只读调用已有成功证据，交接写后的回查仍待验证。
+    - generateContractName=false，tianyancha=false；未承诺所有详情内部逻辑零副作用。
+    - assemblyId/previousId/nextId 空或0均不能证明 groupId 下没有其他有效资源/关联草稿。
+    - 本配方适用的普通处理资源仍须通过详情权限；已确认组成员采用父组受权childrenInfo读取有保障字段，不以普通info系统错误推断权限被拒。
+    - H21a只读验证中，两个type11组成员调用本路径分别返回110002系统错误；未查明异常根因，不归因为缺参数、无权限或类型必然不支持，不通过猜参数/改身份/改用composition重试。 该历史读取现象不列为Skill待修复项或组交接阻塞；已确认组成员不再强制走此路径。
+    resource_scope:
+      handler: ContractHandover
+      exclude_confirmed_assembly_members: true
+      assembly_member_read_recipe: verify_assembly_children
+      dispatch_rule: 按本次已核处理器分流；由ContractAssemblyHandover更新的组内成员不强制经普通contract/info。类型或归属处理器未确证时先停在识别步骤，不能借此放行未知资源。
+    execute_when: 本次由ContractHandover处理的资源；不含已确认由父组处理器更新的组内成员
+  verify_assembly_detail:
+    purpose: 回读本次影响的合同组本体，核对组专用角色变更及本次交接记录
+    role: VERIFY
+    required: true
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/contractAssembly/info
+      open_web_path: /open-web/web/clm/contractAssembly/info
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      contractAssemblyId:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: steps.execute_batch.expected_affected_resources.assembly_id
+        transform: 遍历本次预检证明的全部受影响assembly内部ID
+      batchContractChildrenPageIndex:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: 0
+      batchContractChildrenPageSize:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: 100
+      needChildrenInfo:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+    response:
+      success:
+        http_status: 200
+        predicates:
+        - $.code == 200
+        - $.success == true
+      fields:
+        assembly_id:
+          path: $.data.contractAssemblyId
+          type: string
+          nullable: false
+        name:
+          path: $.data.contractAssemblyName
+          type: string
+          nullable: true
+        business_type_code:
+          path: $.data.businessTypeCode
+          type: integer
+          nullable: false
+        status_code:
+          path: $.data.contractStatusCode
+          type: integer
+          nullable: false
+        group_id:
+          path: $.data.groupId
+          type: string
+          nullable: true
+        previous_id:
+          path: $.data.previousId
+          type: string
+          nullable: true
+        next_id:
+          path: $.data.nextId
+          type: string
+          nullable: true
+        owner_id:
+          path: $.data.ownerEmployee.employeeId
+          type: string
+          nullable: true
+        submitter_id:
+          path: $.data.submitterEmployee.employeeId
+          type: string
+          nullable: true
+        department_id:
+          path: $.data.department.departmentId
+          type: string
+          nullable: true
+        children_count:
+          path: $.data.childrenCount
+          type: integer
+          nullable: true
+        contracts:
+          path: $.data.contracts
+          type: array
+          nullable: true
+        handover_records:
+          path: $.data.handover.records
+          type: array
+          nullable: true
+    permissions:
+      data_scope: 当前已授权用户所在租户及服务端数据权限范围
+      enforcement: Controller 和 Service 权限独立判定；接口可调用不代表可交接任意合同。
+    notes:
+    - needChildrenInfo=false 对非batch组仍可能返回首批子合同；不得把 contracts 长度当全部。
+    - childrenCount 由当前 tenantId+assemblyId+valid=true 实时计数；不是同groupId全部assembly版本数量。
+    - Controller数据权限businessTypeCodeKey固定10；type17真实网关与权限表现待运行验证。
+  verify_assembly_children:
+    purpose: 按父组权限回读全部成员的身份、当前角色和需求人，结合本次父组授权与完整成员关系核对交接结果；部门不列判据
+    role: VERIFY
+    required: true
+    endpoint:
+      family: CLM
+      method: GET
+      original_page_path: /clm/api/contractAssembly/childrenInfo
+      open_web_path: /open-web/web/clm/contractAssembly/childrenInfo
+    operation:
+      read_or_write: READ
+      identity: USER
+      confirmation: NOT_REQUIRED
+    request:
+      body_mode: NONE
+    parameters:
+      contractAssemblyId:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: steps.execute_batch.expected_affected_resources.assembly_id
+        transform: 逐个已证明的受影响assembly分页
+      batchContractChildrenPageIndex:
+        location: QUERY
+        source: DERIVED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: REQUEST_SCOPED
+        from: steps.verify_assembly_children.page_index
+        transform: 从0逐页读取至空，与写前及写后childrenCount复核
+      batchContractChildrenPageSize:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: 100
+      needApproveRecord:
+        location: QUERY
+        source: FIXED
+        required: true
+        effectiveness: CONFIRMED_EFFECTIVE
+        stability: CONTRACT_STABLE
+        value: false
+    response:
+      success:
+        http_status: 200
+        predicates:
+        - $.code == 200
+        - $.success == true
+      fields:
+        contracts:
+          path: $.data.contracts
+          type: array
+          nullable: false
+        contract_ids:
+          path: $.data.contracts[*].contractId
+          type: array
+          nullable: false
+        tenant_ids:
+          path: $.data.contracts[*].tenantId
+          type: array
+          nullable: true
+        assembly_ids:
+          path: $.data.contracts[*].assemblyId
+          type: array
+          nullable: true
+        group_ids:
+          path: $.data.contracts[*].groupId
+          type: array
+          nullable: true
+        business_type_codes:
+          path: $.data.contracts[*].businessTypeCode
+          type: array
+          nullable: true
+        contract_numbers:
+          path: $.data.contracts[*].contractNumber
+          type: array
+          nullable: true
+        contract_names:
+          path: $.data.contracts[*].contractName
+          type: array
+          nullable: true
+        status_codes:
+          path: $.data.contracts[*].contractStatusCode
+          type: array
+          nullable: true
+        status_names:
+          path: $.data.contracts[*].contractStatusName
+          type: array
+          nullable: true
+        previous_ids:
+          path: $.data.contracts[*].previousId
+          type: array
+          nullable: true
+        next_ids:
+          path: $.data.contracts[*].nextId
+          type: array
+          nullable: true
+        owner_ids:
+          path: $.data.contracts[*].ownerEmployee.employeeId
+          type: array
+          nullable: true
+        owner_names:
+          path: $.data.contracts[*].ownerEmployee.name
+          type: array
+          nullable: true
+        owner_display_names:
+          path: $.data.contracts[*].ownerEmployee.displayName
+          type: array
+          nullable: true
+        submitter_ids:
+          path: $.data.contracts[*].submitterEmployee.employeeId
+          type: array
+          nullable: true
+        submitter_names:
+          path: $.data.contracts[*].submitterEmployee.name
+          type: array
+          nullable: true
+        submitter_display_names:
+          path: $.data.contracts[*].submitterEmployee.displayName
+          type: array
+          nullable: true
+        creator_ids:
+          path: $.data.contracts[*].createEmployee.employeeId
+          type: array
+          nullable: true
+        creator_names:
+          path: $.data.contracts[*].createEmployee.name
+          type: array
+          nullable: true
+        creator_display_names:
+          path: $.data.contracts[*].createEmployee.displayName
+          type: array
+          nullable: true
+        demand_employees:
+          path: $.data.contracts[*].demandEmployees
+          type: array
+          nullable: true
+        demand_employee_ids:
+          path: $.data.contracts[*].demandEmployees[*].employeeId
+          type: array
+          nullable: true
+        department_ids:
+          path: $.data.contracts[*].department.departmentId
+          type: array
+          nullable: true
+          availability: UNKNOWN_NOT_PROVIDED
+          meaning: 该assemblySwitch路径没有填充成员真实department的保障；缺省/null保持未知。按用户决定不纳入必需读取、快照、测试或成功判据，不影响预检和交接结果。
+          required_for_preflight: false
+          required_for_verification: false
+          missing_value_effect: NONE_ON_PREFLIGHT_OR_HANDOVER_RESULT
+        handover_records:
+          path: $.data.contracts[*].handover.records
+          type: array
+          nullable: true
+          availability: NOT_PROVIDED_BY_ASSEMBLY_SWITCH
+          meaning: 该路径关闭handover字段填充；不要求组内成员各自产生独立交接授权或记录。
+      row_interpretation:
+        collection: $.data.contracts
+        key: contractId
+        preserve_member_correlation: true
+        rule: 按每个成员对象的contractId关联字段；不可将独立扁平数组按索引拼接，也不可把某一成员缺字段补成父组/其他成员字段。成员ID、assemblyId、type、状态和角色均以实际响应核对；缺项保持未知。
+    permissions:
+      data_scope: 当前登录租户内，当前用户有AUTHORIZED权限的父assembly及其全部valid=true成员
+      enforcement: Controller按contractAssemblyId、businessTypeCodeKey=10校验父组AUTHORIZED及首页/合同管理/任务页功能权限；Service按tenantId+assemblyId+valid=true分页。保留该官方父组权限边界，不伪造身份或跳过校验；type17网关和权限行为按其自身证据验证。
+    pagination:
+      page_index_base: 0
+      page_size: 100
+      query_scope: tenantId + assemblyId + valid=true
+      sort: sequence
+      completion: 去重收集全部页直至空页，并与前后 assembly_detail.children_count 相等；重复/缺项/数量变化时重新读取，不得把差异解释成空。
+      limitation: 仅完整枚举一个assembly的有效ContractBase成员；不能枚举同groupId其他assembly。灰度/草稿要求按实际处理器及状态分支判定。成员department未保障填充属已知字段限制，不影响本配方预检和交接结果。
+    field_coverage:
+      member_identity_status: CODE_CONFIRMED_CURRENT_CONTRACT_BASE
+      owner_submitter_creator: CODE_CONFIRMED_EMPLOYEE_MAP
+      demand_employees: CODE_CONFIRMED_EMPLOYEE_MAP
+      department: UNKNOWN_NOT_PROVIDED
+      independent_handover_record: NOT_PROVIDED_BY_ASSEMBLY_SWITCH
+      department_null_means_unset: false
+      employee_departments_are_contract_department: false
+      parent_department_is_child_department: false
+      department_validation_required: false
+      department_missing_value_effect: NONE_ON_PREFLIGHT_OR_HANDOVER_RESULT
+    preconditions:
+    - 必须先以assembly_detail核实父组ID、处理器、本体权限与状态；用全部成员分页和前后childrenCount证明成员集合。
+    notes:
+    - getContractInfoOfAssembly使用assemblySwitch；基础VO填当前人员和需求人，但该switch关闭handover，不执行同时负责department填充的fillEmployeeInfoAndHandover。
+    - 成员ownerEmployee.departments属于员工信息，不能替代合同持久化departmentId；父组department也不能代替成员department。
+    - 父组info.contracts与本成员接口调用同一组内详情分支，成员部门缺省不要求补读或修复。
+    - 组处理器只创建父组本次授权；成员交接以本次父组授权/记录+完整成员关系+当前角色/需求人回读核对，成员部门不列门槛或成功判据。
+    - 部门由后端自动联动，无成员旧部门入参；该字段缺读不能导致预检或交接结果失败、UNVERIFIED或阻塞，不强制额外普通info调用。
+orchestration:
+  steps:
+  - id: current_identity
+    type: API
+    depends_on: []
+    recipe: current_employee
+  - id: function_permissions
+    type: API
+    depends_on:
+    - current_identity
+    recipe: function_permissions
+  - id: employee_candidates
+    type: API
+    depends_on:
+    - current_identity
+    recipe: employee_candidates
+  - id: choose_receiver
+    type: TRANSFORM
+    depends_on:
+    - employee_candidates
+    action: 展示候选姓名和部门供用户消歧，内部ID仅用于绑定；用户已明确指定且唯一匹配时可在后续确认清单中一并确认，不要求手抄ID或重复选同一人。
+  - id: employee_details
+    type: API
+    depends_on:
+    - choose_receiver
+    - current_identity
+    recipe: employee_details
+  - id: enumerate_candidates
+    type: API
+    depends_on:
+    - function_permissions
+    recipe: search_contracts
+    when: 需要搜索或全选搜索结果
+    repeat: 连续搜索全部分页并固定筛选条件；不在写入时重跑动态搜索
+  - id: resolve_resources
+    type: TRANSFORM
+    depends_on:
+    - enumerate_candidates
+    - current_identity
+    action: 已知ID或搜索候选逐项定位；保存内部ID、type、group；类型不明先详情消歧，禁止混用合同ID/assemblyId/ES聚合groupId。
+  - id: contract_details
+    type: API
+    depends_on:
+    - resolve_resources
+    recipe: contract_detail
+    when: 仅本次ContractHandover普通处理资源及该处理器关联资源；排除已确认由父组处理器更新的组内成员
+  - id: assembly_details
+    type: API
+    depends_on:
+    - resolve_resources
+    recipe: assembly_detail
+    when: type10/17入口或发现assemblyId
+  - id: enumerate_assembly_children
+    type: API
+    depends_on:
+    - assembly_details
+    recipe: assembly_children
+    when: 已确认的assembly集合
+    repeat: index0起顺序分页；前后childrenCount对账
+  - id: impact_preflight
+    type: TRANSFORM
+    depends_on:
+    - contract_details
+    - assembly_details
+    - enumerate_assembly_children
+    - function_permissions
+    - employee_details
+    action: 优先识别指定普通入口核心test，按ordinary_core_test核对身份、权限、接收人、真实类型、状态及双角色，关联由后端处理并说明，impact_complete保持false；不因此标BLOCKED_IMPACT_UNKNOWN。其他范围按impact_gate核对完整成员和适用影响。必要目标/人员/回读缺失仍停止。
+    output_schema:
+      eligible: array
+      excluded: array<resource,reason>
+      expected_affected_resources: array
+      impact_complete: boolean
+      missing_evidence: array
+      handler: ContractHandover|ContractAssemblyHandover|UNKNOWN
+      expected_side_effects: array<condition,target,expected,postcheck_method>
+  - id: freeze_manifest
+    type: TRANSFORM
+    depends_on:
+    - impact_preflight
+    action: 冻结指定入口、真实处理器、当前状态/角色、接收人与权限快照。普通核心test保存有限result_scope及后端关联处理说明，已知同group入口去重归并以免重复触发，首轮只做一个小批次，不把指定核验集合写成完整影响集合。其他场景仍冻结完整影响项与适用配置，整体组不拆分。后台JSON指纹绑定用户可读清单。
+  - id: confirm_manifest
+    type: TRANSFORM
+    depends_on:
+    - freeze_manifest
+    action: 展示指定入口、接收人、双角色变化及排除项；普通核心test同一清单说明并确认后端关联/草稿处理方式，不能承诺其他记录不变。用户确认可读清单，不要求核对技术哈希；已有同范围明确授权沿用。
+  - id: refresh_before_batch
+    type: TRANSFORM
+    depends_on:
+    - confirm_manifest
+    action: 每批前复查身份、接收人、权限及冻结入口的状态/角色。普通核心test只复查本分支指定入口和已知影响，不以全量关联缺口再次拒绝；其他范围另复查完整成员。关键漂移停止并更新清单，不向旧清单补入新命中。
+  - id: execute_batch
+    type: API
+    depends_on:
+    - refresh_before_batch
+    - confirm_manifest
+    recipe: handover
+    when: 用户确认有效且普通核心test必要条件满足，或其他范围影响完整；两种范围均不得存在必要身份/对象/回读缺口
+    repeat: 同一次执行严格串行；每批逐项核对后才自动开始下一批，超时/不确定停止余批。明确续办属于resume_policy约束的关联新执行，不能自动重发原不确定项。
+  - id: verify_contracts
+    type: API
+    depends_on:
+    - execute_batch
+    - freeze_manifest
+    recipe: verify_contract_detail
+    when: 本批包含ContractHandover普通处理资源；已确认的组处理器成员仅走verify_assembly_children，不强制普通info
+  - id: verify_assemblies
+    type: API
+    depends_on:
+    - execute_batch
+    - freeze_manifest
+    recipe: verify_assembly_detail
+    when: 本批包含assembly本体
+  - id: verify_assembly_children
+    type: API
+    depends_on:
+    - execute_batch
+    - verify_assemblies
+    - freeze_manifest
+    recipe: verify_assembly_children
+    when: 本批包含assembly本体
+  - id: reconcile
+    type: TRANSFORM
+    depends_on:
+    - verify_contracts
+    - verify_assemblies
+    - verify_assembly_children
+    - execute_batch
+    action: 普通核心test逐指定入口匹配本次授权/新增记录及双角色前后回读，结果限定SELECTED_ENTRIES_ONLY；部门/需求人及流程/通知观察另列，不冒称全量关联已核。其他完整范围仍按原处理器核对字段、父授权/完整成员/角色回读。任何范围均不能把HTTP成功或历史记录当作本次逐份成功。
+  aggregation:
+    strategy: JOINED
+    keys:
+    - businessId
+    - businessTypeCode
+    - authorizedTenantId
+    - authorizedEmployeeId
+    output: 入口与展开影响项分别计数，逐资源关联写响应和前后回查，不以响应总成功替代业务结果。
+presentation:
+  outputs:
+  - key: permissions
+    label: 当前交接权限
+    recipe: function_permissions
+    field: codes
+  - key: receiver
+    label: 接收人候选
+    recipe: employee_candidates
+    field: employees
+  - key: current_owner
+    label: 当前归属人内部ID
+    recipe: contract_detail
+    field: owner_id
+    fallback: 待核实，不推断为创建人或需求人
+  - key: department
+    label: 当前部门
+    recipe: contract_detail
+    field: department_id
+    fallback: 待核实
+  - key: authorization_records
+    label: 本次接口返回的授权记录
+    recipe: handover
+    field: authorizations
+    fallback: 未返回；交接结果待核实
+  - key: after_owner
+    label: 交接后归属人内部ID
+    recipe: verify_contract_detail
+    field: owner_id
+    fallback: 回读未确证
+  - key: after_records
+    label: 交接后记录
+    recipe: verify_contract_detail
+    field: handover_records
+    fallback: 未读到本次记录，不能报告成功
+  mappings: {}
+  summary_required:
+  - 固定入口数与展开影响数
+  - 可交接/排除项及原因
+  - 接收人和部门规则
+  - 归属人/申请人变化；需求人列表保持
+  - 确认清单指纹与批次计划
+  - 每项 VERIFIED_CHANGED/FAILED/UNVERIFIED/NOT_EXECUTED 等结果
+  - 代码确证/实际接口证据/尚未测试分开标注
+permissions:
+  transport_identity: USER
+  data_scope: 当前已授权租户下，登录用户页面功能权限与具体合同数据权限；all页不代表租户全部可访问合同。
+  impersonation_allowed: false
+  forbidden_fields:
+  - handoverByAdmin
+  - operatorEmployeeId
+  - 身份覆盖headers
+  receiver_scope: 同租户且当前可确认正常员工；不可仅凭姓名或旧开放平台ID
+  confirmation: 普通核心test按ordinary_core_test说明指定对象及服务端关联处理，用户一次确认具体清单；其他场景完整影响事实齐全后确认。不得使用“继续测试”等泛化指令代替本次具体写入确认。
+evidence:
+  code:
+    status: CODE_CONFIRMED
+    sources:
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/PermissionController.java
+      lines: 76-108,139-148
+      supports: 同步交接/动态异步入口及功能权限
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/service/PermissionService.java
+      lines: 409-448,1112-1148
+      supports: 功能权限、服务端admin、响应合并、后续读取权限
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/access/handover/ContractHandover.java
+      lines: 85-143,148-350
+      supports: 普通处理器group展开、角色条件、部门、草稿失效、授权和协商
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/access/handover/ContractAssemblyHandover.java
+      lines: 60-182
+      supports: assembly展开、本体与全部有效成员角色更新、组特有申请人分支
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/access/handover/AbstractResourceHandover.java
+      lines: 83-113,146-179
+      supports: 相同接收人/个人范围/状态校验与授权
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/access/handover/ResourceHandoverEvent.java
+      lines: 114-123
+      supports: 真实第三人判定
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/enums/ContractStatus.java
+      lines: 429-443
+      supports: 可交接状态范围和灰度
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/EmployeeController.java
+      lines: 81-90,108-117,143-173
+      supports: 员工候选、当前员工、按ID详情
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/service/EmployeeService.java
+      lines: 425-453,474-497,573-576
+      supports: 候选includeInvalid=false分支与NORMAL过滤；详情按ID读取不做NORMAL过滤，extraDepartmentInfo只补部门信息
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-organization/src/main/java/com/bytedance/ea/saas/clm/infra/mapper/CommonMapper.java
+      lines: 4-11
+      supports: 真实枚举全限定名和status.getValue映射；不可使用CLM内另一个同名operation.StatusEnum
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-organization/src/main/java/com/bytedance/ea/saas/clm/infra/mapper/EmployeeMapper.java
+      lines: 15-37,46-56
+      supports: EmployeeVO使用CommonMapper；EpcEmployeeDto和EpcEmployeeInfoDto均忽略expired/locked
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-organization/src/main/java/com/bytedance/ea/saas/clm/infra/template/ClmEmployeeCacheTemplate.java
+      lines: 73-101
+      supports: 候选搜索使用EmployeeSearchEnum.NOT_RESIGNED并传递降级选项；此代码不证明HR真实在职
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-organization/src/main/java/com/bytedance/ea/saas/clm/infra/template/ClmEmployeeTemplate.java
+      lines: 82-129,142-153,474-501
+      supports: 按ID详情链不做NORMAL过滤且使用EmployeeVO缓存；候选显式关闭关键词缓存并允许降级；详情映射只补openId等
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: pom.xml
+      lines: 919-928
+      supports: 真正StatusEnum来自enterprise-center-common外部依赖0.3.2.9-qfei-SNAPSHOT，缓存仓没有该依赖枚举实现
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/vo/enterprise/EmployeeVO.java
+      lines: 50-107
+      supports: 内部员工与租户ID、状态、部门字段
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/contract/business/ContractController.java
+      lines: 587-618,1196-1204
+      supports: 受权详情、限制参数与checkDrafts入口
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/business/application/ContractApplicationService.java
+      lines: 1982-2026,3417-3418,6925-6952,8710-8744
+      supports: 详情草稿权限、普通初始owner、交接记录、checkDrafts非完整性
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/contract/vo/business/ContractBaseVO.java
+      lines: 143-173,219-221,272-278,394-427,570
+      supports: 资源、角色、关联与需求人字段
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/contract/vo/access/HandoverVO.java
+      lines: 36-93
+      supports: records扁平数组、EmployeeVO三类人员、Java Date时间、Integer来源码和空值生成分支
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/dto/es/contract/CompoundSearchDTO.java
+      lines: 57-72,112-139
+      supports: 页面搜索conditionUnits数组及每项searchField/searchValue/unionType，不使用开放API蛇形字段
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/vo/es/SearchContractListItemVO.java
+      lines: 43-65,103-104
+      supports: 编号候选的contractId、contractNumber、contractName和businessTypeCode响应字段
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/enums/permission/AuthorizationSourceType.java
+      lines: 22-25
+      supports: 授权来源DEFAULT/OPEN_PLATFORM/MANUAL_HANDOVER/DIMISSION_HANDOVER的code
+    - repository: clm-monorepo-fe
+      commit: 164c549b57ff762f42133ad41a02eba81e8159fd
+      path: features/common/src/api/contract/interface/index.ts
+      lines: 12150-12171
+      supports: HandoverRecordVO前端字段类型及createTime为string
+    - repository: clm-monorepo-fe
+      commit: 164c549b57ff762f42133ad41a02eba81e8159fd
+      path: features/pc/src/components/HandoverHistory/index.tsx
+      lines: 76-100
+      supports: 前端历史逐条展示及createTime对象time兼容分支；不采用UI补位逻辑推断缺失交接前人
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/vo/AuthorizationVO.java
+      lines: 28-61
+      supports: 本次返回授权字段
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/contract/business/ContractAssemblyController.java
+      lines: 297-342
+      supports: 组详情和成员分页接口
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/business/assembly/ContractAssemblyService.java
+      lines: 1068-1071,1126-1152,1179-1213
+      supports: 有效成员实时计数和分页范围
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/contract/vo/business/assembly/ContractAssemblyVO.java
+      lines: 66-121,157-182,211-225
+      supports: 组本体、角色、子合同数量与交接字段
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/SearchController.java
+      lines: 53-68
+      supports: 合同页搜索，登录上下文覆盖tenant/employee
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/vo/es/CompoundSearchResultVO.java
+      lines: 20-46
+      supports: 聚合组总数、分页、游标
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/business/change/ContractChangeService.java
+      lines: 1281-1359,1420-1439
+      supports: 变更记录视图非完整group闭包，过滤正常终止草稿
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/service/es/search/ContractGroupESService.java
+      lines: 218-235,250-254,313-334,1123-1125
+      supports: searchAfter原样游标、offset边界、从0开始页索引
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/ContractBaseService.java
+      lines: 924-936
+      supports: 复制初始化创建人/owner/submitter
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/business/change/ContractChangeService.java
+      lines: 1010-1021
+      supports: 历史原合同快照owner/submitter继承例外
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/business/complete/ContractCompleteService.java
+      lines: 475-490
+      supports: 自动办结记录机器人创建而owner/submitter继承例外
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/contract/CompositionController.java
+      lines: 50-125
+      supports: 页面聚合详情与末尾交易方状态更新，未选配方
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/SsoController.java
+      lines: 125-205,437
+      supports: 当前系统配置灰度候选字段
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/access/handover/ContractAssemblyHandover.java
+      lines: 208-221
+      supports: 父组部门任何有效交接都更新首部门，异常仅日志
+    - repository: clm-monorepo-fe
+      commit: 164c549b57ff762f42133ad41a02eba81e8159fd
+      path: apps/clm/src/features/management/containers/HandoverModal/index.tsx
+      lines: 104-138
+      supports: 当前交接页同步/异步选择与resourceList映射
+    - repository: clm-monorepo-fe
+      commit: 164c549b57ff762f42133ad41a02eba81e8159fd
+      path: apps/clm/src/features/management/components/RowCheckbox/index.tsx
+      lines: 49-63
+      supports: 页面勾选100入口限制，未等同服务端容量
+    - repository: clm-monorepo-fe
+      commit: 164c549b57ff762f42133ad41a02eba81e8159fd
+      path: features/common/src/api/contract/permission.ts
+      lines: 46-53,156-161
+      supports: 页面交接API原路径
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/contract/model/business/ContractBase.java
+      lines: 1139-1146
+      supports: 个人isOwner包含owner及需求人列表，不能等同角色赋值
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/dto/permission/BusinessResourceHandoverDTO.java
+      lines: 31-52
+      supports: 目标、manual、reason注解及资源清单
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/contract/vo/access/BusinessResourceHandoverVO.java
+      lines: 28-31
+      supports: 同步响应仅authorizations
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/business/application/ContractApplicationService.java
+      lines: 7967-7983,8089-8131
+      supports: 禁用合同名生成快速返回；长期说明构造VO
+    - repository: clm-monorepo-fe
+      commit: 164c549b57ff762f42133ad41a02eba81e8159fd
+      path: apps/clm/src/features/management/constants.ts
+      lines: '9'
+      supports: MAX_SELECTED_NUM=100，入口勾选限制来源
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/contract/business/ContractController.java
+      lines: 587-618
+      supports: 普通info采用fullSwitch，只有contractId必填，type11错误原因未由代码确定
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-api/src/main/java/com/bytedance/ea/saas/clm/api/controller/contract/business/ContractAssemblyController.java
+      lines: 297-341
+      supports: 父组受权info及childrenInfo的权限和参数
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/business/assembly/ContractAssemblyService.java
+      lines: 1068-1071,1132-1152,1179-1208
+      supports: 单assembly有效成员计数及分页；父组contracts同源
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/business/application/ContractApplicationService.java
+      lines: 991-996,6925-6967,7022-7024,7066-7068
+      supports: assemblySwitch专用子详情；handover开关控制员工增强/交接记录及department填充
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/dto/ContractQuerySwitchDTO.java
+      lines: 92-118,138-150
+      supports: assemblySwitch继承tiny的handover=false，未打开部门填充链
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/ContractBaseService.java
+      lines: 2000-2008
+      supports: 基础子合同从当前实体和employeeMap构造
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/contract/vo/business/ContractBaseVO.java
+      lines: 746-767,803-810,860-898
+      supports: 成员身份/状态/角色/需求人赋值，未填真实department
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/access/handover/ContractAssemblyHandover.java
+      lines: 87-95,123-132,142-205,208-219
+      supports: 组展开、父flags、BPM/授权、本体及成员部门、旧owner映射
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/access/handover/ContractHandover.java
+      lines: 255-283
+      supports: 普通处理器草稿失效分支，不套到组处理器
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-common/src/main/java/com/bytedance/ea/saas/clm/common/enums/ContractStatus.java
+      lines: 47,429-443
+      supports: status3固定允许范围，草稿/协商准入才有灰度分支
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/service/PermissionService.java
+      lines: 412-446
+      supports: 服务端admin标记与处理器成功事件发布
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/contract/service/access/handover/ResourceHandoverEvent.java
+      lines: 114-123
+      supports: 实际第三人与服务端admin标记不同
+    - repository: clm
+      commit: 98e104f58203f8235e42c23ac66b33cbce4e1cda
+      path: clm-core/src/main/java/com/bytedance/ea/saas/clm/core/service/async/listener/ResourceHandoverSuccessEventListener.java
+      lines: 49-94
+      supports: 异步接收人/旧owner/适用上级通知分支
+  runtime:
+  - recipe: assembly_children
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: us3ikmer18
+    trace_id: 79ca0dc0ca5001cca29d096cb1de5819
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:05:46.849298+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#assembly_children
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: assembly_detail
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: 1hv5js2xhe
+    trace_id: 94f5303dd06c9ad1db3c24d8e49aafe2
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:05:45.546424+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#assembly_detail
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: search_contracts
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: qhkj8pk3ck
+    trace_id: 63f2a22be7cc914ddd59adb6b50b7415
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:10:14.749223+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#assembly_exact_search
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: assembly_detail
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: 1hbahxx9i3
+    trace_id: e383f46c5885060de94febbe55e591f6
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:10:16.325725+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#assembly_preflight
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: search_contracts
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: 1jed7lm3p9
+    trace_id: 5b206a1f817017a0f7f8facb37923e3a
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:05:43.866745+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#assembly_search
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: contract_detail
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: t86vm17gpe
+    trace_id: ffac2fe63a96d5ec15416b7628073ef9
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:02:16.515939+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#contract_detail
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: current_employee
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: 1jei8tzlc6
+    trace_id: ae6b79c1c05572f33e365c6b3e70985c
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:10:13.224899+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#current_employee
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: employee_candidates
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: 1hbjacct3f
+    trace_id: 038661e72b75fe45bc2025f39a201309
+    sample: EMPTY
+    captured_at: '2026-10-08T09:00:23.550589+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#employee_candidates
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: employee_details
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: vbmwpuxzb5
+    trace_id: 1c705da04aeb4928e62bc4afdbd7a6eb
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:02:15.792394+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#employee_detail
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: employee_candidates
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: 1jy2605oer
+    trace_id: 2c9c512a91d0b8a9222519efca0830eb
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:01:13.076830+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#employee_nonempty
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: function_permissions
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: vf3pmalz3y
+    trace_id: 49942913d68c54cb0356ea2706e9ea65
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:00:21.503506+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#function_permissions
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: search_contracts
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: 1jew1r94cd
+    trace_id: 41805bc268b9671ce57f5d66ef8c2041
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:02:16.308504+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#search_cursor
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: search_contracts
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: rl2vdz0roy
+    trace_id: cc628b9c4db0f3f50d2146602cece86f
+    sample: EMPTY
+    captured_at: '2026-10-08T09:01:13.040838+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#search_empty
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: search_contracts
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: t4l3abrhzf
+    trace_id: 8f652f8ec0aac7b200c70c4e7bd3f494
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:01:13.366141+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#search_nonempty
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: search_contracts
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: qy4x0k2f0c
+    trace_id: 7634273fc87632c42c1600f83e9044e3
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:03:16.520261+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#complete_search_page_0
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: search_contracts
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: uvbg0x696j
+    trace_id: 0a807d370b4e7632fda2433049926e5d
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:03:16.520261+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#complete_search_page_1
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: search_contracts
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: sof30qumxb
+    trace_id: db8c5ebcd61e0633b46f485cbd8027a1
+    sample: NON_EMPTY
+    captured_at: '2026-10-08T09:03:16.520261+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#complete_search_page_2
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  - recipe: search_contracts
+    transport: CLI
+    environment: test
+    synthetic: false
+    http_status: 200
+    http_success: true
+    business_success: true
+    request_id: t4cat5kysq
+    trace_id: ee829f924253b52ba63c64a4be1667e5
+    sample: EMPTY
+    captured_at: '2026-10-08T09:03:16.520261+00:00'
+    evidence_ref: ../verification/runtime-evidence.json#complete_search_page_3
+    validation_scope: READ_ENDPOINT_ONLY_NOT_WRITE_AND_VERIFY
+  screenshot:
+    status: UNVERIFIED
+    note: 用户截图定位业务入口，不等于本版本实际运行和像素比对通过。
+  log:
+    status: UNVERIFIED
+  observations:
+  - id: H21A_CHILD_DETAIL_READ_ADAPTATION
+    environment: test
+    operation: READ_ONLY
+    reported_by: 本轮主线程真实只读记录
+    business_type_code: 11
+    attempt_count: 2
+    business_code: 110002
+    result: SYSTEM_ERROR
+    root_cause: UNDETERMINED_REQUIRES_SERVICE_TRACE
+    scope: 两个已确认父组成员的contract/info读取失败，保留为历史现象，根因未确定；当前组成员配方使用父组受权childrenInfo核对角色与关系，不强制额外普通info，也不把此现象列为Skill待修复项或交接阻塞。
+    credentials_or_business_identifiers_recorded: false
+    write_performed: false
+    handover_blocker: false
+    skill_fix_required: false
+    member_department_validation_required: false
+  - id: H21A_BOTH_WRITE_AND_READBACK
+    environment: test
+    operation: WRITE_AND_VERIFY
+    transport: CLI
+    synthetic: false
+    write_invocations: 1
+    http_status: 200
+    business_success: true
+    evidence_ref: ../verification/h21a-write-runtime-summary.json#h21a_both_write_and_readback
+    scope: 一份无后继且状态3的合同组，本人发起、父组ownerFlag及submitterFlag均为true；本次父组新授权、新增历史、完整两成员与父组角色、父组部门已匹配核对。不推广到其他flags、第三方或普通处理器。
+    notification_followup: 用户截图确认原归属人侧TEST机器人本次通知已显示，人员和两份数量匹配；截图不含合同编号或消息ID，结合本轮上下文关联。接收人侧随后由用户确认已收到，但未独立查看接收人截图或后台日志；不以昨日旧通知代替本次证据。
+    outstanding: BPM实际流程owner、后台发送日志和旧授权停用状态仍未独立核验；两侧通知分别保留截图和用户确认的证据层级；本次记录不等于整项H21或整包通过。
+    credentials_or_business_identifiers_recorded: false
+  - id: H09A_THREE_GROUP_WRITE_AND_READBACK
+    environment: test
+    operation: WRITE_AND_VERIFY
+    transport: CLI
+    synthetic: false
+    write_invocations: 1
+    http_status: 200
+    business_success: true
+    evidence_ref: ../verification/h09a-write-runtime-summary.json#h09a_three_group_write_and_readback
+    scope: 三个无后继状态3合同组，第三方代交接且两个角色标记均成立；一次合并提交3父组入口，完整回读9资源，核实3父组部门及本次新授权和历史。两个组首次验证，一个组有先前交接历史，不推广到其他类型、角色标记、异常或多批续办。
+    notification_followup: 本次两侧通知由用户确认正确，保留为用户陈述，不冒充独立截图或后台发送日志。
+    outstanding: 实际流程owner与旧授权停用仍待独立核验；全范围必需场景和接口证据不足，不提升整包成熟度。
+    credentials_or_business_identifiers_recorded: false
+  - id: H03A_ORDINARY_SELECTED_ENTRY_WRITE_AND_READBACK
+    environment: test
+    operation: WRITE_AND_VERIFY
+    transport: CLI
+    synthetic: false
+    write_invocations: 1
+    http_status: 200
+    business_success: true
+    scope_mode: ORDINARY_SELECTED_ENTRIES
+    result_scope: SELECTED_ENTRIES_ONLY
+    evidence_ref: ../verification/h03a-write-runtime-summary.json#h03a_ordinary_equal_roles_write_and_readback
+    scope: 一份普通合同的同人双角色交接，新授权/新增记录与角色回读对应；只核验指定入口，不覆盖不同人规则、普通批量或全部关联副作用。
+    outstanding: 本样本仅单份；普通批量另见H09B。完整影响与其他范围状态不由本项提升。
+    credentials_or_business_identifiers_recorded: false
+  - id: H09B_ORDINARY_BATCH_WRITE_AND_READBACK
+    environment: test
+    operation: WRITE_AND_VERIFY
+    transport: CLI
+    synthetic: false
+    write_invocations: 1
+    http_status: 200
+    business_success: true
+    scope_mode: ORDINARY_SELECTED_ENTRIES
+    result_scope: SELECTED_ENTRIES_ONLY
+    evidence_ref: ../verification/h09b-ordinary-batch-runtime-summary.json#h09b_ordinary_batch_write_and_readback
+    scope: 两份指定普通合同合并一批、仅提交一次；每份交接前归属人与申请人相同，本次新授权、新增记录和双角色回读分别匹配。写前6次GET、写后2次GET。
+    outstanding: 指定单份及两份批量的本轮核心验收完成；不同角色、异常批次、搜索全选及全部关联副作用未由此验证，不提升全包成熟度。
+    credentials_or_business_identifiers_recorded: false
+readiness:
+  delivery_status: null
+  contract_complete: false
+  code_confirmed: true
+  cli_test_verified: false
+  non_empty_response_verified: true
+  screenshot_matched: false
+  log_chain_verified: false
+  mcp_verified: false
+  production_verified: false
+  stage: DEVELOPMENT_CANDIDATE_PARTIAL_WRITE_VERIFIED
+  blockers:
+  - 完整影响预检仍有实质缺口；目标覆盖全部页面范围不等于当前全部场景可执行。
+  - 尚无覆盖必需读取、写入、回查和副作用的同通道运行证据。
+  - delivery_status=null是诚实开发态，通用Builder发布校验预计阻塞；不伪填RECIPE_READY/RUNNABLE。
+  runtime_verification_status: ORDINARY_SINGLE_AND_BATCH_CORE_PASSED_FULL_SCOPE_PARTIAL

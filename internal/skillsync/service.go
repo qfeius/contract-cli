@@ -46,7 +46,7 @@ func (s *Service) lock() (func(), error) {
 		return nil, e
 	}
 	if !ok {
-		return nil, errors.New("Skill synchronization already running")
+		return nil, errors.New("skill synchronization already running")
 	}
 	return func() { _ = l.Unlock() }, nil
 }
@@ -58,7 +58,7 @@ func targetLock(target string) (func(), error) {
 		return nil, e
 	}
 	if !ok {
-		return nil, errors.New("Skill location already being updated")
+		return nil, errors.New("skill location already being updated")
 	}
 	return func() { _ = l.Unlock() }, nil
 }
@@ -208,7 +208,7 @@ func (s *Service) Sync(history []string) (results []Result, err error) {
 		failure := ""
 		target, e := s.target(l.Target)
 		if e == nil && target != l.Target {
-			e = errors.New("Skill target identity changed")
+			e = errors.New("skill target identity changed")
 		}
 		if e == nil {
 			info, statErr := os.Stat(target)

@@ -81,7 +81,7 @@ func atomicJSON(name string, value any) error {
 		return e
 	}
 	temp := f.Name()
-	defer os.Remove(temp)
+	defer func() { _ = os.Remove(temp) }()
 	if _, e = f.Write(b); e == nil {
 		e = f.Sync()
 	}

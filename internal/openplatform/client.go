@@ -493,8 +493,16 @@ func tokenForIdentity(profile config.Profile, identity config.IdentityKind) (*co
 }
 
 func buildURL(baseURL, path string, query url.Values) (string, error) {
-	if strings.Contains(path, "://") || !strings.HasPrefix(path, "/open-apis/") {
-		return "", fmt.Errorf("open platform path must be a relative /open-apis/ path")
+	switch {
+	case strings.Contains(path, "://"):
+		return "", fmt.Errorf("open platform path must be relative")
+	case strings.HasPrefix(path, "/open-apis/"):
+	case strings.HasPrefix(path, OpenWebPathPrefix):
+		if err := ValidateOpenWebPath(path); err != nil {
+			return "", err
+		}
+	default:
+		return "", fmt.Errorf("open platform path must be a relative /open-apis/ or %s path", OpenWebPathPrefix)
 	}
 
 	parsedBase, err := url.Parse(strings.TrimRight(baseURL, "/"))

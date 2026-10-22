@@ -332,7 +332,7 @@ func addRuleStructureHelp(registry map[string]helpTopic) {
 					flags = append(flags, helpFlag{"--department-id-type <type>", "contract/approve_matrix 默认 tenant_department_id；可显式选择兼容类型"})
 				}
 			}
-			notes := []string{"支持 --as user 或 --as app。写操作先由 Agent 展示计划、确认，再执行并查询核验。", "approval-matrix table/group/column 等别名映射到对应 rule 命令；api call 保持关闭。"}
+			notes := []string{"支持 --as user 或 --as app。写操作先由 Agent 展示计划、确认，再执行并查询核验。", "approval-matrix table/group/column 等别名映射到对应 rule 命令；矩阵操作使用上述结构化命令。"}
 			if action != "get" && action != "delete" {
 				flags = append(flags, jsonBodyFlags()...)
 			}

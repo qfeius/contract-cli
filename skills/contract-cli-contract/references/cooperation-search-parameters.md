@@ -1,6 +1,8 @@
 # contract cooperation search Parameters
 
-本页专用于 `contract-cli contract cooperation search`。
+本页专用于 `contract-cli contract cooperation search --as app`。
+
+`--as user` 使用另一套个人权限接口和请求体，见 [个人协商搜索参数](../../contract-cooperation/references/search-parameters.md)。未传 `--as` 时沿用 profile 默认身份，不自动切换。
 
 - 接口：`POST /open-apis/contract/v1/cooperation/search`
 - 身份：仅 `app`

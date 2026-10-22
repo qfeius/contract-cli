@@ -96,9 +96,13 @@ func TestReviewAlignmentUpload(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer file.Close()
-		file.WriteString("contract bytes")
-		file.Seek(0, 0)
+		defer func() { _ = file.Close() }()
+		if _, err := file.WriteString("contract bytes"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Seek(0, 0); err != nil {
+			t.Fatal(err)
+		}
 		old := os.Stdin
 		os.Stdin = file
 		defer func() { os.Stdin = old }()
@@ -115,7 +119,7 @@ func TestReviewAlignmentUpload(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			b, _ := io.ReadAll(f)
 			if string(b) != "contract bytes" || h.Filename != "contract.pdf" || r.FormValue("name") != "contract.pdf" {
 				t.Fatal("multipart mismatch")
@@ -359,7 +363,7 @@ func TestReviewAlignmentBoundaries(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			b, _ := io.ReadAll(f)
 			if string(b) != "local contract" {
 				t.Fatal("bad file")
@@ -447,7 +451,9 @@ func TestReviewAlignmentBoundaries(t *testing.T) {
 	})
 	t.Run("run without wait and local source", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "contract.pdf")
-		os.WriteFile(path, []byte("contract"), 0600)
+		if err := os.WriteFile(path, []byte("contract"), 0600); err != nil {
+			t.Fatal(err)
+		}
 		calls := 0
 		app, out := alignmentApp(t, func(r *http.Request) string {
 			calls++

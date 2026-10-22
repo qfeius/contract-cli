@@ -313,7 +313,7 @@ func TestApprovalMatrixImportApplyRejectsConcurrentExecution(t *testing.T) {
 	if err != nil || !locked {
 		t.Fatalf("TryLock() locked=%v error=%v", locked, err)
 	}
-	defer planLock.Unlock()
+	defer func() { _ = planLock.Unlock() }()
 
 	err = app.Run(context.Background(), []string{"rule", "table", "import", "apply", "--plan-id", planID, "--profile", "contract", "--as", "app"})
 	if err == nil || !strings.Contains(err.Error(), "already being applied") {

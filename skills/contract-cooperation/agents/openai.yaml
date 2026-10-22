@@ -1,0 +1,6 @@
+interface:
+  display_name: "合同协商查询"
+  short_description: "以个人权限搜索合同协商，查看协商详情、当前轮次及历史版本文件"
+  default_prompt: "使用 $contract-cooperation 查询我的协商，按需要查看所选协商的详情或历史版本文件。"
+policy:
+  allow_implicit_invocation: true

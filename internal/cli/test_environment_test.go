@@ -126,7 +126,7 @@ func TestKnownNonProductionHostsBlocked(t *testing.T) {
 	for _, origin := range []string{"https://test-open.qtech.cn", "https://test-myaccount.qtech.cn", "https://dev-open.qtech.cn", "https://dev-myaccount.qtech.cn", "https://open-b.qfei.cn", "https://myaccount-b.qfei.cn"} {
 		response, err := app.httpClient.Get(origin)
 		if response != nil {
-			response.Body.Close()
+			_ = response.Body.Close()
 		}
 		if err == nil || !strings.Contains(err.Error(), "blocks non-production host") {
 			t.Fatalf("host %s error=%v", origin, err)
@@ -251,7 +251,7 @@ func TestProductionRedirectToBlueBlocked(t *testing.T) {
 			})}})
 			response, err := app.httpClient.Get(productionOpenPlatformOrigin + "/start")
 			if response != nil {
-				response.Body.Close()
+				_ = response.Body.Close()
 			}
 			if err == nil || !strings.Contains(err.Error(), "blocks non-production host") || requests != 1 {
 				t.Fatalf("redirect error=%v requests=%d", err, requests)

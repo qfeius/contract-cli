@@ -1,11 +1,13 @@
 ---
 name: contract-cli-contract
-description: "contract-cli 合同命令技能：支持 user/app 双身份下的合同详情、创建、文本、分类、模板、上传、下载和审批详情；支持 user 身份查询或生成合同摘要、查询/创建审批评论、查询个人任务、通过/拒绝任务；并支持 app 身份下的合同与审批管理。当用户要读取已知合同、查询摘要、创建、更新、下载或办理合同时触发；搜索和筛选合同使用 contract-cli-contract-search，智能审查及审查配置请求分派至独立审查 Skill。"
+description: "contract-cli 合同命令技能：支持 user/app 双身份下的合同详情、创建、文本、分类、模板、上传、下载和审批详情；支持 user 身份查询或生成合同摘要、查询/创建审批评论、查询个人任务、通过/拒绝任务；并支持 app 身份下的合同与审批管理。当用户要读取已知合同、查询摘要、创建、更新、下载或办理合同时触发；搜索和筛选合同使用 contract-cli-contract-search，个人协商搜索/详情/历史文件使用 contract-cooperation，智能审查及审查配置请求分派至独立审查 Skill。"
 ---
 
 # contract-cli Contract
 
 CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contract-cli-shared/SKILL.md)。
+
+个人协商查询使用 [contract-cooperation](../contract-cooperation/SKILL.md)，其命令固定 user；以下 app 协商入口保留原行为。
 
 ## 适用命令
 
@@ -66,7 +68,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - 想下载合同相关文件：用 `contract download-file --as user|app`；user 必须加 `--contract`
 - 想生成合同打印文件：用 `contract print-file --as app`
 - 想查分享、批量分享、协商链接/记录：用 `contract share ...`、`contract share batch-create`、`contract cooperation link get` 或 `contract cooperation record get --as app`
-- 想查协商列表或协商文件：用 `contract cooperation search`、`contract cooperation file get` 或 `contract cooperation file download --as app`
+- 想查个人协商列表、详情或历史文件：使用 [contract-cooperation](../contract-cooperation/SKILL.md)，显式传 `--as user`；app 查询列表或文件使用 `contract cooperation search --as app`、`contract cooperation file get` 或 `contract cooperation file download --as app`
 - 想授予合同权限：用 `contract authorization grant --as app`
 - 想发起旧版流程审批：用 `contract approval start --as app`
 - 想查询审批实例：用 `contract approval get --as user|app`
@@ -122,7 +124,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 ## 关键规则
 
 - `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get` 同时支持 `--as user` 和 `--as app`
-- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit`、`contract resubmit`、`contract patch`、`contract delete`、`contract print-file`、`contract share get`、`contract share batch-create`、`contract cooperation link get`、`contract cooperation record get`、`contract cooperation search`、`contract cooperation file get/download`、`contract approval start` 当前仅支持 `--as app`
+- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit`、`contract resubmit`、`contract patch`、`contract delete`、`contract print-file`、`contract share get`、`contract share batch-create`、`contract cooperation link get`、`contract cooperation record get`、`contract cooperation search --as app`、`contract cooperation file get/download`、`contract approval start` 当前仅支持 `--as app`
 - `contract summary query/generate`、`contract approval comment list/create`、`contract approval task list/approve/reject` 当前仅支持 `--as user`
 - `contract create` 当前直接接收原始创建请求体，不额外暴露 `--template`
 - `contract create --as app` 走 `POST /open-apis/contract/v1/contracts`
