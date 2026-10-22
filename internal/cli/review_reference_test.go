@@ -67,7 +67,7 @@ func TestReviewReferenceUpload(t *testing.T) {
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			t.Fatal(err)
 		}
-		defer r.MultipartForm.RemoveAll()
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		if len(r.MultipartForm.File) != 0 {
 			t.Fatal("reference must not upload bytes")
 		}
@@ -157,7 +157,7 @@ func TestReviewStreamUploadBusinessFields(t *testing.T) {
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			t.Fatal(err)
 		}
-		defer r.MultipartForm.RemoveAll()
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		if len(r.MultipartForm.File["file"]) != 1 || r.FormValue("businessId") != "existing" || r.FormValue("businessFileId") != "123" {
 			t.Fatal("stream context lost")
 		}

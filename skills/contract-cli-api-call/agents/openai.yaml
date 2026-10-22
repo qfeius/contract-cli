@@ -1,7 +1,7 @@
 interface:
   display_name: "Contract CLI API Call"
-  short_description: "Disabled raw open-platform API call skill metadata kept for historical context"
-  default_prompt: "Do not invoke this disabled skill. Use opened structured contract-cli commands; if an endpoint is not covered, add a structured command and matching skill first."
+  short_description: "Non-standalone Open Web transport metadata kept for repository maintenance"
+  default_prompt: "Do not invoke this directory as a standalone skill. Use a business Skill that supplies a verified Open Web request recipe, then execute it through contract-cli api call --channel web."
 
 policy:
   allow_implicit_invocation: false

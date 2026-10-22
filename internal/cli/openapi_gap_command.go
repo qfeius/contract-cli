@@ -474,12 +474,7 @@ func (a *App) runContractCooperationSearch(ctx context.Context, args []string) e
 	if len(parsed.positionals) != 0 {
 		return fmt.Errorf("usage: contract-cli contract cooperation search --input-file <path>|--data <json> [flags]")
 	}
-	options := parseCommandOptions(parsed)
-	body, err := resolveRequiredRawBody(options)
-	if err != nil {
-		return err
-	}
-	return a.executeAppOpenPlatformRequest(ctx, options, http.MethodPost, contractOpenAPIPathPrefix+"/cooperation/search", nil, body)
+	return a.executeCooperationSearch(ctx, parseCommandOptions(parsed))
 }
 
 func (a *App) runMDMFixedExchangeRate(ctx context.Context, args []string) error {

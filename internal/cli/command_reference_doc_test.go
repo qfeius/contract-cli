@@ -37,7 +37,9 @@ func TestCommandReferenceDocumentCoversCurrentSupportedCommands(t *testing.T) {
 		"contract-cli skills list",
 		"contract-cli skills install",
 		"npx skills add qfeius/contract-cli -y -g",
-		"api call 暂未开放使用",
+		"contract-cli api call --channel web",
+		"/open-web/web/",
+		"不得通过 --header 传入 Authorization",
 		"contract-cli update check",
 		"contract-cli environment inspect",
 		"每一次实际业务 HTTP 请求发送前都会重新探测",
@@ -143,10 +145,6 @@ func TestCommandReferenceDocumentCoversCurrentSupportedCommands(t *testing.T) {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("command reference missing %q", fragment)
 		}
-	}
-	if strings.Contains(text, "contract-cli api call GET") ||
-		strings.Contains(text, "contract-cli api call POST") {
-		t.Fatalf("command reference should not expose runnable api call examples")
 	}
 	for _, forbidden := range []string{
 		"contract" + "-group",

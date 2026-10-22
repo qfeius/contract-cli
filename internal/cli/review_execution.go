@@ -177,14 +177,14 @@ func (a *App) runReviewUpload(ctx context.Context, args []string) error {
 		}
 		return a.renderReviewValue(parseReviewOptions(parsed), preview)
 	}
-	var reader io.Reader = a.stdin
+	reader := a.stdin
 	filename := name
 	if !parsed.Bool("--stdin") {
 		file, err := os.Open(path)
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		reader = file
 		filename = path
 	}
@@ -437,7 +437,7 @@ func (a *App) runReviewWorkflow(ctx context.Context, args []string) error {
 			return openErr
 		}
 		request, err = reviewUploadRequest(file, input.Source.Path, input.Source.Name)
-		file.Close()
+		_ = file.Close()
 	} else {
 		request, err = reviewJSONRequest("/file/uploadByUrl", map[string]string{"fileUrl": input.Source.FileURL, "name": input.Source.Name})
 	}

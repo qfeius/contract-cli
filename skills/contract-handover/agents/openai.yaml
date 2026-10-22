@@ -1,0 +1,7 @@
+interface:
+  display_name: "合同交接"
+  short_description: "查询合同归属与交接历史，核对接收人和影响，确认后交接并逐份回查"
+  default_prompt: "使用 $contract-handover 定位指定合同，核对接收人、角色变化和关联影响，在允许的环境与范围内确认后交接并回查。"
+
+policy:
+  allow_implicit_invocation: true

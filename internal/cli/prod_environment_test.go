@@ -338,7 +338,7 @@ func TestHTTPClientRejectsKnownTestHosts(t *testing.T) {
 		}
 		response, err := app.httpClient.Do(request)
 		if response != nil {
-			response.Body.Close()
+			_ = response.Body.Close()
 		}
 		if err == nil || !strings.Contains(err.Error(), "blocks non-production host") {
 			t.Fatalf("request %s error = %v", rawURL, err)

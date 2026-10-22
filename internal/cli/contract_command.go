@@ -506,6 +506,10 @@ func (a *App) runContractCooperation(ctx context.Context, args []string) error {
 		return fmt.Errorf("missing contract cooperation resource")
 	}
 	switch args[0] {
+	case "get":
+		return a.runUserCooperationGet(ctx, args[1:])
+	case "history-files":
+		return a.runUserCooperationHistory(ctx, args[1:])
 	case "link":
 		return a.runContractCooperationLink(ctx, args[1:])
 	case "record":

@@ -29,7 +29,7 @@ func treeFingerprint(root fs.FS) (string, error) {
 			return nil
 		}
 		if d.IsDir() {
-			fmt.Fprintf(h, "d:%s\x00", name)
+			_, _ = fmt.Fprintf(h, "d:%s\x00", name)
 			return nil
 		}
 		if !d.Type().IsRegular() {
@@ -39,7 +39,7 @@ func treeFingerprint(root fs.FS) (string, error) {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(h, "f:%s\x00%x\x00", name, sha256.Sum256(b))
+		_, _ = fmt.Fprintf(h, "f:%s\x00%x\x00", name, sha256.Sum256(b))
 		return nil
 	})
 	return fmt.Sprintf("%x", h.Sum(nil)), err

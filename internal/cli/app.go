@@ -24,8 +24,6 @@ import (
 
 const defaultProfileName = "contract"
 
-var errAPICommandUnavailable = errors.New("api call 暂未开放使用，请使用已开放的结构化命令")
-
 type Options struct {
 	Stdin              io.Reader
 	Stdout             io.Writer
@@ -211,10 +209,6 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		a.printUsage()
 		return nil
-	}
-
-	if args[0] == "api" {
-		return errAPICommandUnavailable
 	}
 
 	if isHelpRequest(args) {

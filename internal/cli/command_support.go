@@ -185,9 +185,21 @@ executeOpenPlatformCommand 调用结构化开放平台接口，并在输出后�
 入参 ctx（context.Context）为请求上下文，options（commandOptions）为输出和身份选项，request（openplatform.Request）为接口请求；返回 error 为调用、输出或业务错误。
 */
 func (a *App) executeOpenPlatformCommand(ctx context.Context, options commandOptions, request openplatform.Request) error {
+	return a.executeOpenPlatformCommandWithCommonQuery(ctx, options, request, true)
+}
+
+func (a *App) executeOpenPlatformCommandWithoutCommonQuery(ctx context.Context, options commandOptions, request openplatform.Request) error {
+	return a.executeOpenPlatformCommandWithCommonQuery(ctx, options, request, false)
+}
+
+func (a *App) executeOpenPlatformCommandWithCommonQuery(ctx context.Context, options commandOptions, request openplatform.Request, includeCommonQuery bool) error {
 	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, request.Path, request.IdentityPolicy)
 	if err != nil {
 		return err
+	}
+	if !includeCommonQuery {
+		// Web 通道不注入开放平台公共参数；结构化命令保留 blue 的 ID 类型及编辑人保护。
+		requestContext.CommonQuery = nil
 	}
 
 	response, err := client.Do(ctx, requestContext, request)

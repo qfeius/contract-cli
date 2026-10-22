@@ -4,12 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"strconv"
 	"strings"
 	"unicode/utf8"
-
-	"cn.qfei/contract-cli/internal/openplatform"
 )
 
 // Validate reference metadata before any file read or remote request. Values are
@@ -80,7 +76,7 @@ func validateReviewSourceLocator(value string) error {
 	return nil
 }
 
-// This review-local reader does not widen the identity policy of historical
+// This compatibility reader does not widen the identity policy of historical
 // contract cooperation commands, nor select a file or create a review task.
 func (a *App) runReviewCooperation(ctx context.Context, args []string) error {
 	if len(args) == 0 || args[0] != "get" {
@@ -90,11 +86,9 @@ func (a *App) runReviewCooperation(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	id := parsed.String("--cooperation-id")
-	number, err := strconv.ParseInt(id, 10, 64)
-	if err != nil || number <= 0 {
-		return fmt.Errorf("--cooperation-id 必须为正 int64 ID")
+	request, err := cooperationDetailRequest(parsed.String("--cooperation-id"))
+	if err != nil {
+		return err
 	}
-	request := openplatform.Request{Method: http.MethodGet, Path: "/open-apis/contract/v1/mcp/cooperations/" + strconv.FormatInt(number, 10), IdentityPolicy: openplatform.IdentityPolicyUserOnly}
 	return a.executeReviewResponse(ctx, parseReviewOptions(parsed), request)
 }

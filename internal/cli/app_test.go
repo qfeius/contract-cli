@@ -47,6 +47,7 @@ func TestRunWithoutArgsPrintsTopLevelHelp(t *testing.T) {
 		!strings.Contains(stdout.String(), "contract-cli skills install [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli update check [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli environment inspect [flags]") ||
+		!strings.Contains(stdout.String(), "contract-cli api call [flags] <METHOD> <PATH>") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm vendor <subcommand> [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm legal <subcommand> [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm fields list [flags]") {
@@ -55,7 +56,6 @@ func TestRunWithoutArgsPrintsTopLevelHelp(t *testing.T) {
 	if strings.Contains(stdout.String(), "contract-cli vendor <subcommand> [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli entity <subcommand> [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli schema <subcommand> [flags]") ||
-		strings.Contains(stdout.String(), "contract-cli api call [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli mdm-vendor <subcommand> [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli mdm-legal <subcommand> [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli mdm-fields [flags]") {
@@ -95,6 +95,11 @@ func TestRunCommandLogRedactsSensitiveArguments(t *testing.T) {
 			name:    "inline request body",
 			args:    []string{"unknown-command", "--data", `{"access_token":"body-token-value","password":"body-password-value"}`},
 			secrets: []string{"body-token-value", "body-password-value"},
+		},
+		{
+			name:    "generic query",
+			args:    []string{"unknown-command", "--query", "employee_name=query-personal-value"},
+			secrets: []string{"query-personal-value"},
 		},
 		{
 			name: "generic credential flags",
@@ -752,7 +757,7 @@ func TestSkillsListDisplaysCurrentCLIVersion(t *testing.T) {
 		}
 	}
 	if strings.Contains(output, "contract-cli-api-call") {
-		t.Fatalf("skills list should hide disabled api call skill: %s", output)
+		t.Fatalf("skills list should hide the non-standalone api call transport: %s", output)
 	}
 }
 
@@ -777,7 +782,7 @@ func TestSkillsInstallCopiesBundledSkillsAndSkipsExisting(t *testing.T) {
 	assertFileContent(t, filepath.Join(target, "auth", "agents", "openai.yaml"), "name: auth\n")
 	assertFileContent(t, filepath.Join(target, "contract-cli-contract", "references", "commands.md"), "# Commands\n")
 	if _, err := os.Stat(filepath.Join(target, "contract-cli-api-call")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("api call skill should not be installed, stat error = %v", err)
+		t.Fatalf("api call transport should not be installed as a standalone skill, stat error = %v", err)
 	}
 
 	if err := os.WriteFile(filepath.Join(target, "auth", "SKILL.md"), []byte("local custom skill\n"), 0o600); err != nil {

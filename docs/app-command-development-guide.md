@@ -35,7 +35,7 @@ contract-cli contract search --profile contract --as app ...
 | 示例响应 | 是 | 至少覆盖成功响应，最好补一个业务失败响应 |
 | 生产文档疑点 | 视接口 | 如果文档路径、方法、字段名互相矛盾，先和接口方确认 |
 
-不要根据命令名猜接口路径。生产文档有疑点时，先用 `api call` 或最小 service 测试验证。
+不要根据命令名猜接口路径。生产文档有疑点时，先与接口方确认契约，再用最小 service 测试验证。`api call --channel web` 仅支持 user 身份与 `/open-web/web/**` 页面接口，不能用于验证 app 身份的 `/open-apis/**` 接口。
 
 ## 3. 代码分层约定
 
@@ -146,7 +146,7 @@ user 侧已有 MCP 工具时，优先保留原有 `s.do(...)` 实现，app 侧�
 
 ### 4.4 通用 query 参数
 
-结构化命令和 `api call` 都支持：
+结构化命令支持：
 
 ```bash
 --user-id-type <type>
@@ -162,6 +162,8 @@ user 侧已有 MCP 工具时，优先保留原有 `s.do(...)` 实现，app 侧�
 - 不做命令级必填校验，除非后续产品明确要求。
 
 MCP user-only 请求的固定 query 优先级更高。即使用户传 `--user-id-type employee_id`，MCP spec 固定的 `user_id_type=user_id` 也不能被覆盖。
+
+`api call --channel web` 使用重复的 `--query key=value` 显式提供业务 query，不自动补 `user_id_type` 或调用人参数；身份只来自 CLI 自身的 user 授权，不能以 query 或 header 覆盖可信身份。
 
 ### 4.5 日志与安全
 
@@ -331,10 +333,11 @@ skills/contract-cli-contract/
 skills/contract-cli-mdm-vendor/
 skills/contract-cli-mdm-legal/
 skills/contract-cli-mdm-fields/
-skills/contract-cli-api-call/
 ```
 
 新增业务域时，新建独立 skill 目录，不要把所有内容塞到 shared。
+
+`contract-cli-api-call` 仅保留传输参考，不发布独立 `SKILL.md`，不随公开 skills 安装；Open Web 请求配方应放在对应业务 Skill 中。
 
 ### 8.2 每个 skill 的基本结构
 
@@ -366,7 +369,7 @@ description: "..."
 - user/app 路由差异。
 - 关键参数规则。
 - 常用示例。
-- 什么时候转去读 shared 或 api-call。
+- 什么时候转去读 shared 或其他提供已验证接口配方的业务 Skill。
 - 排障要点。
 
 ### 8.3 references 结构

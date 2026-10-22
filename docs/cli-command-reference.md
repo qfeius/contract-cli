@@ -110,7 +110,7 @@ contract-cli contract get <contract-id> --help
   - `mdm legal get --as app` 走 `/open-apis/mdm/v1/legal_entities/{legal_entity_id}`，并额外透传同名 query `legal_entity_id`
   - `mdm fields list --as user` 走 `/open-apis/contract/v1/mcp/config/config_list`
   - `mdm fields list --as app` 走 `/open-apis/mdm/v1/config/config_list`
-- `api call` 是预留能力，当前暂未开放使用；请优先使用已开放的结构化命令
+- `api call --channel web` 是已知 Open Web 页面接口的通用执行通道；接口发现、参数映射和业务编排由业务 Skill 负责
 
 ### 通用输出
 
@@ -435,17 +435,39 @@ contract-cli auth use --profile contract --as app
 - `--profile`
 - `--as user|app`
 
-### 3. 原始开放平台调用（暂未开放）
+### 3. Open Web 通用调用
 
-`contract-cli api call` 是预留调试入口，当前不对外开放。
+`contract-cli api call --channel web` 用于执行由业务 Skill 提供的已知页面接口。CLI 只负责环境、profile、user 授权复用、HTTP 传输和基础响应；不负责发现接口或业务编排。
 
-当前行为：
+命令：
 
-- 执行 `contract-cli api ...` 会直接返回：`api call 暂未开放使用，请使用已开放的结构化命令`
-- 不读取 profile，不发 HTTP 请求
-- 不出现在 `contract-cli --help`、`contract-cli help` 或内置 skills 安装列表中
-- 需要开放平台能力时，请优先使用 `contract ...`、`mdm ...` 等结构化命令
-- 显式 `--as app` 调用 `contract/v1/mcp` 路径会直接报错
+```bash
+contract-cli api call \
+  --channel web \
+  --profile contract \
+  --as user \
+  --output json \
+  POST /open-web/web/clm/statistic/contractInfoByTradingParty \
+  --data '{"pageNum":1,"pageSize":20}'
+```
+
+支持参数：
+
+- `--channel web`：必填；当前只开放 web 通道
+- `--profile`：不传时使用当前 profile
+- `--as user`：只支持 user；省略时也固定使用 user，不跟随 profile 的 app 默认身份
+- `--query key=value`：追加 query，可重复；CLI 不会自动补 `user_id_type`
+- `--header 'Key: Value'`：追加普通业务 header，可重复
+- `--input-file` / `--data`：请求体二选一，最大 1 MiB
+- `--output json|yaml|table` / `--raw`：结构化或原始输出
+
+安全边界：
+
+- 只接受 `GET`、`HEAD`、`POST`、`PUT`、`PATCH`、`DELETE` 和相对 `/open-web/web/` 路径
+- query 必须通过 `--query` 传入，不得拼在 path 上
+- 不得通过 --header 传入 Authorization、Cookie、`Z-Tenant-Id`、`Z-User-Id`、`X-Gate-Auth`、`sourceType`、`Forwarded` / `X-Forwarded-*` 或 CLI 来源标识头
+- 不读取或接收业务 Skill、对话文本中的 Token；授权只来自 CLI 自身 profile / Device Grant 凭证
+- HTTP 2xx 不代表业务成功，Agent 仍需按业务 Skill 给出的响应映射判断业务码和数据语义
 
 ### 4. 合同命令
 
@@ -1884,7 +1906,7 @@ contract-cli rule table import apply --profile contract --as app --plan-id <plan
 
 ## 后续扩展 app 接口时的建议落点
 
-- 新增 app 业务接口时，优先直接沉淀成结构化命令，避免把预留的 `api call` 暴露给最终用户
-- 如需临时验证开放平台路径和鉴权，建议在本地测试或开发工具里完成，不把验证入口写入公开文档
+- Open Web 通道仅支持 user 页面接口；新增 app 业务接口时继续优先沉淀成结构化命令
+- `api call --channel web` 只执行业务 Skill 已知的接口，不把它扩展成接口发现服务
 - 一旦新增结构化 app 命令，先更新本文档的“命令矩阵”和“身份规则”，再补实现与测试
 - 如果未来同一命令同时支持 user 和 app，需要在文档里明确写出路径差异、参数差异和默认身份规则

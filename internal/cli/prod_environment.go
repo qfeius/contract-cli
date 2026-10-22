@@ -118,14 +118,6 @@ func validateProductionPendingTransaction(profileName string, pending *credentia
 }
 
 /*
-isExactProductionResource 保持原有生产资源校验入口。
-入参 rawURL（string）为资源地址；返回 bool 表示是否为精确生产资源。
-*/
-func isExactProductionResource(rawURL string) bool {
-	return isExactEnvironmentResource(rawURL, productionOpenPlatformURL)
-}
-
-/*
 isExactEnvironmentResource 拒绝非根路径、查询参数和不同环境的资源地址。
 入参 rawURL、origin（string）为待校验地址和环境域名；返回 bool 表示是否匹配。
 */

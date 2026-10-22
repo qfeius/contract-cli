@@ -261,7 +261,7 @@ func (a *App) publishMatrixWithRowBaseline(ctx context.Context, options commandO
 	if !acquired {
 		return fmt.Errorf("matrix publication already running")
 	}
-	defer lock.Unlock()
+	defer func() { _ = lock.Unlock() }()
 	request := func(method, suffix string, query url.Values, input []byte) (map[string]any, error) {
 		r, e := client.Do(ctx, rc, openplatform.Request{Method: method, Path: path + suffix, Query: query, Body: input, IdentityPolicy: openplatform.IdentityPolicyAny})
 		if e != nil {

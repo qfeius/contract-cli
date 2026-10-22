@@ -656,7 +656,7 @@ func (a *App) startApprovalMatrixImportWrite(planPath string, plan *approvalMatr
 	if err := controlLock.Lock(); err != nil {
 		return false, fmt.Errorf("lock approval matrix pause control: %w", err)
 	}
-	defer controlLock.Unlock()
+	defer func() { _ = controlLock.Unlock() }()
 	requested, err := approvalMatrixPauseRequested(planPath)
 	if err != nil || requested {
 		return false, err
@@ -730,7 +730,7 @@ func (a *App) runApprovalMatrixPlanControl(ctx context.Context, action string, a
 		if !locked {
 			return fmt.Errorf("plan is running; wait for the current row request to finish before %s", action)
 		}
-		defer lock.Unlock()
+		defer func() { _ = lock.Unlock() }()
 	}
 	plan, err := a.loadApprovalMatrixImportPlan(id)
 	if err != nil {
@@ -851,7 +851,7 @@ func requestApprovalMatrixPause(planPath string) error {
 	if err := controlLock.Lock(); err != nil {
 		return fmt.Errorf("lock approval matrix pause control: %w", err)
 	}
-	defer controlLock.Unlock()
+	defer func() { _ = controlLock.Unlock() }()
 	file, err := os.OpenFile(planPath+".pause", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(err, os.ErrExist) {
 		return nil
@@ -1133,7 +1133,7 @@ func (a *App) saveApprovalMatrixImportPlan(plan approvalMatrixImportPlan) error 
 		return fmt.Errorf("create temporary approval matrix import plan: %w", err)
 	}
 	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
+	defer func() { _ = os.Remove(temporaryPath) }()
 	if err := temporary.Chmod(0o600); err != nil {
 		_ = temporary.Close()
 		return fmt.Errorf("set approval matrix import plan permissions: %w", err)

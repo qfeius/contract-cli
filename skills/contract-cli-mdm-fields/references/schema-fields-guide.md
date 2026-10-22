@@ -92,5 +92,5 @@ contract-cli mdm fields list --profile contract --as user --biz-line vendor_risk
 ## 3. 什么时候不要走这里
 
 - 想查合同创建相关枚举：改走 [../../contract-cli-contract/SKILL.md](../../contract-cli-contract/SKILL.md)
-- 想直接调未封装写接口：当前暂未开放；不要退回 `api call`
+- 想直接调未封装写接口：本 Skill 仅提供字段查询，写入交给对应业务 Skill；`api call --channel web` 已开放，但不能据此猜测写接口或绕过业务规则
 - 想查具体交易方/法人实体数据：改走对应 `mdm vendor` / `mdm legal` skill
