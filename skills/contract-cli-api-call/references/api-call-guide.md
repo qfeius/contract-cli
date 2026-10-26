@@ -1,12 +1,9 @@
-# API Call Guide Disabled
+# Open Web API Call Guide
 
-`contract-cli api call` 当前暂未开放使用。
+本目录只保留通用传输层的维护参考，不是可安装、可隐式触发的独立 Skill。
 
-本文件仅保留历史上下文，不能作为用户操作指引。需要调用开放平台能力时，优先使用已开放的结构化命令：
+调用链固定为：
 
-- `contract-cli contract ...`
-- `contract-cli mdm vendor ...`
-- `contract-cli mdm legal ...`
-- `contract-cli mdm fields ...`
+业务 Skill → Agent 编排 → `contract-cli api call --channel web` → `/open-web/web/**` → 页面业务接口。
 
-如果结构化命令尚未覆盖，请先补结构化命令和对应 skill，不要把 `api call` 暴露给最终用户。
+业务 Skill 必须先给出已验证的 method、path、query/body、响应映射和权限要求。CLI 只复用自身授权并执行 HTTP，不接受外部 Token，也不负责发现或猜测接口。

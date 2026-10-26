@@ -73,6 +73,9 @@ func parseArgs(args []string, valueFlags map[string]struct{}, boolFlags map[stri
 		}
 		return parsedArgs{}, fmt.Errorf("unknown flag %q", name)
 	}
+	if err := output.ValidateFormat(output.Format(parsed.String("--output"))); err != nil {
+		return parsedArgs{}, err
+	}
 
 	return parsed, nil
 }
@@ -182,21 +185,40 @@ executeOpenPlatformCommand 调用结构化开放平台接口，并在输出后�
 入参 ctx（context.Context）为请求上下文，options（commandOptions）为输出和身份选项，request（openplatform.Request）为接口请求；返回 error 为调用、输出或业务错误。
 */
 func (a *App) executeOpenPlatformCommand(ctx context.Context, options commandOptions, request openplatform.Request) error {
+	return a.executeOpenPlatformCommandWithCommonQuery(ctx, options, request, true)
+}
+
+func (a *App) executeOpenPlatformCommandWithoutCommonQuery(ctx context.Context, options commandOptions, request openplatform.Request) error {
+	return a.executeOpenPlatformCommandWithCommonQuery(ctx, options, request, false)
+}
+
+func (a *App) executeOpenPlatformCommandWithCommonQuery(ctx context.Context, options commandOptions, request openplatform.Request, includeCommonQuery bool) error {
 	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, request.Path, request.IdentityPolicy)
 	if err != nil {
 		return err
+	}
+	if !includeCommonQuery {
+		// Web 通道不注入开放平台公共参数；结构化命令保留 blue 的 ID 类型及编辑人保护。
+		requestContext.CommonQuery = nil
 	}
 
 	response, err := client.Do(ctx, requestContext, request)
 	if err != nil {
 		return err
 	}
-	// 只规范规则行搜索的成功空结果；--raw 始终保留服务端原文，其余命令不改变响应结构。
+	// 规则行搜索只规范成功空结果；摘要查询生成中只保留状态和提示语（包括 --raw），其余响应保持原文。
 	if !options.raw && request.Method == http.MethodPost && isRuleOpenPlatformPath(request.Path) && strings.HasSuffix(request.Path, "/table_rows/search") {
 		response.Body = normalizeEmptyRuleTableRowSearchResponse(response.Body)
 	}
+	if request.Method == http.MethodPost && request.Path == contractOpenAPIPathPrefix+"/summary/query" {
+		visibleBody, generating := summaryQueryVisibleBody(response.Body)
+		if generating {
+			a.logger.Info("contract summary query is generating")
+			response.Body = visibleBody
+		}
+	}
 
-	// 先输出原始业务响应，便于调用方读取服务端错误详情；再把矩阵业务码转换为命令错误。
+	// 先输出业务响应，便于调用方读取服务端错误详情；再把矩阵业务码转换为命令错误。
 	outputErr := a.renderOpenPlatformResponse(options, response)
 	if isRuleOpenPlatformPath(request.Path) && len(response.Body) > 0 {
 		var envelope struct {
@@ -250,11 +272,32 @@ func (a *App) openPlatformClientAndContextForOptions(options commandOptions, pat
 		return nil, openplatform.RequestContext{}, err
 	}
 	requestContext.CommonQuery = commandCommonQuery(options)
+	if isContractApprovalMatrixDataPath(path) {
+		// 仅矩阵目录、规则行和结果列默认值使用 SaaS 搜索的 id；显式旧类型仍按原有契约发送。
+		if strings.TrimSpace(options.userIDType) == "" {
+			requestContext.CommonQuery.Set("user_id_type", "tenant_employee_id")
+		}
+		if strings.TrimSpace(options.departmentIDType) == "" {
+			requestContext.CommonQuery.Set("department_id_type", "tenant_department_id")
+		}
+	}
 	if isRuleOpenPlatformPath(path) {
 		// 矩阵接口的编辑人由 Bearer 用户身份在开平服务端解析；移除可人为指定的 user_id，避免把审批人或其他人员 ID 当成编辑人。
 		requestContext.CommonQuery.Del("user_id")
 	}
 	return client, requestContext, nil
+}
+
+/*
+isContractApprovalMatrixDataPath 识别需要原生人员、部门 ID 的矩阵数据接口。
+入参 path（string）为开平路径；返回 bool 表示是否为 contract/approve_matrix 的目录、规则行或列配置。
+*/
+func isContractApprovalMatrixDataPath(path string) bool {
+	const prefix = "/open-apis/rule_engine/v1/products/contract/groups/approve_matrix/"
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+	return strings.Contains(path, "/employees/") || strings.Contains(path, "/departments/") || strings.Contains(path, "/table_rows") || strings.Contains(path, "/table_columns/")
 }
 
 /* isRuleOpenPlatformPath 判断请求是否属于审批矩阵开放平台路径；path 为相对接口路径，返回是否需要用户身份语义。 */

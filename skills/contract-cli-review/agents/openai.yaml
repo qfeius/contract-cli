@@ -1,0 +1,7 @@
+interface:
+  display_name: "Contract CLI Review"
+  short_description: "Review contract files or system contracts and manage review tasks"
+  default_prompt: "Use $contract-cli-review to review one contract file or system contract: keep the current user profile and real source document, follow registered commands to confirm subjects, stance, strength, and checklists, start or resume the review task, and render actual results. Route checklist, rule, and rule-group configuration to $contract-cli-review-rule; do not switch identity or environment to bypass authorization."
+
+policy:
+  allow_implicit_invocation: true

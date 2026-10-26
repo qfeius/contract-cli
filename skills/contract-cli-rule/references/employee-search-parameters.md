@@ -16,8 +16,8 @@ contract-cli rule employee search --profile contract --as user --product-id cont
 {"employee_id":"7113921696628736004","name":"赵少帅","email":"example@example.com","department_name":"研发部","status":1,"selectable":true}
 ```
 
-- `employee_id` 是正整数外部 ID 的十进制字符串，对应规则行 `employee_collection` 和结果列 `default_value`，不是页面内部主键。批量计划可接收字符串，发往行接口时必须保持 int64 精度。
-- `user_id_type` 仅支持 `user_id`；不支持 `open_id`。此接口不进行网关人员 ID 二次转换。
+- `contract/approve_matrix` 默认以 `user_id_type=tenant_employee_id` 查询；返回的 `employee_id` 与私有 SaaS 搜索的 `data[].id` 相同，是可写入规则行 `employee_collection` 和结果列 `default_value` 的十进制字符串。批量计划可接收字符串，发往行接口时保持 int64 精度。
+- 显式 `--user-id-type user_id` 沿用旧外部 ID 映射；默认模式不进行组织人员 ID 转换。
 - `status`：1 正常、0 删除、2 停用、-1/null 未知。仅状态为 1 且 ID 映射有效时 `selectable=true`。缺少映射时 `employee_id=null`，不可用内部 ID 代替。
 - 0 个候选：告知未找到，追问更准确姓名或其他识别信息；多个同名候选：展示姓名、部门、邮箱、ID 后选择，不自动取第一人。
 - 搜索复用当前产品的目录源，不做额外人员创建；关键词匹配范围/返回数量沿用底层目录服务，不承诺全量分页枚举。

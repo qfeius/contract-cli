@@ -13,7 +13,7 @@ STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/contract-cli-test-package.XXXXXX")"
 trap 'rm -rf "$STAGING_DIR"' EXIT
 mkdir -p "$STAGING_DIR/scripts" "$PACKAGE_OUT_DIR"
 cp "$ROOT_DIR/package.json" "$ROOT_DIR/README.md" "$ROOT_DIR/CHANGELOG.md" "$ROOT_DIR/LICENSE" "$STAGING_DIR/"
-cp "$ROOT_DIR/scripts/install.js" "$ROOT_DIR/scripts/run.js" "$STAGING_DIR/scripts/"
+cp "$ROOT_DIR/scripts/install.js" "$ROOT_DIR/scripts/run.js" "$ROOT_DIR/scripts/setup.js" "$STAGING_DIR/scripts/"
 cp -R "$ROOT_DIR/skills" "$STAGING_DIR/skills"
 # 仅生成暂存区的包元数据，源码 package.json 与正式版本保持不变。
 node - "$STAGING_DIR/package.json" "$VERSION" <<'NODE'

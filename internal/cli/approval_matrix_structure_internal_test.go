@@ -59,3 +59,31 @@ func TestNewApprovalMatrixTableCellNullClearsValue(t *testing.T) {
 		})
 	}
 }
+
+/* TestApprovalMatrixDepartmentImportModes 验证合同原生 ID 与其他规则组旧部门 ID 各按目标模式校验。 */
+func TestApprovalMatrixDepartmentImportModes(t *testing.T) {
+	t.Parallel()
+	column := approvalMatrixColumn{ID: "department", CellContentType: "DEPARTMENT_COLLECTION"}
+	legacy, err := newApprovalMatrixTableCell(column, json.RawMessage(`["od-department"]`))
+	if err != nil || len(*legacy.TableCellContent.DepartmentCollection) != 1 || (*legacy.TableCellContent.DepartmentCollection)[0] != "od-department" {
+		t.Fatalf("legacy department cell = %#v, err = %v", legacy, err)
+	}
+	native, err := newApprovalMatrixTableCellWithDepartmentIDType(column, json.RawMessage(`["1018399484738012242"]`), "tenant_department_id")
+	if err != nil || len(*native.TableCellContent.DepartmentCollection) != 1 || (*native.TableCellContent.DepartmentCollection)[0] != "1018399484738012242" {
+		t.Fatalf("native department cell = %#v, err = %v", native, err)
+	}
+}
+
+/* TestApprovalMatrixImportRejectsMixedPersonnelModes 验证计划和执行不会混用原生与旧人员 ID。 */
+func TestApprovalMatrixImportRejectsMixedPersonnelModes(t *testing.T) {
+	t.Parallel()
+	if err := validateApprovalMatrixImportIDType(commandOptions{userIDType: "user_id"}, "contract", "approve_matrix"); err == nil {
+		t.Fatal("contract import accepted the legacy personnel mode")
+	}
+	if err := validateApprovalMatrixImportIDType(commandOptions{userIDType: "tenant_employee_id"}, "contract", "approve_matrix"); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateApprovalMatrixImportIDType(commandOptions{userIDType: "user_id"}, "other", "group"); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -24,17 +24,17 @@ func TestRuleTableDepartmentIDsUseOpenDepartmentID(t *testing.T) {
 	}{
 		{
 			name: "create",
-			args: []string{"rule", "table", "row", "create", "--profile", "contract", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1"},
+			args: []string{"rule", "table", "row", "create", "--profile", "contract", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1", "--department-id-type", "open_department_id"},
 			body: `{"table_cells":[{"table_cell_content":{"department_collection":["` + departmentID + `"]},"table_cell_content_type":"DEPARTMENT_COLLECTION","table_column_id":"column-1"}]}`,
 		},
 		{
 			name: "search",
-			args: []string{"rule", "table", "row", "search", "--profile", "contract", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1", "--page-size", "10"},
+			args: []string{"rule", "table", "row", "search", "--profile", "contract", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1", "--page-size", "10", "--department-id-type", "open_department_id"},
 			body: `{"table_cell":{"table_cell_content":{"department_collection":["` + departmentID + `"]},"table_cell_content_type":"DEPARTMENT_COLLECTION","table_column_id":"column-1"}}`,
 		},
 		{
 			name: "update",
-			args: []string{"rule", "table", "row", "update", "row-1", "--profile", "contract", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1"},
+			args: []string{"rule", "table", "row", "update", "row-1", "--profile", "contract", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1", "--department-id-type", "open_department_id"},
 			body: `{"table_cells":[{"table_cell_content":{"department_collection":["` + departmentID + `"]},"table_cell_content_type":"DEPARTMENT_COLLECTION","table_column_id":"column-1"}]}`,
 		},
 	}
@@ -97,7 +97,7 @@ func TestRuleTableDepartmentIDsRejectInternalID(t *testing.T) {
 				"--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1", "--page-size", "10",
 				"--data", `{"table_cell":{"table_cell_content":{"department_collection":[1018399484738012242]},"table_cell_content_type":"DEPARTMENT_COLLECTION","table_column_id":"column-1"}}`,
 			})
-			if err == nil || !strings.Contains(err.Error(), "sys_department.id is not accepted") {
+			if err == nil || !strings.Contains(err.Error(), "must be a string") {
 				t.Fatalf("error = %v, want local department ID validation", err)
 			}
 			if requests != 0 {

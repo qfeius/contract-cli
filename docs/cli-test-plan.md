@@ -8,7 +8,7 @@
 - 验证 profile 初始化、user OAuth、app token、登出、默认身份切换等鉴权流程。
 - 验证 app 身份下当前已接入的全部结构化业务命令。
 - 验证 user 身份下当前已接入的全部结构化业务命令。
-- 验证输出格式、通用 Agent skills 安装、CLI 内置 skills 兜底安装、`api call` 暂未开放拦截等补充能力。
+- 验证输出格式、通用 Agent skills 安装、CLI 内置 skills 兜底安装、`api call --channel web` 通道及其调用边界。
 - 验证每次实际业务 HTTP 请求发送前都会重新探测调用环境，并正确区分 Doubao、WorkBuddy、Codex 或 `unknown`。
 
 ## 2. 测试环境准备
@@ -1196,32 +1196,48 @@ contract-cli mdm fields list --profile "$PROFILE" --as user --biz-line vendor_ri
 GET /open-apis/contract/v1/mcp/config/config_list
 ```
 
-## 7. api call 暂未开放拦截测试
+## 7. api call Open Web 通道测试
 
-### 7.1 命令入口拦截
+### 7.1 已验证配方的只读调用
+
+在已确认的 prod profile 和授权范围内，使用业务 Skill 已验证的只读接口配方；以下示例来自合同交接的当前用户查询：
 
 ```bash
-contract-cli api call GET /open-apis/contract/v1/mcp/config/config_list --profile "$PROFILE" --as user
+contract-cli api call --channel web GET /open-web/web/clm/employee/info --profile "$PROFILE" --as user --output json
 ```
 
 预期结果：
 
-- 直接报错：`api call 暂未开放使用，请使用已开放的结构化命令`。
-- 不读取 profile，不发 HTTP 请求。
+- 复用 CLI 自身 profile 的 user 授权，响应按业务 Skill 的映射判断，不以 HTTP 2xx 直接认定业务成功。
+- query 使用可重复的 `--query key=value`；JSON 使用 `--input-file` / `--data`，请求体不超过 1 MiB，不自动补 `user_id_type`。
+- 不依赖独立的 `contract-cli-api-call` Skill，不临时猜测接口、参数或业务结果。
 
-### 7.2 帮助入口不暴露
+### 7.2 通道、路径、身份与请求头边界
+
+```bash
+contract-cli api call GET /open-web/web/clm/employee/info --profile "$PROFILE"
+contract-cli api call --channel web GET /open-apis/contract/v1/mcp/config/config_list --profile "$PROFILE"
+contract-cli api call --channel web GET /open-web/web/clm/employee/info --profile "$PROFILE" --as app
+contract-cli api call --channel web GET /open-web/web/clm/employee/info --profile "$PROFILE" --header 'Authorization: blocked'
+```
+
+预期结果：上述请求均在发送业务 HTTP 请求前失败，分别提示缺少 `--channel web`、路径必须是相对 `/open-web/web/`、仅支持 user、Authorization 由 CLI 管理。其他通道、绝对 URL、路径中嵌入 query、路径穿越、Cookie 和可信身份头也应被拒绝。
+
+### 7.3 帮助入口公开
 
 ```bash
 contract-cli --help
 contract-cli help api call
+contract-cli api call --help
 ```
 
 预期结果：
 
-- `contract-cli --help` 不展示 `contract-cli api call`。
-- `contract-cli help api call` 返回 `unknown help topic`。
+- `contract-cli --help` 展示 `contract-cli api call`。
+- 两种调用帮助均展示必填 `--channel web`、仅支持 user 与 `/open-web/web/` 路径的限制。
+- `rule` 及 `approval-matrix` 别名的结构操作帮助不再声称通用调用被关闭；矩阵操作仍使用结构化命令。
 
-### 7.3 skills 入口不暴露
+### 7.4 不发布独立传输 Skill
 
 ```bash
 contract-cli skills list
@@ -1387,7 +1403,7 @@ npm publish --dry-run --tag beta
 - app 登录、状态、切换、登出成功，且 app logout 保留凭证。
 - app 身份下第 5 节结构化业务命令完成正向验证，`contract upload-file` 需覆盖 user/app 两种身份；写操作至少在可回收测试租户完成一次可回收数据验证。
 - user 身份下第 6 节十五条结构化业务命令完成正向验证。
-- `api call` 暂未开放拦截、help 隐藏、skills 隐藏三类场景完成验证。
+- `api call --channel web` 已验证只读配方、调用边界、公开帮助及非独立 Skill 安装限制完成验证。
 - `make release-check` 通过。
 
 ## 13. 版本升级专项测试

@@ -153,12 +153,14 @@ func profileNotFoundError(profileName string) error {
 	return fmt.Errorf("profile %q not found", profileName)
 }
 
+/*
+deviceProfileRecoveryError 说明快照恢复失败原因，并提示按原环境重新配置，避免误切换到 prod。
+入参 profileName、reason（string）分别为配置名和失败原因；返回 error。
+*/
 func deviceProfileRecoveryError(profileName, reason string) error {
 	return fmt.Errorf(
-		"cannot restore Device profile %q after sandbox rebuild: %s; run `contract-cli config add --env prod --name %s` and `contract-cli auth init --profile %s --output json` again",
+		"cannot restore Device profile %q after sandbox rebuild: %s; re-run `contract-cli config add` with the original environment and profile name, then authorize again",
 		profileName,
 		reason,
-		profileName,
-		profileName,
 	)
 }

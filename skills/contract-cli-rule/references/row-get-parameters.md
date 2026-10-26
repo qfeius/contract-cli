@@ -33,7 +33,7 @@
 ## 枚举与约束
 
 - 可调用此接口获取目标规则表目标行的数据，返回值为单元格组成的列表，可以通过单元格的列 id 与查询规则表列头信息中的列 id 进行对应
-- 官方参数 `department_id_type`（query，可选）当前没有对应 CLI flag。
+- `--department-id-type` 可显式选择兼容模式；`contract/approve_matrix` 默认 `tenant_department_id`，人员默认 `tenant_employee_id`。
 
 ## 示例
 

@@ -46,7 +46,7 @@
 | table_cell.table_cell_content | object | 必填 | 单元格内容，六个字段与六种类型进行映射，每个单元格只能填充与单元格内容类型对应的字段；注意其他字段应为 null |
 | table_cell.table_cell_content.bool | boolean | 可选 | 布尔值示例值：true |
 | table_cell.table_cell_content.collection | array<string> | 可选 | 集合示例值：["element1"] |
-| table_cell.table_cell_content.department_collection | array<string> | 可选 | 部门 `open_department_id` 集合，例如 ["od-1b1b803a7df98989bf457d9ba203c350"]；不要传 `sys_department.id` 数字 |
+| table_cell.table_cell_content.department_collection | array<string> | 可选 | SaaS 部门 `id` 集合，例如 ["1018399484738012242"] |
 | table_cell.table_cell_content.employee_collection | array<string> | 可选 | 人员集合示例值：["ou-sdwerdfvdc"] |
 | table_cell.table_cell_content.role_collection | array<string> | 可选 | 角色集合示例值：["123520234"] |
 | table_cell.table_cell_content.number | number | 可选 | 数值示例值：1 |
@@ -60,8 +60,8 @@
 - 备注列的请求单元格类型固定使用 `STRING`；搜索不存在的备注字符串时应返回空行列表，不应退化为该备注列所有非空行。
 - `table_cell.table_cell_content`（object，必填）：单元格内容，六个字段与六种类型进行映射，每个单元格只能填充与单元格内容类型对应的字段；注意其他字段应为 null
 - `table_cell.table_cell_content_type`（string，必填）：单元格内容类型，需与规则表列头中的单元格内容类型保持一致示例值："EMPLOYEE_COLLECTION"可选值有：STRING：字符串NUMBER：数值BOOLEAN：布尔COLLECTION：集合EMPLOYEE_COLLECTION：人员集合
-- 部门集合搜索使用 `open_department_id`（`od-...`）；目录返回的 `sys_department.id` 数字不是规则行/搜索条件可用的部门 ID。
-- 官方参数 `department_id_type`（query，可选）当前没有对应 CLI flag。
+- `contract/approve_matrix` 的部门集合搜索使用 SaaS 目录返回的 `department_id` 十进制字符串。
+- `--department-id-type` 可显式选择兼容模式；默认 `tenant_department_id`。
 
 ## 示例
 

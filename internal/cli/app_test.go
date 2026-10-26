@@ -47,6 +47,7 @@ func TestRunWithoutArgsPrintsTopLevelHelp(t *testing.T) {
 		!strings.Contains(stdout.String(), "contract-cli skills install [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli update check [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli environment inspect [flags]") ||
+		!strings.Contains(stdout.String(), "contract-cli api call [flags] <METHOD> <PATH>") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm vendor <subcommand> [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm legal <subcommand> [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm fields list [flags]") {
@@ -55,7 +56,6 @@ func TestRunWithoutArgsPrintsTopLevelHelp(t *testing.T) {
 	if strings.Contains(stdout.String(), "contract-cli vendor <subcommand> [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli entity <subcommand> [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli schema <subcommand> [flags]") ||
-		strings.Contains(stdout.String(), "contract-cli api call [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli mdm-vendor <subcommand> [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli mdm-legal <subcommand> [flags]") ||
 		strings.Contains(stdout.String(), "contract-cli mdm-fields [flags]") {
@@ -95,6 +95,11 @@ func TestRunCommandLogRedactsSensitiveArguments(t *testing.T) {
 			name:    "inline request body",
 			args:    []string{"unknown-command", "--data", `{"access_token":"body-token-value","password":"body-password-value"}`},
 			secrets: []string{"body-token-value", "body-password-value"},
+		},
+		{
+			name:    "generic query",
+			args:    []string{"unknown-command", "--query", "employee_name=query-personal-value"},
+			secrets: []string{"query-personal-value"},
 		},
 		{
 			name: "generic credential flags",
@@ -752,7 +757,7 @@ func TestSkillsListDisplaysCurrentCLIVersion(t *testing.T) {
 		}
 	}
 	if strings.Contains(output, "contract-cli-api-call") {
-		t.Fatalf("skills list should hide disabled api call skill: %s", output)
+		t.Fatalf("skills list should hide the non-standalone api call transport: %s", output)
 	}
 }
 
@@ -777,7 +782,7 @@ func TestSkillsInstallCopiesBundledSkillsAndSkipsExisting(t *testing.T) {
 	assertFileContent(t, filepath.Join(target, "auth", "agents", "openai.yaml"), "name: auth\n")
 	assertFileContent(t, filepath.Join(target, "contract-cli-contract", "references", "commands.md"), "# Commands\n")
 	if _, err := os.Stat(filepath.Join(target, "contract-cli-api-call")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("api call skill should not be installed, stat error = %v", err)
+		t.Fatalf("api call transport should not be installed as a standalone skill, stat error = %v", err)
 	}
 
 	if err := os.WriteFile(filepath.Join(target, "auth", "SKILL.md"), []byte("local custom skill\n"), 0o600); err != nil {
@@ -1063,27 +1068,31 @@ func TestConfigAddUsesProdPresetByDefault(t *testing.T) {
 	}
 }
 
-func TestConfigAddRejectsDevPresetBeforeNetworkRequest(t *testing.T) {
+/*
+TestConfigAddRejectsDevPresetBeforeNetworkRequest 验证 dev 仍在发请求前被拒绝。
+入参 t（*testing.T）为测试上下文；无返回值，失败时报告测试错误。
+*/
+func TestConfigAddRejectsTestPresetBeforeHTTP(t *testing.T) {
 	t.Parallel()
 
-	requestCount := 0
+	store := config.NewStore(t.TempDir())
+	requests := 0
 	app := cli.New(cli.Options{
 		Stdout: &bytes.Buffer{},
 		Stderr: &bytes.Buffer{},
-		Store:  config.NewStore(t.TempDir()),
+		Store:  store,
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			requestCount++
-			t.Fatalf("dev preset must be rejected before network request: %s", req.URL.String())
-			return nil, nil
+			requests++
+			return nil, fmt.Errorf("unexpected request to %s", req.URL)
 		})},
 	})
 
-	err := app.Run(context.Background(), []string{"config", "add", "--name", "contract", "--env", "dev"})
-	if err == nil || err.Error() != `unsupported environment "dev"; supported environments: prod` {
-		t.Fatalf("config add dev error = %v", err)
+	err := app.Run(context.Background(), []string{"config", "add", "--name", "contract", "--env", "test"})
+	if err == nil || !strings.Contains(err.Error(), "supported environments: prod") || requests != 0 {
+		t.Fatalf("config add error = %v, requests = %d", err, requests)
 	}
-	if requestCount != 0 {
-		t.Fatalf("network request count = %d, want 0", requestCount)
+	if _, found, err := store.LookupProfile("contract"); err != nil || found {
+		t.Fatalf("rejected profile saved: found = %v, error = %v", found, err)
 	}
 }
 

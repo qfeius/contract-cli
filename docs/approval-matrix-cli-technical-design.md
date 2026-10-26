@@ -26,7 +26,7 @@ CLI 全量测试及矩阵专项 race 测试通过，包含已移除命令在 HTT
 
 基于 `bpm-rule-configuration` 分支 `20260901-zss-approval@c77a6c6` 及新交互文档第 3 版，新增 9 个 HTTP 接口：规则组 get/create、矩阵 get/create/update/delete、列 add/update/delete。条件/结果更新共享 PUT，提供语义别名。
 
-新增结构接口字段见 `skills/contract-cli-rule/references/structure-parameters.md`。api call 保持项目原有关闭状态；所有目标结构接口均通过结构化命令调用。
+新增结构接口字段见 `skills/contract-cli-rule/references/structure-parameters.md`。首轮实现时通用调用入口尚未开放；当前已开放 `api call --channel web`，仅执行已验证业务配方的 Open Web 页面接口。审批矩阵仍通过结构化命令调用，保留写入确认、导入计划与回读规则。
 
 列容量与服务端保持一致：总列数上限 12，优先级和备注固定占 2 列，条件列与结果列合计最多 10 列。Agent 在首个结构写入前按完整目标方案计算；原子 `column add` 在 POST 前通过列头接口统计当前容量，满额时本地阻断并保留服务端 20303 作为并发兜底。
 

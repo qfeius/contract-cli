@@ -1,0 +1,7 @@
+interface:
+  display_name: "智书合同智能摘要"
+  short_description: "按合同编号或完整名称查询摘要，或为本地合同文件生成摘要"
+  default_prompt: "用 $zhishu-contract-summary 查询这个合同编号的总结和结构化摘要；如果我提供的是本地合同文件，则直接生成文件摘要。"
+
+policy:
+  allow_implicit_invocation: true

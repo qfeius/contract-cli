@@ -11,6 +11,8 @@ contract-cli contract search --profile contract --as user --data '{"contract_num
 contract-cli contract search --profile contract --as app --input-file contract-search.json
 contract-cli contract search --profile contract --as app --input-file contract-search.json --user-id ou_xxx --user-id-type employee_id
 contract-cli contract search-v2 --profile contract --as app --input-file search-v2.json
+contract-cli contract summary query --profile contract --as user --contract-number CN-001
+contract-cli contract summary generate --profile contract --as user --file ./SMOKE-001.docx
 contract-cli contract create --profile contract --input-file contract-create.json
 contract-cli contract create --profile contract --data '{"title":"示例合同"}'
 contract-cli contract create --profile contract --as app --data '{"contract_name":"示例合同","create_user_id":"ou_xxx"}'
@@ -71,6 +73,7 @@ contract-cli contract enum list --profile contract --type contract_status
 
 - `contract upload-file` 支持 user/app；user 上传 `reviewAttachment` / `approveAttachment` 自动完成 MCP prepare → content → commit，返回最终 `file_id`；app 和其他 user 类型继续走 `/open-apis/contract/v1/files/upload`。新附件须同一 user 在 commit 后 30 分钟内用于评论/审批，详见 [附件规则](approval-mcp-fields.md#新附件上传与复用)
 - `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *` 当前仅支持 app 身份
+- `contract summary query/generate` 当前仅支持 user 身份；完整工作流见 [智书合同摘要 Skill](../../zhishu-contract-summary/SKILL.md)
 - `contract submit`、`contract resubmit`、`contract patch`、`contract delete`、`contract print-file`、`contract approval start` 当前仅支持 app 身份
 - `contract download-file`、`contract approval get` 支持 user/app；`contract approval comment list/create`、`contract approval task list/approve/reject` 仅支持 user
 - `contract share get`、`contract share batch-create`、`contract cooperation link get`、`contract cooperation record get`、`contract cooperation search`、`contract cooperation file get/download` 当前仅支持 app 身份
@@ -94,12 +97,14 @@ contract-cli contract enum list --profile contract --type contract_status
 - 分享和协商响应：看 [share-cooperation-fields.md](share-cooperation-fields.md)
 - 上传、下载、提交、重提、删除：看 [contract-actions-fields.md](contract-actions-fields.md)
 - 审批发起请求体：看 [approval-fields.md](approval-fields.md)
-- 新增 app-only 补齐接口命令：看 [openapi-gap-commands.md](openapi-gap-commands.md)
+- 新增开放平台补齐接口命令：看 [openapi-gap-commands.md](openapi-gap-commands.md)
 
-## 新增 app-only 补齐命令
+## 新增开放平台补齐命令
 
 ```bash
 contract-cli contract search-v2 --profile contract --as app --input-file search-v2.json
+contract-cli contract summary query --profile contract --as user --contract-number CN-001
+contract-cli contract summary generate --profile contract --as user --file ./SMOKE-001.docx
 contract-cli contract field update --profile contract --as app --input-file field-update.json
 contract-cli contract sign switch-to-paper --profile contract --as app --business-id <contract-id> --business-type-code 0
 contract-cli contract sign-url get <contract-id> --profile contract --as app
@@ -112,6 +117,8 @@ contract-cli contract esign org-auth-url --profile contract --as app --input-fil
 接口路径：
 
 - `search-v2`：`POST /open-apis/contract/v1/contracts/searchV2`
+- `summary query`：`POST /open-apis/contract/v1/summary/query`
+- `summary generate`：`POST /open-apis/contract/v1/summary/generate`
 - `field update`：`PUT /open-apis/contract/v1/attribute_definition`
 - `sign switch-to-paper`：`POST /open-apis/contract/v1/contracts/signType/switchToPaper`
 - `sign-url get`：`GET /open-apis/contract/v1/contracts/{contract_id}/sign_url`

@@ -12,14 +12,14 @@
 | --- | --- | --- |
 | `employee batch-get` | POST `/employees/batch_get` | `{"ids":["123"],"group_code":"approve_matrix"}` |
 | `department search` | POST `/departments/search` | `{"param":"部门关键词","group_code":"approve_matrix"}` |
-| `department batch-get` | POST `/departments/batch_get` | `{"ids":["123"]}`（数字 `department_id`，用于回查 `open_department_id`） |
+| `department batch-get` | POST `/departments/batch_get` | `{"ids":["123"]}`（SaaS 部门 `id` 的十进制字符串） |
 | `role search` | POST `/roles/search` | `{"param":"角色关键词"}` |
 | `role batch-get` | POST `/roles/batch_get` | `{"ids":["123"]}` |
 | `symbol query` | CLI 本地映射 | `{"value_type":"NUMBER"}` |
 | `loop-function query` | POST `/loop_functions/query` | `{"value_type":"DEPARTMENT_COLLECTION"}` |
 
-- group_code 可省略，传入时与路径组编码一致。batch-get 接受 1..100 个字符串 ID：人员使用正 int64 外部 ID；部门 batch-get 使用目录返回的数字 `department_id`，用于回查可写入的 `open_department_id`；角色依租户来源使用对应 ID。
-- 目录回包为 `data.items`（含专用 employee_id/department_id/open_department_id/role_id、name、selectable）及 `missing_ids`。部门搜索可直接使用 `selectable=true` 候选的 `open_department_id`（`od-...`）；数字 `department_id` 只作为 batch-get 查询键，不进入规则行。batch-get 结果同样取 `open_department_id`，用于行创建、更新、搜索和 import plan。候选缺少 `open_department_id` 时应为 `selectable=false`；此时提示部署目录接口修复，不使用数字 ID 兜底。
+- group_code 可省略，传入时与路径组编码一致。batch-get 接受 1..100 个字符串 ID：`contract/approve_matrix` 默认使用 SaaS 搜索返回的人员、部门 `id`；角色依租户来源使用对应 ID。
+- 目录回包为 `data.items`（含 employee_id/department_id/role_id、name、selectable）及 `missing_ids`。默认模式下，人员 `employee_id` 与部门 `department_id` 均为私有 SaaS 搜索 `data[].id` 的十进制字符串，可直接用于规则行、搜索、结果列默认值和 import plan。仅采用 `selectable=true` 的候选。
 - 操作符取 CLI 内置映射中的 `symbol`；列更新时仍由开平接口校验合法性。循环配置只使用 `loop-function query` 返回的可用候选。
 - 本页枚举是条件类型及运算符，不是业务字段可选值，不需要另接业务枚举接口。
 

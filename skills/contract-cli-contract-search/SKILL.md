@@ -329,7 +329,7 @@ contract-cli contract search-fields --keyword "项目区域" --profile contract 
 - 字段名、枚举值、人员和部门 ID 必须有来源。已知字段展示名、尚无同配置同身份可复用的元数据时，先执行 `contract search-fields --as user --keyword <字段展示名>`；字段失效或契约变化时刷新。只有用户明确要求完整字段清单时才省略 `--keyword`；保持与后续搜索相同的 profile、身份和配置目录。
 - 自定义字段需要 `search_field` 与 `filter_unique_key`。按返回的 `request_location/request_paths` 放入 `combine_condition`、`condition_units` 或 `filter_units`，结合值类型、说明、候选范围和示例构造请求，不能统一塞入 `filter_units`。详见 [搜索字段发现](references/search-filter-fields.md)。
 - 申请人姓名和部门名称关键词可直接用场景 6、7 的 `condition_units` 搜索；精确 ID 筛选使用 [人员 Skill](../contract-cli-employee/SKILL.md) 或 [部门 Skill](../contract-cli-department/SKILL.md) 取得并确认真实候选。
-- `contract search-fields` 是本次开发版新增的 user-only 命令，对应 MCP 的 `list-contract-search-filter-fields`；旧 CLI 1.8.6 尚不支持，使用前确认本机版本或 `contract search-fields --help`。本次开发版另有顶层 `employee list` 与 `department list`，分别由独立 Skill 指导；旧版本先用对应 `--help` 确认可用性。`api call` 仍未开放。
+- `contract search-fields` 是本次开发版新增的 user-only 命令，对应 MCP 的 `list-contract-search-filter-fields`；旧 CLI 1.8.6 尚不支持，使用前确认本机版本或 `contract search-fields --help`。本次开发版另有顶层 `employee list` 与 `department list`，分别由独立 Skill 指导；旧版本先用对应 `--help` 确认可用性。`api call --channel web` 已开放为业务 Skill 的 Open Web 执行通道；本 Skill 的合同搜索和字段发现仍使用上述结构化命令，不自行改用页面接口。
 - 自定义人员/部门字段要求 ID 时，分别调用 `employee list --name` 或 `department list --name`，按独立 Skill 处理分页和重名，再按字段元数据使用真实 ID。保留同配置、同身份及原有全部条件；查询失败不猜 ID、不删条件，也不默认让用户提供技术 ID。
 - 保留人员/部门 ID 原值，不把数字字符串转成数值；部门候选也不能自行转换为内部 ID。本次开发版的 user 搜索固定 `user_id_type=user_id`，其他显式类型在发送搜索前报错；旧 CLI 1.8.6 会静默忽略覆盖值，不能声称 flag 已切换到 union_id。
 

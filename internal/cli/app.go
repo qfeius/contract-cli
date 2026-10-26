@@ -24,9 +24,8 @@ import (
 
 const defaultProfileName = "contract"
 
-var errAPICommandUnavailable = errors.New("api call 暂未开放使用，请使用已开放的结构化命令")
-
 type Options struct {
+	Stdin              io.Reader
 	Stdout             io.Writer
 	Stderr             io.Writer
 	Logger             *slog.Logger
@@ -48,6 +47,7 @@ type Options struct {
 }
 
 type App struct {
+	stdin              io.Reader
 	stdout             io.Writer
 	stderr             io.Writer
 	logger             *slog.Logger
@@ -105,6 +105,10 @@ func New(options Options) *App {
 		secrets = config.NewSecretsStore(dir)
 	}
 
+	stdin := options.Stdin
+	if stdin == nil {
+		stdin = os.Stdin
+	}
 	stdout := options.Stdout
 	if stdout == nil {
 		stdout = os.Stdout
@@ -152,6 +156,7 @@ func New(options Options) *App {
 	}
 
 	app := &App{
+		stdin:              stdin,
 		stdout:             stdout,
 		stderr:             stderr,
 		logger:             logger,
@@ -197,13 +202,13 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	a.updateNotice = nil
 	a.commandContext = ctx
 	a.runtimeEvidence = nil
+	if len(args) > 0 && args[0] == "__internal" {
+		return a.runSkillSyncOnInstall(args[1:])
+	}
+	a.warnPendingSkillSync()
 	if len(args) == 0 {
 		a.printUsage()
 		return nil
-	}
-
-	if args[0] == "api" {
-		return errAPICommandUnavailable
 	}
 
 	if isHelpRequest(args) {
@@ -242,6 +247,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.runContract(ctx, args[1:])
 	case "employee", "department":
 		return a.runDirectory(ctx, args[0], args[1:])
+	case "review":
+		return a.runReview(ctx, args[1:])
 	case "payment":
 		return a.runPayment(ctx, args[1:])
 	case "mdm":
@@ -620,13 +627,9 @@ func (a *App) providerFor(identity config.IdentityKind) authProvider {
 	}
 }
 
-/*
-resolveEnvironment 只提供线上 prod 环境预设，非生产环境在任何网络请求前被拒绝。
-入参 name（string）为环境名；返回 environmentPreset 和 error。
-*/
 func resolveEnvironment(name string) (environmentPreset, error) {
 	switch name {
-	case "prod":
+	case productionEnvironment:
 		return environmentPreset{
 			OpenPlatformBaseURL:            "https://open.qfei.cn",
 			AppTokenEndpoint:               "https://open.qfei.cn/open-apis/auth/v3/tenant_access_token/internal",

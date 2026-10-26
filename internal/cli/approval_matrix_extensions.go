@@ -81,7 +81,10 @@ func isMatrixLookup(resource string) bool {
 	return false
 }
 
-/* runMatrixExtension 分发配套查询和列操作；ctx 为上下文，resource/args 为命令参数；返回参数或请求错误。 */
+/*
+runMatrixExtension 分发配套查询和列操作，并按合同矩阵的部门 ID 类型预检批量查询。
+入参 ctx（context.Context）为请求上下文，resource（string）为资源，args（[]string）为命令参数；返回 error 表示参数或请求错误。
+*/
 func (a *App) runMatrixExtension(ctx context.Context, resource string, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("missing %s subcommand", resource)
@@ -98,7 +101,7 @@ func (a *App) runMatrixExtension(ctx context.Context, resource string, args []st
 	if !ok && !localSymbols {
 		return fmt.Errorf("unknown matrix command %s %s", resource, action)
 	}
-	parsed, err := parseArgs(args, structuredValueFlags("--product-id", "--group-id", "--table-id", "--column-id"), commonBoolFlags())
+	parsed, err := parseArgs(args, structuredValueFlags("--product-id", "--group-id", "--table-id", "--column-id", "--department-id-type"), commonBoolFlags())
 	if err != nil {
 		return err
 	}
@@ -107,15 +110,20 @@ func (a *App) runMatrixExtension(ctx context.Context, resource string, args []st
 	}
 	group := parsed.String("--group-id")
 	options := parseCommandOptions(parsed)
-	if parsed.String("--user-id-type") != "" && parsed.String("--user-id-type") != "user_id" {
-		return fmt.Errorf("matrix extensions only support --user-id-type user_id")
+	if parsed.String("--user-id-type") != "" && parsed.String("--user-id-type") != "user_id" && parsed.String("--user-id-type") != "tenant_employee_id" {
+		return fmt.Errorf("matrix extensions support --user-id-type tenant_employee_id or user_id")
 	}
 	var body []byte
 	body, err = resolveRequiredRawBody(options)
 	if err != nil {
 		return err
 	}
-	if err = validateMatrixExtensionBody(resource, action, group, body); err != nil {
+	// 兼容部门 ID 只在合同审批矩阵启用；其他资源和规则组仍使用原有批量查询校验。
+	departmentIDType := ""
+	if resource == "department" && parsed.String("--product-id") == "contract" && group == "approve_matrix" {
+		departmentIDType = strings.TrimSpace(options.departmentIDType)
+	}
+	if err = validateMatrixExtensionBody(resource, action, group, departmentIDType, body); err != nil {
 		return err
 	}
 	if localSymbols {
@@ -179,8 +187,11 @@ func (a *App) renderBuiltinMatrixSymbols(options commandOptions, body []byte) er
 	return a.renderOpenPlatformResponse(options, openplatform.Response{StatusCode: http.StatusOK, Body: responseBody})
 }
 
-/* validateMatrixExtensionBody 校验查询白名单、范围及受保护写入契约；resource/action/group 为 string，body 为字节；返回 error。 */
-func validateMatrixExtensionBody(resource, action, group string, body []byte) error {
+/*
+validateMatrixExtensionBody 校验查询白名单、范围及按类型传入的部门批量 ID。
+入参 resource/action/group（string）为命令资源、动作和组，departmentIDType（string）为合同矩阵部门 ID 类型，body（[]byte）为请求体；返回 error 表示本地校验失败。
+*/
+func validateMatrixExtensionBody(resource, action, group, departmentIDType string, body []byte) error {
 	var fields map[string]json.RawMessage
 	if json.Unmarshal(body, &fields) != nil || fields == nil {
 		return fmt.Errorf("request body must be an object")
@@ -190,6 +201,13 @@ func validateMatrixExtensionBody(resource, action, group string, body []byte) er
 			return fmt.Errorf("column changes must not be empty")
 		}
 		return nil
+	}
+	if resource == "department" && action == "batch-get" {
+		switch departmentIDType {
+		case "", "tenant_department_id", "department_id", "open_department_id":
+		default:
+			return fmt.Errorf("unsupported department_id_type %q", departmentIDType)
+		}
 	}
 	for k, v := range fields {
 		switch k {
@@ -213,10 +231,18 @@ func validateMatrixExtensionBody(resource, action, group string, body []byte) er
 					if !regexp.MustCompile(`^[A-Za-z0-9_-]{1,100}$`).MatchString(id) {
 						return fmt.Errorf("invalid role ID")
 					}
+				} else if resource == "department" && (departmentIDType == "department_id" || departmentIDType == "open_department_id") {
+					// 外部部门 ID 是目录字符串键，按所选类型校验后原样交给网关映射。
+					if id == "" || id != strings.TrimSpace(id) {
+						return fmt.Errorf("department batch-get ID %q must be a non-empty %s", id, departmentIDType)
+					}
+					if err := validateApprovalMatrixDepartmentID(id, departmentIDType); err != nil {
+						return fmt.Errorf("department batch-get %w", err)
+					}
 				} else {
 					if n, e := strconv.ParseInt(id, 10, 64); e != nil || n <= 0 || strconv.FormatInt(n, 10) != id {
 						if resource == "department" {
-							return fmt.Errorf("department batch-get ID %q must be a positive numeric directory department_id; use the returned open_department_id for rule rows and imports", id)
+							return fmt.Errorf("department batch-get ID %q must be the positive numeric SaaS department id returned by directory search", id)
 						}
 						return fmt.Errorf("invalid external ID")
 					}
@@ -272,6 +298,9 @@ func addMatrixExtensionHelp(registry map[string]helpTopic) {
 	commands := []string{"rule employee batch-get", "rule department search", "rule department batch-get", "rule role search", "rule role batch-get", "rule symbol query", "rule loop-function query", "rule table column patch", "rule table column preview"}
 	for _, name := range commands {
 		flags := []helpFlag{{"--product-id <id>", "产品编码"}, {"--group-id <id>", "规则组编码"}}
+		if strings.HasPrefix(name, "rule department ") || strings.HasPrefix(name, "rule table column ") {
+			flags = append(flags, helpFlag{"--department-id-type <type>", "contract/approve_matrix 默认 tenant_department_id；可显式选择兼容类型"})
+		}
 		if strings.HasPrefix(name, "rule table ") {
 			flags = append(flags, helpFlag{"--table-id <id>", "矩阵外部编码"})
 		}
@@ -287,12 +316,12 @@ func addMatrixExtensionHelp(registry map[string]helpTopic) {
 		}
 		if name == "rule department search" {
 			topic := registry[name]
-			topic.Notes = []string{"使用 JSON {\"param\":\"部门关键词\"} 搜索部门；只采用 selectable=true 的候选。", "结果中的 department_id 是数字目录查询 ID；open_department_id（od-...）才是规则行创建、更新、搜索和批量导入可直接使用的部门 ID。"}
+			topic.Notes = []string{"使用 JSON {\"param\":\"部门关键词\"} 搜索部门；只采用 selectable=true 的候选。", "contract/approve_matrix 默认返回 SaaS 搜索的 department_id，直接用于规则行和导入；ID 保留为十进制字符串。"}
 			registry[name] = topic
 		}
 		if name == "rule department batch-get" {
 			topic := registry[name]
-			topic.Notes = []string{"使用 JSON {\"ids\":[\"<数字 department_id>\"]} 回读部门目录；支持 user/app。", "该命令把目录数字 ID 回查为包含 open_department_id 的候选；规则行和批量导入只使用返回的 od-... 值。"}
+			topic.Notes = []string{"使用 JSON {\"ids\":[\"<部门 id>\"]} 回读部门目录；支持 user/app。", "contract/approve_matrix 默认按 SaaS 部门 id 回查，返回的 department_id 可用于规则行；显式选择 department_id 或 open_department_id 时，须传对应目录字段的值。"}
 			registry[name] = topic
 		}
 		parts := strings.Split(name, " ")
@@ -313,6 +342,6 @@ func addMatrixExtensionHelp(registry map[string]helpTopic) {
 		registry[parentName] = parent
 	}
 	plan := registry["rule table import plan"]
-	plan.Notes = append(plan.Notes, "导入复用现有行创建/更新接口，结果不确定时停止并先查询核验。NUMBER 支持最多 30 位整数、8 位小数，不自动换算单位；显式 null 清空单元格。", "DEPARTMENT_COLLECTION 只接受目录返回的 open_department_id 字符串（od-...）；数字 department_id 先通过 rule department batch-get 回查转换。")
+	plan.Notes = append(plan.Notes, "导入复用现有行创建/更新接口，结果不确定时停止并先查询核验。NUMBER 支持最多 30 位整数、8 位小数，不自动换算单位；显式 null 清空单元格。", "DEPARTMENT_COLLECTION 使用目录返回的 SaaS 部门 id 十进制字符串；直接取 department_id，不做组织 ID 转换。")
 	registry["rule table import plan"] = plan
 }

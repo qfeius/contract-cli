@@ -39,8 +39,12 @@ func TestApprovalMatrixImportPlanAndRetryableApply(t *testing.T) {
 		if req.Header.Get("Authorization") != "Bearer app-token" {
 			t.Fatalf("authorization = %q", req.Header.Get("Authorization"))
 		}
-		if req.URL.Query().Get("user_id_type") != "user_id" {
+		userIDType := req.URL.Query().Get("user_id_type")
+		if userIDType != "tenant_employee_id" && (req.URL.Path != columnsPath || userIDType != "user_id") {
 			t.Fatalf("user_id_type = %q", req.URL.Query().Get("user_id_type"))
+		}
+		if req.URL.Path != columnsPath && req.URL.Query().Get("department_id_type") != "tenant_department_id" {
+			t.Fatalf("department_id_type = %q", req.URL.Query().Get("department_id_type"))
 		}
 		if got := req.URL.Query().Get("user_id"); got != "" {
 			t.Fatalf("matrix request must use authenticated editor, user_id query = %q", got)
@@ -63,7 +67,7 @@ func TestApprovalMatrixImportPlanAndRetryableApply(t *testing.T) {
 			}
 			rows := fmt.Sprintf(`{"id":"row-existing","table_cells":[{"table_column_id":"column-amount","table_cell_content_type":"NUMBER","table_cell_content":{"number":%d}}]}`, amount)
 			if createCalls > 0 {
-				rows += `,{"id":"row-created","table_cells":[{"table_column_id":"column-amount","table_cell_content_type":"NUMBER","table_cell_content":{"number":1000000}},{"table_column_id":"column-approvers","table_cell_content_type":"EMPLOYEE_COLLECTION","table_cell_content":{"employee_collection":[7113921696628736004]}},{"table_column_id":"column-department","table_cell_content_type":"DEPARTMENT_COLLECTION","table_cell_content":{"department_collection":["od-1b1b803a7df98989bf457d9ba203c350"]}}]}`
+				rows += `,{"id":"row-created","table_cells":[{"table_column_id":"column-amount","table_cell_content_type":"NUMBER","table_cell_content":{"number":1000000}},{"table_column_id":"column-approvers","table_cell_content_type":"EMPLOYEE_COLLECTION","table_cell_content":{"employee_collection":["7113921696628736004"]}},{"table_column_id":"column-department","table_cell_content_type":"DEPARTMENT_COLLECTION","table_cell_content":{"department_collection":["1069134472156283980"]}}]}`
 			}
 			return jsonResponse(`{"code":0,"data":{"table_rows":[` + rows + `],"has_more":false}}`), nil
 		case req.Method == http.MethodGet && req.URL.Path == rowsPath+"/row-existing":
@@ -73,7 +77,7 @@ func TestApprovalMatrixImportPlanAndRetryableApply(t *testing.T) {
 			}
 			return jsonResponse(fmt.Sprintf(`{"code":0,"data":{"table_row":{"id":"row-existing","table_cells":[{"table_column_id":"column-amount","table_cell_content_type":"NUMBER","table_cell_content":{"number":%d}}]}}}`, amount)), nil
 		case req.Method == http.MethodGet && req.URL.Path == rowsPath+"/row-created":
-			return jsonResponse(`{"code":0,"data":{"table_row":{"id":"row-created","table_cells":[{"table_column_id":"column-amount","table_cell_content_type":"NUMBER","table_cell_content":{"number":1000000}},{"table_column_id":"column-approvers","table_cell_content_type":"EMPLOYEE_COLLECTION","table_cell_content":{"employee_collection":[7113921696628736004]}},{"table_column_id":"column-department","table_cell_content_type":"DEPARTMENT_COLLECTION","table_cell_content":{"department_collection":["od-1b1b803a7df98989bf457d9ba203c350"]}}]}}}`), nil
+			return jsonResponse(`{"code":0,"data":{"table_row":{"id":"row-created","table_cells":[{"table_column_id":"column-amount","table_cell_content_type":"NUMBER","table_cell_content":{"number":1000000}},{"table_column_id":"column-approvers","table_cell_content_type":"EMPLOYEE_COLLECTION","table_cell_content":{"employee_collection":["7113921696628736004"]}},{"table_column_id":"column-department","table_cell_content_type":"DEPARTMENT_COLLECTION","table_cell_content":{"department_collection":["1069134472156283980"]}}]}}}`), nil
 		case req.Method == http.MethodPost && req.URL.Path == rowsPath:
 			createCalls++
 			body, err := io.ReadAll(req.Body)
@@ -81,7 +85,7 @@ func TestApprovalMatrixImportPlanAndRetryableApply(t *testing.T) {
 				t.Fatalf("ReadAll(create body) error = %v", err)
 			}
 			bodyText := string(body)
-			for _, fragment := range []string{`"table_column_id":"column-amount"`, `"number":1000000`, `"table_column_id":"column-approvers"`, `"employee_collection":[7113921696628736004]`, `"table_column_id":"column-department"`, `"department_collection":["od-1b1b803a7df98989bf457d9ba203c350"]`} {
+			for _, fragment := range []string{`"table_column_id":"column-amount"`, `"number":1000000`, `"table_column_id":"column-approvers"`, `"employee_collection":[7113921696628736004]`, `"table_column_id":"column-department"`, `"department_collection":["1069134472156283980"]`} {
 				if !strings.Contains(bodyText, fragment) {
 					t.Fatalf("create body missing %q: %s", fragment, bodyText)
 				}
@@ -108,7 +112,7 @@ func TestApprovalMatrixImportPlanAndRetryableApply(t *testing.T) {
 
 	input := `{
 		"rows":[
-		{"operation":"create","cells":{"合同金额":1000000,"审批人":["7113921696628736004"],"部门":["od-1b1b803a7df98989bf457d9ba203c350"]}},
+		{"operation":"create","cells":{"合同金额":1000000,"审批人":["7113921696628736004"],"部门":["1069134472156283980"]}},
 			{"operation":"update","row_id":"row-existing","cells":{"column-amount":1200000}}
 		]
 	}`
@@ -309,7 +313,7 @@ func TestApprovalMatrixImportApplyRejectsConcurrentExecution(t *testing.T) {
 	if err != nil || !locked {
 		t.Fatalf("TryLock() locked=%v error=%v", locked, err)
 	}
-	defer planLock.Unlock()
+	defer func() { _ = planLock.Unlock() }()
 
 	err = app.Run(context.Background(), []string{"rule", "table", "import", "apply", "--plan-id", planID, "--profile", "contract", "--as", "app"})
 	if err == nil || !strings.Contains(err.Error(), "already being applied") {
@@ -499,9 +503,9 @@ func TestApprovalMatrixImportBackendValueTypes(t *testing.T) {
 		{"NUMBER", "0.123456789", false}, {"NUMBER", "1e30", false}, {"NUMBER", "1e-9", false},
 		{"BOOLEAN", "null", true}, {"STRING", "null", true},
 		{"EMPLOYEE_COLLECTION", `["7113921696628736004"]`, true},
-		{"DEPARTMENT_COLLECTION", `["od-1b1b803a7df98989bf457d9ba203c350"]`, true},
+		{"DEPARTMENT_COLLECTION", `["od-1b1b803a7df98989bf457d9ba203c350"]`, false},
 		{"DEPARTMENT_COLLECTION", `[1018399484738012242]`, false},
-		{"DEPARTMENT_COLLECTION", `["1018399484738012242"]`, false},
+		{"DEPARTMENT_COLLECTION", `["1018399484738012242"]`, true},
 		{"EMPLOYEE_COLLECTION", `["ou_zhangsan"]`, false},
 		{"EMPLOYEE_COLLECTION", `[]`, true},
 	} {

@@ -55,7 +55,13 @@ func matrixExactValues(v any) any {
 		}
 	case map[string]any:
 		for k, item := range x {
-			normalized := matrixExactValues(item)
+			var normalized any
+			if k == "employee_collection" || k == "department_collection" {
+				// 规则行请求可含 JSON 整数，回读为字符串；按同一十进制 ID 比较。
+				normalized = matrixStringIDCollection(item)
+			} else {
+				normalized = matrixExactValues(item)
+			}
 			// 部门集合表达成员关系而非审批顺序；保留重复项，只排序以消除开平查询的非确定返回顺序。
 			if k == "department_collection" {
 				normalized = matrixSortedStringCollection(normalized)
@@ -68,6 +74,27 @@ func matrixExactValues(v any) any {
 		}
 	}
 	return v
+}
+
+/*
+matrixStringIDCollection 将矩阵人员、部门集合中的精确整数统一成字符串。
+入参 v（any）为集合 JSON 值；返回 any 为可与原生 ID 回读比较的字符串集合。
+*/
+func matrixStringIDCollection(v any) any {
+	items, ok := v.([]any)
+	if !ok {
+		return v
+	}
+	result := make([]any, len(items))
+	for i, item := range items {
+		switch id := item.(type) {
+		case json.Number:
+			result[i] = id.String()
+		default:
+			result[i] = item
+		}
+	}
+	return result
 }
 
 /* matrixSortedStringCollection 对字符串集合生成确定顺序；v 为待规范化 JSON 值，返回排序后的 []any，非字符串数组原样返回。 */
@@ -234,7 +261,7 @@ func (a *App) publishMatrixWithRowBaseline(ctx context.Context, options commandO
 	if !acquired {
 		return fmt.Errorf("matrix publication already running")
 	}
-	defer lock.Unlock()
+	defer func() { _ = lock.Unlock() }()
 	request := func(method, suffix string, query url.Values, input []byte) (map[string]any, error) {
 		r, e := client.Do(ctx, rc, openplatform.Request{Method: method, Path: path + suffix, Query: query, Body: input, IdentityPolicy: openplatform.IdentityPolicyAny})
 		if e != nil {

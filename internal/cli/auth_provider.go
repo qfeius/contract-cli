@@ -205,6 +205,10 @@ type appCredentials struct {
 	source    string
 }
 
+/*
+Login 使用所选 profile 的环境端点完成 app 身份登录，并保存本地凭据引用。
+入参 ctx（context.Context）为请求上下文，profile（*config.Profile）为目标配置，options（authCommandOptions）为登录参数；返回提示文本（string）和 error。
+*/
 func (p appAuthProvider) Login(ctx context.Context, profile *config.Profile, options authCommandOptions) (string, error) {
 	p.logger.Info("app auth login started", "profile", profile.Name)
 
@@ -214,7 +218,7 @@ func (p appAuthProvider) Login(ctx context.Context, profile *config.Profile, opt
 		return "", err
 	}
 	if profile.AppTokenEndpoint == "" {
-		err = fmt.Errorf("app identity is not configured; run `contract-cli config add --env prod --name %s` first", profile.Name)
+		err = fmt.Errorf("app identity is not configured; run `contract-cli config add --env %s --name %s` first", profile.Environment, profile.Name)
 		p.logger.Error("app auth token endpoint missing", "profile", profile.Name, "environment", profile.Environment, "error", err.Error())
 		return "", err
 	}

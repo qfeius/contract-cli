@@ -1,7 +1,7 @@
 interface:
   display_name: "Contract CLI Shared"
   short_description: "Choose the right contract-cli open platform module and follow shared command rules"
-  default_prompt: "Use $contract-cli-shared to choose between contract, employee, department, payment, mdm, event, and rule skills, then follow shared identity, input, output, and api-call availability conventions. 不得索要原始凭证，不得无边界枚举接口。"
+  default_prompt: "Use $contract-cli-shared to choose between contract, employee, department, review, payment, mdm, event, and approval-matrix rule skills; route intelligent review to $contract-cli-review and review checklist/rule/group management to $contract-cli-review-rule. Follow shared identity, input, output, and api-call availability conventions. 不得索要原始凭证，不得无边界枚举接口。"
 
 policy:
   allow_implicit_invocation: true
