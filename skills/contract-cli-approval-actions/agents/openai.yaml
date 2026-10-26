@@ -1,7 +1,7 @@
 interface:
-  display_name: "合同审批复合动作"
-  short_description: "以当前用户身份安全编排审批通过、加签、转办与抄送"
-  default_prompt: "使用 $contract-cli-approval-actions 帮我用业务语言定位并处理本人可操作的审批通过、加签、转办、抄送或复合动作，先给整套预览并只确认一次。"
+  display_name: "合同加签、转办与抄送"
+  short_description: "查询本人合同任务并安全执行加签、转办、抄送"
+  default_prompt: "使用 $contract-cli-approval-actions 查询并处理本人可操作的合同加签、转办或抄送；需要确认时给出一份完整业务方案。"
 
 policy:
   allow_implicit_invocation: true
