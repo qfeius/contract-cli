@@ -75,7 +75,7 @@ func (a *App) runRuleStructure(ctx context.Context, resource string, args []stri
 	default:
 		return fmt.Errorf("unknown rule %s subcommand %q", resource, action)
 	}
-	parsed, err := parseArgs(args[1:], structuredValueFlags("--product-id", "--group-id", "--table-id", "--column-id"), commonBoolFlags())
+	parsed, err := parseArgs(args[1:], structuredValueFlags("--product-id", "--group-id", "--table-id", "--column-id", "--department-id-type"), commonBoolFlags())
 	if err != nil {
 		return err
 	}
@@ -125,8 +125,8 @@ func (a *App) runRuleStructure(ctx context.Context, resource string, args []stri
 		}
 	}
 	options := parseCommandOptions(parsed)
-	if resource == "employee" && parsed.String("--user-id-type") != "" && parsed.String("--user-id-type") != "user_id" {
-		return fmt.Errorf("employee search only supports --user-id-type user_id")
+	if resource == "employee" && parsed.String("--user-id-type") != "" && parsed.String("--user-id-type") != "user_id" && parsed.String("--user-id-type") != "tenant_employee_id" {
+		return fmt.Errorf("employee search supports --user-id-type tenant_employee_id or user_id")
 	}
 	var body []byte
 	if method == http.MethodPost || method == http.MethodPut {
@@ -328,20 +328,23 @@ func addRuleStructureHelp(registry map[string]helpTopic) {
 			}
 			if group.parent == "rule table column" && action != "add" {
 				flags = append(flags, helpFlag{"--column-id <id>", "列头返回的对外列 ID"})
+				if action != "delete" {
+					flags = append(flags, helpFlag{"--department-id-type <type>", "contract/approve_matrix 默认 tenant_department_id；可显式选择兼容类型"})
+				}
 			}
-			notes := []string{"支持 --as user 或 --as app。写操作先由 Agent 展示计划、确认，再执行并查询核验。", "approval-matrix table/group/column 等别名映射到对应 rule 命令；api call 保持关闭。"}
+			notes := []string{"支持 --as user 或 --as app。写操作先由 Agent 展示计划、确认，再执行并查询核验。", "approval-matrix table/group/column 等别名映射到对应 rule 命令；矩阵操作使用上述结构化命令。"}
 			if action != "get" && action != "delete" {
 				flags = append(flags, jsonBodyFlags()...)
 			}
 			switch group.parent {
 			case "rule employee":
-				notes = []string{"只读 POST 搜索：JSON 为 {\"param\":\"姓名关键词\",\"group_code\":\"approve_matrix\"}；param 最长 100 字符，可选 group_code 必须与 --group-id 一致；支持 user/app。", "返回 data 数组，employee_id 为矩阵外部人员 ID（十进制字符串）；仅 selectable=true 可用于写入，重名须选择，禁止自动取第一人。", "user_id_type 固定使用默认 user_id 语义；不把内部员工编号或 ou_ ID 写入规则。"}
+				notes = []string{"只读 POST 搜索：JSON 为 {\"param\":\"姓名关键词\",\"group_code\":\"approve_matrix\"}；param 最长 100 字符，可选 group_code 必须与 --group-id 一致；支持 user/app。", "contract/approve_matrix 默认返回 SaaS 搜索 id 作为 employee_id 十进制字符串；仅 selectable=true 可用于写入，重名须选择。", "默认 user_id_type=tenant_employee_id；显式 user_id 沿用旧映射。"}
 			case "rule group":
 				notes = append(notes, "contract 产品页面只展示 approve_matrix；group create 在 contract 产品被执行层阻断。")
 			case "rule table":
 				notes = append(notes, "contract 产品新建矩阵必须使用 --group-id approve_matrix。", "写入 JSON：name 必填；rule_table_id、description、match_policy、node_repetition_policy 可选。策略值为 0..2；更新时 rule_table_id 不可改变。", "更新 description 省略会按后端空值语义处理；保留原描述时先 get 并带回。")
 			case "rule table column":
-				notes = append(notes, "add JSON：base_table_column_id 必填，direction 为 -1 左侧或 1 右侧；新列类型继承基准列，随后用 update 配置。", "条件列更新：table_column_name、value_type、symbol；可选 value_id/value_code/value_name/is_department_loop/multi_select_match_mode。", "结果列更新：table_column_name、result_type；可选 result_code/default_value。default_value 是字符串，人员为逗号分隔的正整数外部 ID，部门为逗号分隔的 open_department_id（od-...）。", "已有值且类型或操作符改变单元格类型时，服务端阻止更新；需要先单独确认清空。优先级列、备注列及最后必要列受服务端保护。")
+				notes = append(notes, "add JSON：base_table_column_id 必填，direction 为 -1 左侧或 1 右侧；新列类型继承基准列，随后用 update 配置。", "条件列更新：table_column_name、value_type、symbol；可选 value_id/value_code/value_name/is_department_loop/multi_select_match_mode。", "结果列更新：table_column_name、result_type；可选 result_code/default_value。contract/approve_matrix 的 default_value 是字符串，人员和部门均使用目录返回的 SaaS id，多个值以逗号分隔。", "已有值且类型或操作符改变单元格类型时，服务端阻止更新；需要先单独确认清空。优先级列、备注列及最后必要列受服务端保护。")
 				if action == "add" {
 					notes = append(notes, "总列数上限为 12；优先级列和备注列固定占 2 列，条件列与结果列共用剩余 10 个名额。add 会先读取当前列头并在超限写入前本地阻断。")
 				}

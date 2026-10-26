@@ -1,0 +1,7 @@
+interface:
+  display_name: "Contract CLI Review Rules"
+  short_description: "Query and maintain contract review checklists, rules, and rule groups"
+  default_prompt: "Use $contract-cli-review-rule to query or maintain contract review checklists, rules, and rule groups with the current user profile. Confirm the impact before writes and read back the result. Route actual contract review tasks to $contract-cli-review; do not use contract-cli-rule for review configuration."
+
+policy:
+  allow_implicit_invocation: true

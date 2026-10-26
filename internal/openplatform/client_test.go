@@ -573,7 +573,7 @@ func TestClientDoRejectsInvalidPathAndWrapsNon2xx(t *testing.T) {
 	if _, err := client.Do(context.Background(), requestContext, openplatform.Request{
 		Method: http.MethodGet,
 		Path:   "https://dev-open.qtech.cn/open-apis/mdm/v1/vendors/123",
-	}); err == nil || !strings.Contains(err.Error(), "must be a relative /open-apis/ path") {
+	}); err == nil || !strings.Contains(err.Error(), "open platform path must be relative") {
 		t.Fatalf("unexpected invalid-path error: %v", err)
 	}
 
@@ -683,8 +683,36 @@ func TestIdentityPolicyForPathRecognizesContractMCPAsUserOnly(t *testing.T) {
 	if got := openplatform.IdentityPolicyForPath("/open-apis/contract/v1/mcp/vendors"); got != openplatform.IdentityPolicyUserOnly {
 		t.Fatalf("policy = %q", got)
 	}
+	if got := openplatform.IdentityPolicyForPath("/open-web/web/clm/contract/info"); got != openplatform.IdentityPolicyUserOnly {
+		t.Fatalf("Open Web policy = %q", got)
+	}
 	if got := openplatform.IdentityPolicyForPath("/open-apis/mdm/v1/vendors"); got != openplatform.IdentityPolicyAny {
 		t.Fatalf("policy = %q", got)
+	}
+}
+
+func TestClientDoSupportsValidatedOpenWebPath(t *testing.T) {
+	t.Parallel()
+
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if got := req.URL.String(); got != "https://open.qfei.cn/open-web/web/clm/contract/info?name=acme" {
+				t.Fatalf("url = %q", got)
+			}
+			return jsonResponse(`{"code":0}`), nil
+		})},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	_, err := client.Do(context.Background(), openplatform.RequestContext{
+		Identity: config.IdentityUser, BaseURL: "https://open.qfei.cn", AccessToken: "user-token",
+	}, openplatform.Request{
+		Method: http.MethodGet,
+		Path:   "/open-web/web/clm/contract/info",
+		Query:  map[string][]string{"name": {"acme"}},
+	})
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
 	}
 }
 
@@ -697,11 +725,12 @@ func TestRequestContextRequiresConfiguredBaseURLAndToken(t *testing.T) {
 
 	_, err := client.RequestContext(config.Profile{
 		Name:        "contract",
-		Environment: "dev",
+		Environment: "test",
 	}, config.IdentityApp)
 	if err == nil ||
 		!strings.Contains(err.Error(), "open platform base url is not configured") ||
-		!strings.Contains(err.Error(), "contract-cli config add --env prod --name contract") {
+		!strings.Contains(err.Error(), "contract-cli config add --env prod --name contract") ||
+		strings.Contains(err.Error(), "`--env test` for test") {
 		t.Fatalf("unexpected missing-base-url error: %v", err)
 	}
 

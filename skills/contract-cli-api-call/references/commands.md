@@ -1,10 +1,17 @@
-# API Call Commands Disabled
+# Open Web API Call Transport Reference
 
-当前没有可对外使用的 `contract-cli api call` 示例。
+`contract-cli api call --channel web` 是业务 Skill 的通用执行通道，不是独立的接口发现 Skill。
 
-请使用结构化命令完成开放平台操作：
+业务 Skill 已提供 method、Open Web path、query/body 和响应映射后，可按以下形式调用：
 
 ```bash
-contract-cli contract --help
-contract-cli mdm --help
+contract-cli api call \
+  --channel web \
+  --profile contract \
+  --as user \
+  --output json \
+  POST /open-web/web/clm/statistic/contractInfoByTradingParty \
+  --data '<JSON>'
 ```
+
+不得根据页面名称猜 path，也不得通过 `--header` 传入授权或可信身份头。

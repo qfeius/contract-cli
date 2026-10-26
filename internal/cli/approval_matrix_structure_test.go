@@ -312,7 +312,7 @@ func TestRuleEmployeeSearchFileAndIDMode(t *testing.T) {
 		if req.Method != "POST" || req.URL.Path != "/open-apis/rule_engine/v1/products/contract/groups/approve_matrix/employees/search" || string(body) != `{"param":"赵少帅","group_code":"approve_matrix"}` {
 			t.Fatalf("unexpected search request: %s %s %s", req.Method, req.URL.Path, body)
 		}
-		if req.URL.Query().Get("user_id_type") != "user_id" {
+		if req.URL.Query().Get("user_id_type") != "tenant_employee_id" {
 			t.Fatal("unexpected ID type")
 		}
 		return jsonResponse(`{"code":0,"data":[{"employee_id":"7113921696628736004","name":"赵少帅","selectable":true}]}`), nil
@@ -329,5 +329,31 @@ func TestRuleEmployeeSearchFileAndIDMode(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("calls=%d, invalid request reached server", calls)
+	}
+}
+
+/* TestRuleColumnDefaultUsesSaasIDs 验证结果列默认值经矩阵开平接口以 SaaS 人员、部门模式发送。 */
+func TestRuleColumnDefaultUsesSaasIDs(t *testing.T) {
+	t.Parallel()
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(uploadProfile(config.IdentityApp), true); err != nil {
+		t.Fatal(err)
+	}
+	app := cli.New(cli.Options{Store: store, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodPut || req.URL.Path != "/open-apis/rule_engine/v1/products/contract/groups/approve_matrix/rule_tables/table-1/table_columns/column-1" {
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
+		}
+		if req.URL.Query().Get("user_id_type") != "tenant_employee_id" || req.URL.Query().Get("department_id_type") != "tenant_department_id" {
+			t.Fatalf("unexpected ID types: %s", req.URL.RawQuery)
+		}
+		return jsonResponse(`{"code":0,"data":{}}`), nil
+	})}})
+	err := app.Run(context.Background(), []string{
+		"rule", "table", "column", "update-result", "--profile", "contract", "--as", "app",
+		"--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1",
+		"--column-id", "column-1", "--data", `{"table_column_name":"审批人","result_type":"EMPLOYEE_COLLECTION","default_value":"1069134472156283974"}`,
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

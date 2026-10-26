@@ -1,4 +1,267 @@
+## 2026-10-22 — 同步 GitHub 1.9.9 到 GitLab master
+- 摘要：同步正式 release 的协商查询、交接 Skill、Open Web 调用及 Skill 元数据版本修正。
+- 来源：从 upstream/master@ef9c980 建集成分支，merge github/release@238ab3e（v1.9.9），保留双方提交历史。
+- 范围：93 个上游变更文件；除本条记录外，合并树与 GitHub 发布源码一致。
+- 决策：master 无文件冲突；当前用户工作区保持原状，目标为独立分支 MR。
+- 验证：全量 Go 测试通过，exhaustive lint 0 issues；Node 安装与升级回归 24 通过、2 项既有跳过。
+
+## 2026-10-21 — 准备 GitHub 合同组编号定位 PR
+- 摘要：将交接 Skill 按编号自动定位父组及完整成员核对提交到 GitHub release。
+- 来源：基于 github/release@fdce78e 创建独立分支，merge codex/contract-negotiation-skill@35acb05，保留提交历史。
+- 范围：9 个 Skill、验证和说明文件；不包含 CLI 业务实现、后端、版本号或安装包二进制。
+- 决策：唯一冲突为变更记录，按时间保留双方条目；GitHub 已发布的共享调用说明继续保留。
+- 验证：合入后全量 Go 测试通过，exhaustive lint 0 issues；Skill 格式、9 个文件范围及交付文档一致性检查通过。
+
+## 2026-10-21 — 交接 Skill 按编号自动定位父组
+- 摘要：仅提供合同编号时，按已验证 Web 分组查询自动取得父行 contractId，核对父组与完整成员后继续交接预检。
+- 文件：交接 Skill 及新增 assembly-lookup.md、安装说明、离线场景和交接包回归测试。
+- 决策：一般搜索仍委托搜索 Skill；新增唯一有界编号定位配方，保留精确匹配、长 ID、歧义、权限和整组确认规则。
+- 验证：生产只读按父编号定位并核对 3 份成员合同，成员编号与零命中正常；配方回归先红后绿，全量 Go 测试及 exhaustive lint（0 issues）通过。
+- 复核：10 个离线场景独立复核无阻断；交付包 35 处引用、全部文件指纹与脱敏检查通过。
+- 交付：重打 group-flow.2 Skill 包；CLI/后端业务代码不变，不提交交接，不覆盖本机已安装 Skill。
+
+## 2026-10-21 — 合同组交接 Skill 独立交付包
+- 摘要：补充可信父组 ID 直接进入组流程，使用父组详情与完整成员列表预检、回查。
+- 文件：contract-handover 的 SKILL.md、contracts.md、assemblies.md、transport.md，离线行为场景及产品安装说明。
+- 决策：组成员完整详情不再是已知父组流程前置；补明确管理员角色及审批中准入，缺父组 ID 不猜 group_id。
+- 分发：仅打包交接 Skill 与安装说明，依赖正式 CLI 1.9.8 配套公共及搜索 Skill；不含生产数据或凭证。
+- 验证：5 个离线合成场景、独立复核、格式与 4 项交接回归通过；隔离安装后 28 处引用解析、ZIP 指纹及脱敏检查通过。
+- 范围：不修改 CLI/后端、不发布 npm、不提交交接，也不覆盖本机正式安装的 Skill。
+
+## 2026-10-21 — 清理 api call 关闭状态的遗留文案
+- 摘要：修正矩阵帮助、共享/搜索/字段/矩阵 Skill、开发指南及测试文档中已失效的关闭提示。
+- 文件：internal/cli/approval_matrix_structure.go、api_call_copy_test.go、相关 skills 与 docs。
+- 决策：按现有实现说明仅开放 user + /open-web/web/**；保留已验证配方、结构化命令、授权及非独立 Skill 边界。
+- 测试：先复现 20 个矩阵命令及别名的错误提示，再修正文案；覆盖 9 份当前文档及共享调用限制。
+- 验证：TMPDIR=/private/tmp 下全量 Go race/coverage 测试通过，CLI 覆盖率 81.9%；exhaustive lint 0 issues；Node 回归 17 通过、1 项既有跳过。
+- 说明：默认 macOS 临时目录别名会触发现有安装用例路径比较失败；使用真实目录重跑通过，保留历史变更记录。
+
+## 2026-10-21 — 准备 GitHub release 整分支同步
+- 摘要：按用户确认，将协商查询、合同交接 Skill、Open Web 通道及历史版本语义修正一起准备为 GitHub PR。
+- 来源：基于 qfeius/contract-cli release@f6da3c0 建隔离分支，merge 功能开发分支@87761e9，保留原提交历史。
+- 范围：目标为 release，来源为个人 GitHub fork 的独立分支；GitLab blue MR 不作更新。
+- 关键：合并前目标为源的祖先，14 个源侧提交、79 个变更文件，目标侧无新增改动，无代码冲突。
+- 验证：合入后全量 Go 测试通过，exhaustive lint 0 issues；安装升级回归 17 通过、1 项既有跳过，两个 Skill 格式及交接自测通过。
+- 边界：保持已确认的整分支范围；blue 后续的父合同组 ID 解析补充不在源分支中，缺少映射时仍按 Skill 停止。
+
+## 2026-10-21 — 历史文件当前轮次筛选说明纠正
+- 摘要：修正协商 Skill、响应附录、CLI 帮助和 README 对 include_current_version=false 的解释。
+- 决策：仅原始协商状态 0/2 排除当前轮次；已完成或已结束仍可返回最终版，参数透传和后端逻辑不变。
+- 展示：latest_version 表示返回文件组的最高版本；顶层与 history 的同一文件只计一次，确认留痕独立展示。
+- 测试：帮助输出回归先红后绿；新增 false 保留最终版及嵌套版本的响应回归，完整 Go 测试通过。
+- 验证：exhaustive lint 0 issues，6 项 Node Skill 检查及官方格式校验通过；独立静态三场景行为验证符合预期。
+- 范围：仅在 codex/contract-negotiation-skill 本地修改；不推送、不更新 blue 集成分支或 MR。
+
+## 2026-10-21 — 本地 1.9.9 安装验收修复 Skill 版本改写
+- 摘要：隔离试装发现安装器会误改 metadata.version；版本写入仅匹配顶层 YAML 字段。
+- 文件：internal/skillsync/transaction.go、transaction_version_test.go。
+- 决策：保留嵌套元数据、描述块和正文，只新增或替换顶层安装版本；不改后端。
+- 测试：先复现失败，再修复；覆盖元数据前后顺序、描述块、顶层空白及实际安装流程。
+- 验证：全量 Go 测试、exhaustive lint（0 issues）及安装脚本回归通过；独立复核无阻断项。
+- 打包：基于协商分支构建本地 1.9.9，使用隔离 staging，不修改仓库 package.json 或发布 npm。
+
+## 2026-10-21 — 仅补协商 Skill：多人合并与确认人数
+- 摘要：多个发起人逐人查询，独立翻页，按协商 ID 合并去重；补齐确认人数展示。
+- 文件：contract-cooperation/SKILL.md、4 份参数/展示附录（含新增 multi-creator-search.md）、README 与验证报告。
+- 决策：复用单值 create_user_id 和 user MCP；共同条件不变，不增加数组参数或统一分页 token。
+- 边界：补重复人员、同名协商、长 ID、字段冲突、缺 ID、部分失败/403 与分页异常规则。
+- 范围：CLI Go 源码及 MCP DTO 前后哈希一致；两组需后端支持的确认筛选暂不动。
+- 验证：独立基线与更新后行为试用；7 组主场景 25 次生产 MCP 搜索，Firefox 单选并集/状态/人数一致。
+- 回归：CLI/Skill 包测试、Skill 格式及 16 项安装脚本检查通过；临时安装文件与源码核对一致。
+
+## 2026-10-21 — 纠正协商通道，撤回页面接口依赖
+- 摘要：协商搜索、详情与历史文件统一使用原定 user MCP 接口，移除新增页面搜索通道。
+- 文件：cooperation_user_command.go、openapi_gap_command.go、help.go、协商 Skill、README 与验证报告。
+- 删除：cooperation_web_search/input/command_test.go 及页面参数附录；保留项目既有通用 Open Web 能力。
+- 决策：前端仅作筛选语义和展示依据；未知 MCP 字段仍在请求前拒绝，不静默忽略或换通道。
+- 缺口：两组确认条件与发起人多选待 MCP 服务端和开放 ID 转换扩展；历史页面验证不计为 MCP 覆盖。
+- 验证：先失败再修复；全量 Go 测试、exhaustive lint（0 issues）、Skill 校验与 16 项安装测试通过。
+
+## 2026-10-21 — 补齐页面确认筛选与发起人多选
+- 摘要：新增 cooperation search --channel web，使用现有 user Open Web 通道调用页面搜索。
+- 文件：cooperation_web_search/input/command_test.go、help.go、openapi_gap_command.go、协商 Skill 与 README。
+- 决策：原 MCP/app 保持兼容；显式 Web 模式与内部 ID、页面分页协议分离，不自动回退。
+- 能力：confirm_process_status_codes、confirmable_status_codes、create_employee_ids 多选及部门内部 ID。
+- 校验：先失败再实现，覆盖枚举、长 ID、重复值、分页窗口、身份与 success=false 失败。
+- 联调：13 项生产只读搜索通过，Firefox 确认类筛选/组合条件一致，双发起人为两次单选结果并集。
+- 纠正：页面当前发起人控件是单选，数组结构不代表 UI 多选；未修改前端或部署后端。
+- 验证：全量 Go、exhaustive lint 0 issues、Skill 校验与安装引用通过；未更新旧交付包或推送代码。
+
+## 2026-10-21 — 协商筛选 Firefox 与 CLI 逐项对照
+- 摘要：依据前端定义验证截图筛选，使用生产 user 授权及 Firefox 页面进行只读对照。
+- 结果：状态、类型、日期、发起人、部门、角色筛选样本一致；补充全部可见角色正例。
+- 缺口：确认流程进度、我是否可确认未进入当前 MCP/CLI；5 个选项均在 CLI 请求前拒绝。
+- 关键：抽屉待我确认 4 条与顶部待我确认/定稿 3 条不同，禁止近似替换；多发起人仅页面支持。
+- 文件：contract-cooperation/SKILL.md、references/filter-coverage.md、docs/cooperation-skill-filter-validation-20261021.md。
+- 边界：未保存视图或修改业务数据，页面恢复我的协商全部；空结果缺正例的项明确保留限制。
+
+## 2026-10-21 — 协商 Skill 状态展示对齐页面
+- 摘要：用户展示优先采用前端协商状态标签，CLI 原始 JSON 和搜索语义不变。
+- 文件：contract-cooperation 的 SKILL.md、response-fields.md、search-parameters.md。
+- 依据：前端 CoopContractStatusTag 的 LEGAL_COOP_INFO 与 CooperationStatus；用户提供生产页面截图。
+- 规则：原始状态 3/6 均展示协商完成；0/5 待发起协商；其余按页面映射，未知值回退原始名称。
+- 验证：8 个映射核对；生产我的协商 4 条（协商中 3、协商完成 1），车钥匙原文件与截图一致。
+- 验证：生产待我确认 3 条均协商中；Skill 校验与安装引用测试通过；未修改业务数据。
+
+## 2026-10-21 — 协商视角与完成状态筛选联调
+- 环境：prod / contract / user，只读；验证我发起、待我确认、完成分组及我的完成分组。
+- 结果：我发起 0 条；待我确认 3 条且均协商中，均无后续页。
+- 完成分组：首屏 20 条（协商完成 1、已结束 19），仍有后续页；我的完成分组 1 条已结束。
+- 发现：请求 CooperationQueryStatus 与响应 CooperationStatus 不同；搜索 4 映射返回 3/6，源码与生产一致。
+- 文件：contract-cooperation 的 SKILL.md、search-parameters.md、response-fields.md，补齐状态枚举与视角规则。
+- 限制：我发起缺少正例；完成分组只验首屏，不宣称已遍历全部；没有修改业务数据。
+
+## 2026-10-21 — 协商 Skill 生产只读联调
+- 环境：prod / contract / user，复用已有 Device 授权，不修改默认 profile。
+- 验证：我的协商搜索、token 翻页、单条详情、历史文件默认及排除当前版本，共 5 次请求均 code=0。
+- 结果：两页各 2 条、无交集，末页 has_more=false；详情关联 ID 一致、当前轮次文件 2 项。
+- 历史：默认返回 1 个文件项，排除当前版本后为空；history 与 confirmed_file_list 为嵌套数组。
+- 文件：skills/contract-cooperation/SKILL.md、references/response-fields.md。
+- 边界：未下载文件、未发起审查、未写业务数据；生产拒权场景未主动制造，仍由模拟测试覆盖。
+
+## 2026-10-21 — 个人协商查询命令与 contract-cooperation Skill
+- 摘要：新增 user 协商详情、历史版本文件查询，扩展协商搜索的 user 分支。
+- 模块：internal/cli/cooperation_*、contract_command、openapi_gap_command、review_reference、help。
+- 决策：搜索沿用显式或 profile 默认身份；app 原接口不变；详情与历史文件固定 user。
+- 兼容：review cooperation get 保留原入口并共享详情请求，固定 user_id/open_department_id。
+- 校验：搜索字段类型、分页/枚举/日期范围；禁止调用人覆盖，响应长 ID 保持精度，业务错误返回失败。
+- Skill：skills/contract-cooperation，补齐共享路由、参数附录和 README；不下载或发起审查。
+- 测试：先失败再实现，覆盖 user/app 路由、权限拒绝不重试、历史参数及真实技能安装/引用。
+- 验证：全量 Go 测试、16 项 Node 测试、Skill 校验通过；golangci-lint exhaustive 为 0 issues。
+
 # AI 变更记录
+
+- 2026-10-20
+  变更摘要：MR !19 同步最新 blue，保留客户 README 与 release 功能，并合入合同交接 Skill 优化。
+  涉及文件/模块：README、AI变更记录、公共请求适配、Skill分发检查及lint清理。
+  关键逻辑/决策：基于blue建中间分支merge源分支，保留双方历史与blue矩阵ID默认值；README保留blue正文并补入口，交接运行资料不变。
+  验证：go test ./...、go build ./...、Node 23项通过/1跳过、Skill格式通过；exhaustive lint 0 issues。
+
+- 2026-10-20
+  变更摘要：仅优化合同交接 Skill，复用已有搜索能力并移除运行资料的环境测试／验收阶段描述。
+  涉及文件/模块：contract-handover 主文档及参考、对应分发检查、白名单说明；其他 Skill 与 CLI 业务代码未改动。
+  关键逻辑/决策：删除重复页面搜索协议，优先复用已选候选；强制同环境/租户/user及可靠内部ID映射，身份或映射不明时停止。
+  业务边界：按当前通道能力判断环境支持，保留完整预检、明确影响确认、不重放和逐份回查；交接自身白名单从9个减至8个。
+  验证：新增运行资料/搜索引用检查先红后绿，安装引用与go test ./...通过，exhaustive lint 0 issues，Skill格式校验通过。
+
+- 2026-10-20
+  变更摘要：仅补齐合同交接 Skill 的接口说明，统一参数类型、流程必传条件、取值来源、默认值与失败边界。
+  涉及文件/模块：contract-handover 六份接口参考及主文档、参数审查记录、对应 Go 测试。
+  关键逻辑/决策：完整列出业务类型枚举并区分交接入口与验证范围；补齐条件子字段、ID绑定、分页与响应空值语义；未知filterUnits结构明确不构造。
+  验证：参数完整性先红后绿；请求示例与安装引用、go test ./...、Skill格式校验通过；exhaustive lint 0 issues。
+
+- 2026-10-20
+  变更摘要：独立分支重整合同交接 Skill，改为业务流程与按场景加载的接口说明。
+  涉及文件/模块：contract-handover 主文档、agents、5份接口参考、Go分发与请求示例测试、研发归档及白名单来源。
+  关键逻辑/决策：保留9端点与原请求参数；移出源码/页面映射及历史证据；不扩大test受控写入范围，不绑定CLI版本包。
+  交付边界：生产构建不能运行test配方，文档明确停止而非绕过；Ruby检查器只保留在研发归档。
+  验证：安装引用与请求示例先红后绿；go test ./...、Node 5项、归档自测76项通过；exhaustive lint 0 issues；Skill格式校验通过。
+
+- 2026-10-20
+  变更摘要：contract-handover 合并通用 Open Web 调用分支，取消交接 Skill 对 CLI 版本的指定。
+  涉及文件/模块：CLI/OpenPlatform 通用通道、合同交接 Skill 与自测、接口白名单文档、lint 清理。
+  关键逻辑/决策：保留双方历史；恢复矩阵编辑人保护，web 通道不附加公共 query；版本按能力检查，不绑定安装包。
+  白名单：12 个配方去重为 9 个方法/路径，详情回查复用；文档区分普通与合同组场景。
+  验证：矩阵回归先失败后通过、版本检查先红后绿；go test ./...、Node 5项、自测76项通过；exhaustive lint 0 issues。
+
+- 2026-10-20
+  变更摘要：同步 GitHub release@f6da3c0 到 GitLab master/blue 的准备分支。
+  涉及文件/模块：release 全量基线及本变更记录。
+  关键逻辑/决策：保留 master 历史记录；业务文件与 release 一致，不合入 contract-handover。
+  验证：相对 release 仅变更本记录；不修改 Go 源码、依赖或构建配置。
+
+- 2026-10-14
+  变更摘要：在原文档分支合并 GitHub 最新 release，解决 PR #20 的 README 冲突。
+  涉及文件/模块：README.md、docs/ai-changes.md；相对 release 未修改 Go 代码、Skill 或发布配置。
+  关键逻辑/决策：保留客户使用指南，整合 prod 环境限制、本地预发布包及历史联调包说明；复用已有 OAuth 和 Device Grant 授权步骤。
+  验证：go test ./...、go build ./...、go vet ./...、11 项 Node 测试及打包/构建参数/功能基线检查通过。
+  已知基线：独立缓存 golangci-lint run --enable=exhaustive ./... 报 21 项存量问题；Go 文件和依赖与最新 release 完全一致。
+
+- 2026-10-13
+  变更摘要：修复 README 完整替换导致的文档一致性回归失败。
+  涉及文件/模块：README.md、docs/ai-changes.md；未修改测试或 Go 代码。
+  关键逻辑/决策：补齐 Device Grant 状态和客户端展示边界、完整命令名称及应用身份操作人约束，并修正身份速查中的过时标记。
+  验证：先复现 3 个失败，再通过对应定向测试及 go test ./...；git diff --check 通过。
+  已知基线：独立缓存运行 golangci-lint run --enable=exhaustive ./... 报 19 项问题；Go 文件和依赖与 v1.9.5 完全一致，本次未修改。
+
+- 2026-10-13
+  变更摘要：删除仓库中的重复修订稿及内部核对记录，统一以 README 为正式文档入口。
+  涉及文件/模块：docs/customer-skills-guide.md、docs/customer-skills-guide-audit.md、docs/ai-changes.md。
+  关键逻辑/决策：两个辅助文件保留在本地 outputs 目录，不再随分支交付；README 保持不变。
+  验证：未发现其他正文或代码引用这两个文件；本地备份内容核对一致。
+
+- 2026-10-13
+  变更摘要：用最新飞书使用指南完整替换 README。
+  涉及文件/模块：README.md、docs/ai-changes.md。
+  关键逻辑/决策：同步飞书原文 revision 221 的全部章节；仅规范 Markdown 表格、代码块语言、空白行及正文占位符转义。
+  验证：36 个场景与授权标记、v1.9.5 记录保留；章节和链接一致，代码内容及表格列数检查通过。
+
+- 2026-10-13
+  变更摘要：在原飞书文档版本表追加 v1.9.5 更新记录。
+  涉及文件/模块：原文档版本记录、docs/customer-skills-guide-audit.md、outputs 更新记录与快照。
+  关键逻辑/决策：按用户指定版本号记录本次 15 个 Skill、36 个场景和授权标记改造，保留历史记录。
+  验证：飞书 revision 218 回读通过；原 8 条记录及版本表外内容不变。
+
+- 2026-10-13
+  变更摘要：按用户授权将已确认的用户场景和能力地图应用到原飞书 Wiki 文档。
+  涉及文件/模块：原文档两个章节、docs/customer-skills-guide-audit.md、outputs 更新记录与快照。
+  关键逻辑/决策：仅替换两块正文，保留原章节锚点；36 个场景、15 项能力，授权标记简洁展示。
+  验证：原文 revision 217 回读通过；两块以外的内容、块 ID 和格式与 revision 215 完全一致。
+
+- 2026-10-13
+  变更摘要：简化全部场景的授权支持提示。
+  涉及文件/模块：docs/customer-skills-guide.md、docs/customer-skills-guide-audit.md、outputs 本地稿及飞书修订副本。
+  关键逻辑/决策：只保留“个人”“应用”“个人 / 应用”三种标记，不在提示行展开解释。
+  验证：36 条提示与云端逐项一致，其他内容未变，飞书 revision 103。
+
+- 2026-10-13
+  变更摘要：为全部用户场景增加清晰的授权支持提示。
+  涉及文件/模块：docs/customer-skills-guide.md、docs/customer-skills-guide-audit.md、outputs 本地稿及飞书修订副本。
+  关键逻辑/决策：每个场景单独标注所需授权；双身份及跨身份场景说明操作差异，保持原场景表格。
+  验证：36 条提示逐项回读通过；删除新增段落后正文与原稿完全一致，飞书 revision 78；未调用业务接口。
+
+- 2026-10-13
+  变更摘要：统一说明 Skill 的个人/应用授权支持，补充操作差异及跨 Skill 授权边界。
+  涉及文件/模块：docs/customer-skills-guide.md、docs/customer-skills-guide-audit.md、outputs 本地稿及飞书修订副本。
+  关键逻辑/决策：授权方式、操作身份支持和实际业务权限分开解释；地图逐项标记，避免将双身份理解为全部命令可互换。
+  验证：15 项映射核对通过，36 个场景未变；飞书 revision 41 回读与本地目标一致，未执行业务调用。
+
+- 2026-10-13
+  变更摘要：全面展开合同 Skill，补齐创建、审批、签署、协作及维护场景。
+  涉及文件/模块：docs/customer-skills-guide.md、docs/customer-skills-guide-audit.md、outputs 本地稿及飞书修订副本。
+  关键逻辑/决策：合同组 2 → 14 场景，全篇 36 场景；覆盖 37 个合同命令，按操作明确身份与业务限制。
+  验证：37 个命令帮助及示例 flags 核对通过；飞书 revision 25 回读与目标正文一致，其余内容未变；未执行真实业务调用。
+
+- 2026-10-13
+  变更摘要：移除场景中的独立 Skill 说明，将中文简称与 Skill 名称集中展示在能力地图。
+  涉及文件/模块：docs/customer-skills-guide.md、docs/customer-skills-guide-audit.md、outputs 本地稿及飞书修订副本。
+  关键逻辑/决策：地图首列改为“中文简称 / Skill”，保留四列结构及原能力和身份描述。
+  验证：15 处说明已删除、15 项中文简称齐全；24 个场景和其他内容未变，飞书 revision 20 已回读，本地稿已同步。
+
+- 2026-10-13
+  变更摘要：用户场景恢复原文的说明与提示词/命令两列表格格式。
+  涉及文件/模块：docs/customer-skills-guide.md、docs/customer-skills-guide-audit.md、outputs 本地稿及飞书修订副本。
+  关键逻辑/决策：保留 15 个 Skill、24 个场景，标明复杂命令流程前提，只替换云端场景区间。
+  验证：43 个末级命令帮助及 flags 核对；飞书 revision 13 回读确认 24 张两列表格，其他章节未变。
+
+- 2026-10-13
+  变更摘要：隐藏 shared 的独立客户入口，创建飞书修订副本并保存本地稿。
+  涉及文件/模块：docs/customer-skills-guide.md、docs/customer-skills-guide-audit.md、主目录 outputs/feishu-skill-guide-20261013。
+  关键逻辑/决策：15 个对外 Skill、24 个场景；仍如实说明安装包含 16 个 Skill。原文档复制到“我的空间”后应用修订。
+  验证：场景/地图一致，飞书副本 revision 6 与本地正文一致，原文档 revision 215 未变。
+
+- 2026-10-13
+  变更摘要：按用户要求将用户场景和能力地图统一按 Skill 组织。
+  涉及文件/模块：docs/customer-skills-guide.md、docs/customer-skills-guide-audit.md。
+  关键逻辑/决策：16 个 Skill 各 1～2 个场景，共 25 个；能力地图按同序引用场景并补足能力和身份范围。
+  验证：核对 Skill 清单、每组场景数量及地图引用；仅更新本地文档。
+
+- 2026-10-13
+  变更摘要：基于 GitHub v1.9.5 整理面向客户的 16 个内置 Skill 能力修订稿。
+  涉及文件/模块：docs/customer-skills-guide.md、docs/customer-skills-guide-audit.md。
+  关键逻辑/决策：按客户场景暴露已发布能力，核对 user/app、审查/审批、搜索及矩阵边界；更新授权说明。
+  交付边界：独立分支，仅本地 Markdown；不回写飞书，不修改运行代码或全局 skills。
+  验证：Release 源码构建、命令帮助与 16 个 Skill 清单核对、相关已有测试及独立文案复核通过。
 
 - 2026-09-28
   变更摘要：将 GitHub qfeius/contract-cli 的 release 同步到 GitLab contract/contract-cli 的 master，保留原始提交历史。
@@ -11,6 +274,15 @@
   变更摘要：当前分支移除 test/blue 环境运行能力，源码与本地预发布包统一只支持 prod。
   涉及文件/模块：环境预设与传输拦截、构建脚本、回归测试、README、命令文档及 auth/shared Skill。
   关键逻辑/决策：非 prod 配置和历史 profile 在请求前拒绝；不迁移、不复用旧凭据。历史记录中的 test/blue 联调方案保留为当时背景，不代表当前可用能力。
+
+- 2026-09-22
+  变更摘要：开放 `contract-cli api call --channel web`，为业务 Skill 提供 Open Web 通用执行通道。
+  涉及文件/模块：CLI API 命令与帮助、openplatform 路径/身份策略、命令/README/Changelog、非独立 API Skill 维护资料及测试。
+  关键逻辑/决策：仅允许 user 身份、`/open-web/web/**` 相对路径和网关支持的方法；授权只复用 CLI profile / Device Grant。
+  安全边界：拒绝外部 Authorization/Cookie/租户/用户/网关/代理来源头、危险路径形式和超过 1 MiB 的 body。
+  传输语义：支持重复 `--query`/`--header`、`--data`/`--input-file` 和既有输出；不追加 OpenPlatform 默认 query。
+  架构边界：CLI 不发现接口或编排业务；通道不发布独立 Skill，由业务 Skill 提供 method/path/query/body/响应映射。
+  验证：TDD 覆盖 profile 与 Device Grant 授权复用、请求映射和拒绝路径；可提交快照 `go test ./...` 通过，golangci-lint 0 issues。
 
 - 2026-09-21
   变更摘要：将合同搜索 Skill 调整为“页面默认关键词＋实体/字段引导”的混合路由。
@@ -279,75 +551,91 @@
   涉及文件/模块：`contract-skill-builder/`（SKILL.md、config.example.yaml、scripts/mysql_readonly.sh、scripts/MysqlTestQuery.java、examples/合同到期提醒.skill.md、README.md，均为新增）。
   关键逻辑/决策：确立「代码候选 + 页面操作 + 日志验证 + 数据库校准」四源闭环；git clone 前端仓 master 拿候选接口，OpenObserve test SearchSQL 按用户+时间窗验证真实时序/参数，只读 MySQL 校验字段与写生效；敏感信息（git token / 日志账号密码 / db 密码）全部走 env 不落盘；生成骨架强制写操作人工确认节点；MysqlTestQuery.java 随包分发并封装只读 SQL 白名单。
 
-
 - 2026-09-10
   变更摘要：新增 Skill 能力交付全链路信息图，用一张图展示 Web 接口底座、Skill 场景封装及评测发布平台。
   涉及文件/模块：`docs/assets/skill-delivery-architecture-overview.png`（新增）。
   关键逻辑/决策：采用三层递进结构；底层展示 1316+ Web 接口开放链路及安全底座，中层展示产品编排与 Agent 自由选型，上层展示五步评测发布流程；右侧独立呈现 30/30/25/15 评分权重和总分/安全双门槛。
+
 - 2026-09-10
   变更摘要：新增 Skill 验证平台技术方案文档（含总体架构/运行时序/部署/对话微调等多张 mermaid 图例）。
   涉及文件/模块：`docs/skill-eval-platform-architecture.md`（新增）。
   关键逻辑/决策：确立「薄平台 + headless-agent 通用运行时 + 两个评测 skill（eval-case-gen / eval-run-report）+ 执行器工具 + 评分器」五层架构；明确智能（LLM）与确定（执行器/评分器）分离，执行走工具、评分走平台、对话复用 turn/steer 并加阶段限权；复用 agentCodex 内核 7 模块、替换 5 接线端；给出执行器工具与评分器接口草案、部署图（headless 实例池/每任务 dataDir/无 Electron）、关键数据契约、M1-M6 里程碑。
+
 - 2026-09-10
   变更摘要：源码级重新分析 agentCodex 与 Skill 验证平台的结合方式，确认复用纯 Node 内核、无需桥接 Electron。
   涉及文件/模块：`agentCodex/docs/skill-eval-integration.md`（新增）、`docs/skill-eval-agent-integration.md`（v2 修订）、`docs/skill-eval-platform-effort.md`（M4 由 8→4 人日，总量 50→46 人日）。
   关键逻辑/决策：逐层确认 agent-session-service/codex-stdio-connection/codex-app-server-runtime/json-rpc-client/shared 均为纯 Node、依赖注入、无 electron 引用；main.ts 只是组装器；方案由「桥接 Electron」改为「复用内核抽 headless-agent」，替换 5 个 Electron 依赖（视觉/视频 stub、附件空实现、emit 接平台、models 配置化、logger），暴露 HTTP 接口；无需 Linux Electron 构建与 Xvfb；每评测任务 dataDir 解决单实例锁；改造量 3-5 人日。
+
 - 2026-09-10
   变更摘要：新增 Skill 验证平台与 agentCodex 的集成架构文档，明确两个集成点与职责边界。
   涉及文件/模块：`docs/skill-eval-agent-integration.md`（新增）。
   关键逻辑/决策：平台=调度展示层，agentCodex=评测大脑；集成点①（M4）经桥接（推荐抽取 Main session-service 为 headless 服务）调用约 50 个无 UI IPC 能力驱动用例生成与审批应答；集成点②（M6）用例执行不走 Agent 对话而由平台执行器直调 B' 链路（确定性/可断言/可重放），Agent 仅做智能环节（生成场景、失败归因建议）；给出 skill 生命周期七步数据流与里程碑对应关系。
+
 - 2026-09-10
   变更摘要：新增 Skill 验证平台工作量评估（基于 PRD 与 16 屏 UI 稿核对）。
   涉及文件/模块：`docs/skill-eval-platform-effort.md`（新增）。
   关键逻辑/决策：P0 全量 50 人日（单人全栈口径）≈ 2.5 人月，双人并行日历 3-4 周，含缓冲建议承诺 6.5-7 人周；模块拆解 M1 基座 5 / M2 上传解析 6 / M3 归档 4 / M4 Agent 桥接 8（成败点：CDP vs Main 服务抽取需先 PoC） / M5 确认工作台 6 / M6 沙箱执行 10（安全集中点） / M7 SSE 3 / M8 报告评分 5 / M9 导出通知 3；UI 稿 16 屏与 PRD 覆盖一致无大缺口（新增用例表单与版本时间线需确认口径）；列 4 项量化假设与 4 项前置依赖（B' 链路、清单 v2、linux 构建、评测租户）。
+
 - 2026-09-10
   变更摘要：补齐 Skill 验证平台全流程 UI 设计，共 17 张页面与状态图，并新增业务流程索引。
   涉及文件/模块：`docs/assets/skill-eval-platform-ui/*.png`、`docs/skill-eval-platform-ui-design.md`。
   关键逻辑/决策：覆盖登录、列表/空态、上传成功/失败、详情、生成中/失败、用例确认/编辑、排队/执行/中止、通过/未通过报告；所有页面复用统一蓝白企业级设计系统，异常状态提供明确证据、恢复入口与安全确认。
+
 - 2026-09-10
   变更摘要：新增 Skill 验证平台「用例确认」高保真 UI 图，用于产品评审与前端实现参考。
   涉及文件/模块：`docs/assets/skill-eval-platform-case-confirmation-ui.png`（新增）。
   关键逻辑/决策：围绕 P5 核心工作台出图；采用左侧导航、四步评测进度、五类用例表格、Agent 可解释侧栏与底部常驻执行栏；类别颜色、覆盖统计与写操作风险提示均按 PRD 表达。
+
 - 2026-09-10
   变更摘要：新增 Skill 验证平台 PRD（供 UI 出图），覆盖 8 个页面、任务状态机、功能/非功能需求与数据契约。
   涉及文件/模块：`docs/skill-eval-platform-prd.md`（新增）。
   关键逻辑/决策：页面清单 P0-P8（登录/列表/上传/详情/生成中/用例确认/执行中/报告），核心交互页为用例确认（五类徽章配色 + 可解释侧栏 + 新增用例）与报告页（四维评分条 + 门禁徽章 + 一票否决提示 + 改进建议）；任务状态机 created→generating→awaiting_confirm→running→finished（含 failed/aborted 分支）；断线恢复用持久任务+推送；明确本期不做在线编辑/多角色/移动端/线上指标；附开发数据契约速查表。
+
 - 2026-09-10
   变更摘要：澄清评测 Web 交互方案——agentCodex 服务器端无本地 UI，平台自建轻量 Web 经 Main IPC 协议桥接驱动。
   涉及文件/模块：`docs/delivery-platform-design.md`（5.4 MVP 第 3 条扩充）。
   关键逻辑/决策：基于代码证据（desktop-api.ts 约 50 个 IPC channel：send-message/decide-approval/answer-user-input/list-skills 等均为无 UI 纯协议调用），确定 Renderer 只是 Main 服务的消费者；推荐路线 i：平台 Web 后端经本地桥接调 Main 服务，Web 呈现任务时间线（生成用例→确认→执行→报告）而非聊天窗；路线 ii（remote-debugging 投屏）仅作应急兜底。
+
 - 2026-09-10
   变更摘要：交付平台设计确认评测执行环境——agentCodex 服务端单机部署 + Web 页面使用，新增风险清单与 MVP 范围。
   涉及文件/模块：`docs/delivery-platform-design.md`（第 5 节新增）。
   关键逻辑/决策：部署形态为评测平台轻量 Web 服务 + 服务器上 agentCodex 实例（AI_ASSISTANT_USER_DATA_PATH 按会话隔离，代码已支持）；九大风险点：Linux 无头显示（建议 MVP 禁用 Computer Use/Git 页）、单实例锁（多 userData 实例解并发）、评测租户 token 托管（KMS+短时，禁用个人 token 跑写用例）、写副作用（测试租户+数据打标）、审批弹窗（协议自动应答或最高权限沙箱）、版本锁定、资源 8C32G/3-5 并发、缺 linux 构建目标需补；MVP 五步范围（Linux 构建、特性禁用、四页面 Web、串行起步、租户打标）。
+
 - 2026-09-10
   变更摘要：交付平台设计 v2，吸收产品边界调整（skill 平台仅输出不绑定运行时；评测改为上传→Agent 生成用例→确认→执行→报告）。
   涉及文件/模块：`docs/delivery-platform-design.md`（重写为 v2）。
   关键逻辑/决策：交付物 2 明确「做输出/校验/组装助手，不做执行/绑定运行时/托管凭证」，skill 包以声明式 YAML + SKILL.md 公共子集保证 Codex/WorkBuddy/豆包均可装载；交付物 3 新增智能评测链路（五类场景：正常/边界/异常/权限/幂等，用户确认后用例集随版本归档复用）；评分维持 30/30/25/15 与 ≥80 且安全 ≥90，新增写用例失败一票否决，「运行时表现」本版以试跑耗时/稳定性折算；MCP 建议保留 SSOT+派生+治理复用；列出 4 项待确认（评测 Agent 载体、沙箱写策略、两 CLI 格式一致性、折算规则）。
+
 - 2026-09-10
   变更摘要：新增客户端 Agent 云端化可行性分析（本地终端模式 → 手机号登录多租户 Web 模式）。
   涉及文件/模块：`docs/client-agent-web-remoting.md`（新增）。
   关键逻辑/决策：盘点本地模式五类依赖（文件/凭证/会话/skill 安装/终端交互）；结论是 CLI 内核约 70% 可平移（通道/清单/声明式 skill/JSON 输出），但多租户 SaaS 设施（登录/沙箱隔离/文件代理/前端/审计）需从零建且为工作量大头，粗估 4-6 人月；列出 14 项问题（高风险 5：token 金库、租户隔离、授权合规、确认真实性、文件生命周期）；推荐三阶段演进——先走 B' 链路+平台 worker，再用飞书做交互壳跳过自建前端与手机号登录，最后独立 Web 端；提出关键疑问：目标用户若无飞书账号手机号登录才有必要。
+
 - 2026-09-10
   变更摘要：新增交付平台设计文档，覆盖基础建设/Skill 生成平台/Skill 归档评分 CI-CD 发布三大交付物，含 MCP 发布专项建议。
   涉及文件/模块：`docs/delivery-platform-design.md`（新增）。
   关键逻辑/决策：定义 skill.yaml 包格式（deps 为生产开白依据、自动插入人工确认节点、PII 声明、写接口不自动重试）；设计 registry 状态机与四维评分门禁（静态 30/试跑 30/安全 25/运行时 15）；CI 七步流水线（schema→静态→清单核对→沙箱试跑→安全扫描→评分→产物）；发布多端走 MR 机制（contract-cli skills/ + embed + 现有 release-beta.sh 升级）；MCP 建议以 web-api-catalog 为 SSOT、skill 发布自动派生 MCP tools、读类直接暴露/写类默认由 skill 承接、复用开平治理与 resource_metadata 发现规范；给出 M1–M5 里程碑与 5 项待确认（everyline 关系、MCP 维护方式、沙箱写策略、评分阈值、运行时载体）。
+
 - 2026-09-09
   变更摘要：技术架构总览补充「CLI 定位澄清」与「安全设计」两个章节，并同步飞书。
   涉及文件/模块：`docs/web-api-exposure-architecture.md`、飞书《技术架构总览》。
   关键逻辑/决策：明确定位转变——CLI 不再承载业务命令（结构化命令冻结只维护），只提供标准 HTTP 调用通道 + 接口清单，业务闭环完全由 skill 承接（编排/参数映射/状态/确认节点）；安全设计覆盖四层：令牌（scope 收敛、Agent 短时 token）、开平（userTokenPaths/userId 强制非空/限流/ID转换）、Web 接口层（写操作确认、幂等、PII、IDOR）、治理（灰度只读→低危写→高危写、白名单回收、清单 diff 告警）；列出 4 项安全待确认（UserID 强制性、网络路径、PII 清单、Agent token 生命周期）。
+
 - 2026-09-09
   变更摘要：技术架构总览补充部署架构章节，推荐 B 通道走 open-platform 复用限流与敏感信息 ID 转换能力。
   涉及文件/模块：`docs/web-api-exposure-architecture.md`（更新 1.4 节）、飞书《技术架构总览》同步。
   关键逻辑/决策：基于代码证据确认 open-platform 已有 RateLimiterGatewayFilterFactory（Nacos 动态限流）与 RewriteUserId/DeptId 过滤器（user_id/dept_id 内外 ID 转换）；对比 B'（open-gateway→open-platform→clm-api，推荐）与 B（直连 common-gateway，fallback）两条路线，采纳 B' 理由：限流/ID 转换是 Agent 硬需求、生产白名单复用 ACL、CLI 单出口改动最小、A/B 统一网关治理；分发设计相应简化为同网关前缀区分。
+
 - 2026-09-09
   变更摘要：新增技术架构与业务流程方案文档（评审用），含现状/变动架构 mermaid 图、产品使用流程图、按模块接口附表。
   涉及文件/模块：`docs/web-api-exposure-architecture.md`（新增）。
   关键逻辑/决策：架构图区分「现状 CLI→open-apis 单通道」与「改造后双通道 + Agent 平台」；业务流程按内部验证/产品生成 skill/用户执行 skill/生产名单控制四个 sequence/flowchart 表达；接口附表基于 doc001 清单按模块汇总（contract 1203 / office 33 / _custom 26 / retrieval 12 / dreamcar 10 / 散落 32 / systemConfig 1，共 1316），方法分布 POST 589/GET 576/PUT 86/DELETE 47/其他 18，未识别 12 待 S1.1 补齐。
+
 - 2026-09-09
   变更摘要：新增前端 API 静态解析脚本，完成 S1 接口清单与接口文档的初版生成。
   涉及文件/模块：`tools/gen_web_api_catalog.py`（新增）。
   关键逻辑/决策：扫描 clm-monorepo-fe 的 `features/common/src/api/**`（函数级高精度，free-swagger 格式）+ `apps/*/src`、`features/pc/src`（行级兜底），提取 url/method/params/data/返回泛型/注释，按 path+method 去重，输出机器清单 JSON 与人读 Markdown。实测去重后 1316 个接口（common 共享层 1288 + apps 自有 clm 19/admin 9），counterparty/clm-h5 无自有接口复用 common。已知不足：12 个 method 未识别（上传/下载/preload 边缘）、61 个 path 含模板变量待解析常量。
+
 - 2026-09-09
   变更摘要：Web 接口暴露方案 v2 修订，吸收评审结论（common-gateway 纯转发、1400+ 全量+文档同步、生产按 skill 依赖动态开白、清单覆盖 apps/* 全部、命令命名暂不设计）。
   涉及文件/模块：`docs/web-api-exposure-design.md`（更新为 v2）。
@@ -372,6 +660,7 @@
   变更摘要：将 Doubao Work 纳入运行环境识别并作为独立渠道透传。
   涉及文件/模块：`internal/invocation` 客户端规则与测试、运行环境识别 README 和专项测试文档。
   关键逻辑/决策：macOS 基于官方应用通过系统验签得到的 Bundle ID `com.work.pc.doubao` 与 Team ID `96L78H6LMH`；Windows 基于官方 2.27.10 x64、ARM64 发行包中 `DoubaoWork.exe` 的有效 Authenticode 签名登记叶证书 SHA-256，并要求证书与可执行文件路径/名称同时命中。新增智能体来源值 `doubaoWork`、`client.doubao_work.signed-bundle` 与 `client.doubao_work.authenticode`；即使 Doubao 与 Doubao Work 当前共享发布者证书，也通过各自路径规则独立分类。
+
 - 2026-08-12
   变更摘要：将下一版 contract-cli 版本更新为 `1.7.0`。
   涉及文件/模块：`package.json`、发布版本元数据。
@@ -422,11 +711,6 @@
   涉及文件/模块：`docs/cli-command-reference.md`、`docs/cli-test-plan.md`、`docs/cli-p2-提示词.md`、`skills/contract-cli-payment`、`skills/contract-cli-contract`、`skills/contract-cli-shared`、`internal/cli/command_reference_doc_test.go`
   关键逻辑/决策：保留 README/auth/旧配置迁移中的 `--as bot` 兼容说明；新增文档契约测试只约束 P2 新命令和 skill 不再出现 `bot-only` / `--as bot` 主推文案。
 
-- 2026-06-03
-  变更摘要：修复 P2 分支在 app 身份改名后的编译失败。
-  涉及文件/模块：`internal/cli/payment_command.go`、`internal/cli/contract_command.go`、`internal/openplatform/payment/service.go`、`internal/openplatform/contract/service.go`、相关 CLI/service 测试
-  关键逻辑/决策：将付款和审批命令残留的 `IdentityPolicyBotOnly` / `IdentityBot` fixture 迁移为现有 `IdentityPolicyAppOnly` / `IdentityApp`，保持 app-only 身份限制语义并恢复生产入口编译。
-
 - 2026-06-05
   变更摘要：修复生产验证发现的输出精度、授权状态和开放平台命令契约问题。
   涉及文件/模块：`internal/output`、`internal/cli`、`README.md`、`docs/*`、`skills/contract-cli-*`
@@ -441,6 +725,11 @@
   变更摘要：收敛 P3 新增命令的 README、命令文档、Agent skills 和 help 测试口径。
   涉及文件/模块：`README.md`、`docs/cli-command-reference.md`、`skills/contract-cli-*`、`internal/cli/*_test.go`、`docs/ai-changes.md`
   关键逻辑/决策：补充回归测试覆盖新增 skill 清单、app-only 摘要、shared/contract/mdm-fields skill 旧口径和新增 help topic；修正审批/授权、MDM 写入、event/rule/payment 等已实现命令的引导，避免 Agent 误判未覆盖。
+
+- 2026-06-03
+  变更摘要：修复 P2 分支在 app 身份改名后的编译失败。
+  涉及文件/模块：`internal/cli/payment_command.go`、`internal/cli/contract_command.go`、`internal/openplatform/payment/service.go`、`internal/openplatform/contract/service.go`、相关 CLI/service 测试
+  关键逻辑/决策：将付款和审批命令残留的 `IdentityPolicyBotOnly` / `IdentityBot` fixture 迁移为现有 `IdentityPolicyAppOnly` / `IdentityApp`，保持 app-only 身份限制语义并恢复生产入口编译。
 
 - 2026-06-03
   变更摘要：将新增开放平台结构化命令的应用身份口径从 bot 收敛为 app。
@@ -492,16 +781,6 @@
   涉及文件/模块：`internal/cli/contract_command.go`、`internal/openplatform/contract/service.go`、上传命令测试、帮助与命令文档、contract skills
   关键逻辑/决策：上传接口仍复用 `POST /open-apis/contract/v1/files/upload` 和 multipart 字段，将身份策略从 app-only 调整为 user/app 通用，并补充显式 user 与默认 user 上传测试。
 
-- 2026-04-23
-  变更摘要：新增 9 个 app-only 合同命令，覆盖提交、重提、更新、下载、删除、打印、分享记录和协商信息查询。
-  涉及文件/模块：`internal/openplatform`、`internal/openplatform/contract`、`internal/cli/contract_command.go`、`internal/cli/help.go`、`docs/cli-command-reference.md`、`docs/cli-test-plan.md`、`skills/contract-cli-contract`、`skills/contract-cli-shared`
-  关键逻辑/决策：所有新增结构化命令统一 `IdentityPolicyAppOnly`，通用 query 仍由 `CommonQuery` 注入；`download-file` 使用流式下载，默认保存弹窗，脚本环境推荐 `--output-file`，`--raw` 直接写 stdout；`delete` 直接执行不加 `--yes`。
-
-- 2026-04-23
-  变更摘要：新增 app 命令开发指南，沉淀后续 app 功能和 skill 文档开发约定。
-  涉及文件/模块：`docs/app-command-development-guide.md`、`docs/ai-changes.md`
-  关键逻辑/决策：按功能开发、身份路由、通用 query、测试要求、skill 编写和 Definition of Done 组织；补充 skill 版本、业务错误、`user_id` 必填、输出归一化等后续需要团队确认的问题。
-
 - 2026-04-29
   变更摘要：发布前忽略所有层级的 macOS `.DS_Store` 本机文件。
   涉及文件/模块：`.gitignore`、`docs/ai-changes.md`
@@ -551,6 +830,16 @@
   变更摘要：修复 `auth login --as user --no-open-browser` 超时前不输出授权 URL 的问题。
   涉及文件/模块：`internal/cli/auth_provider.go`、`internal/cli/app.go`、`internal/cli/auth_provider_test.go`、`docs/ai-changes.md`
   关键逻辑/决策：user OAuth 登录在构造授权 URL 后、等待本地 callback 前立即将 URL 写入 stdout；正常自动打开浏览器的路径保持原有成功输出；新增可注入 callback 等待接口，测试无需真实监听端口即可覆盖超时场景。
+
+- 2026-04-23
+  变更摘要：新增 9 个 app-only 合同命令，覆盖提交、重提、更新、下载、删除、打印、分享记录和协商信息查询。
+  涉及文件/模块：`internal/openplatform`、`internal/openplatform/contract`、`internal/cli/contract_command.go`、`internal/cli/help.go`、`docs/cli-command-reference.md`、`docs/cli-test-plan.md`、`skills/contract-cli-contract`、`skills/contract-cli-shared`
+  关键逻辑/决策：所有新增结构化命令统一 `IdentityPolicyAppOnly`，通用 query 仍由 `CommonQuery` 注入；`download-file` 使用流式下载，默认保存弹窗，脚本环境推荐 `--output-file`，`--raw` 直接写 stdout；`delete` 直接执行不加 `--yes`。
+
+- 2026-04-23
+  变更摘要：新增 app 命令开发指南，沉淀后续 app 功能和 skill 文档开发约定。
+  涉及文件/模块：`docs/app-command-development-guide.md`、`docs/ai-changes.md`
+  关键逻辑/决策：按功能开发、身份路由、通用 query、测试要求、skill 编写和 Definition of Done 组织；补充 skill 版本、业务错误、`user_id` 必填、输出归一化等后续需要团队确认的问题。
 
 - 2026-04-22
   变更摘要：将 user OAuth 的 `resource` 调整为可选，dev 预设不再写入旧 Higress 内网 resource。

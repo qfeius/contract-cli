@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- 开放 `contract-cli api call --channel web` 通用执行通道：仅允许 user 身份和 `/open-web/web/**` 相对路径，复用 CLI profile / Device Grant 授权，支持重复 query/header、JSON body 与既有输出格式，并阻断外部授权及可信身份头
 - 为每个 OpenPlatform 逻辑请求生成 W3C `traceparent`，同时发送同值 `X-Log-Id`；重试复用 `trace_id`、每次 HTTP attempt 使用新 `span_id`，失败信息包含可检索的 `trace_id`
 - 新增逐请求调用环境识别：实际业务 HTTP 请求发送前回溯父进程；macOS 校验 Bundle ID + Team ID，Windows 校验 Package Family Name 或 Authenticode 证书指纹，并透传归一化来源 Header
 - 新增 `contract-cli environment inspect` 本地诊断命令；识别结果不写入 profile 或 OAuth Token

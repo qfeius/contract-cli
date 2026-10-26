@@ -1,0 +1,78 @@
+{
+  "provenance": "SYNTHETIC_OFFLINE_SCENARIOS",
+  "cases": [
+    {
+      "id": "known-parent",
+      "request": "请核对这组合同是否可以交给周敏，整理交接清单，暂不提交。",
+      "context": {"environment": "prod", "profile": "contract", "identity": "user", "cli_web_channel_available": true, "parent_id_source": "本轮父组详情与成员列表已相互核对", "selected_member_id": "9223372036854775703"},
+      "operator": {"employeeId": "81001", "tenantId": "71001", "function_codes": ["manage_contract_handover_all"]},
+      "recipient_candidate_and_detail": {"employeeId": "81002", "tenantId": "71001", "displayName": "周敏", "status": 1, "expired": null, "locked": null, "departments": [{"departmentId": "61002", "displayName": "产品部"}]},
+      "parent_before_and_after": {"contractAssemblyId": "9223372036854775701", "contractAssemblyNumber": "GROUP-DEMO-01", "businessTypeCode": 10, "groupId": "9223372036854775702", "contractStatusCode": 3, "previousId": "0", "nextId": "0", "childrenCount": 2, "ownerEmployee": {"employeeId": "81003"}, "submitterEmployee": {"employeeId": "81003"}},
+      "children_pages": [[{"contractId": "9223372036854775703", "assemblyId": "9223372036854775701", "businessTypeCode": 11, "formId": "0", "ownerEmployee": {"employeeId": "81003"}, "submitterEmployee": {"employeeId": "81003"}, "demandEmployees": []}, {"contractId": "9223372036854775704", "assemblyId": "9223372036854775701", "businessTypeCode": 11, "formId": "0", "ownerEmployee": {"employeeId": "81003"}, "submitterEmployee": {"employeeId": "81003"}, "demandEmployees": []}], []],
+      "earlier_member_info": {"code": 110002, "success": false, "data": null}
+    },
+    {
+      "id": "missing-parent",
+      "request": "继续把查询命中的整组合同交给周敏。",
+      "search_items": [{"contract_id": "9223372036854775703", "business_type_code": 11, "group_id": "9223372036854775702"}, {"contract_id": "9223372036854775704", "business_type_code": 11, "group_id": "9223372036854775702"}],
+      "earlier_member_info": {"code": 110002, "success": false, "data": null},
+      "other_verified_context": null
+    },
+    {
+      "id": "number-only-parent-discovery",
+      "request": "请把合同组 GROUP-DEMO-01 交给周敏，先整理清单，暂不提交。",
+      "context": {"environment": "prod", "profile": "contract", "identity": "user", "cli_web_channel_available": true},
+      "search_items": [{"contract_id": "9223372036854775703", "contract_number": "MEMBER-DEMO-01", "business_type_code": 11, "group_id": "9223372036854775702"}],
+      "earlier_member_info": {"code": 110302, "success": false, "data": null},
+      "web_number_lookup": {"code": 200, "success": true, "data": {"filteredTotalElements": 1, "content": [{"groupId": "9223372036854775702", "groupType": 1, "searchContractListItems": [{"contractId": "9223372036854775701", "assemblyId": "-999", "businessTypeCode": 10, "contractNumber": "GROUP-DEMO-01"}, {"contractId": "9223372036854775703", "assemblyId": "9223372036854775701", "businessTypeCode": 11, "contractNumber": "MEMBER-DEMO-01"}]}]}},
+      "parent_and_children_reference": "known-parent",
+      "expected": "从父行 contractId 自动定位；忽略父行 assemblyId 负哨兵；继续完整组预检，不要求用户提供 ID，不提交。"
+    },
+    {
+      "id": "member-number-parent-discovery",
+      "request": "把 MEMBER-DEMO-01 所属整组交给周敏，先核对范围。",
+      "selected_member_id": "9223372036854775703",
+      "web_number_lookup_reference": "number-only-parent-discovery",
+      "expected": "成员编号与原选 ID 精确命中，成员 assemblyId 等于同分组父行 contractId 后继续组接口核对。"
+    },
+    {
+      "id": "number-partial-match",
+      "request": "把 GROUP-DEMO-01 交给周敏。",
+      "web_number_lookup": {"code": 200, "success": true, "data": {"filteredTotalElements": 1, "content": [{"groupType": 1, "searchContractListItems": [{"contractId": "9223372036854775701", "businessTypeCode": 10, "contractNumber": "GROUP-DEMO-010"}]}]}},
+      "expected": "没有精确编号命中，不得因部分匹配继续。"
+    },
+    {
+      "id": "number-multiple-parents",
+      "request": "把 GROUP-DEMO-01 交给周敏。",
+      "web_number_lookup": {"code": 200, "success": true, "data": {"filteredTotalElements": 2, "content": [{"groupType": 1, "searchContractListItems": [{"contractId": "9223372036854775701", "businessTypeCode": 10, "contractNumber": "GROUP-DEMO-01", "contractName": "甲项目"}]}, {"groupType": 1, "searchContractListItems": [{"contractId": "9223372036854775709", "businessTypeCode": 10, "contractNumber": "GROUP-DEMO-01", "contractName": "乙项目"}]}]}},
+      "expected": "展示业务候选消歧，不默认第一项，不索取内部 ID。"
+    },
+    {
+      "id": "number-incomplete-page",
+      "request": "把 GROUP-DEMO-01 交给周敏。",
+      "web_number_lookup": {"code": 200, "success": true, "data": {"filteredTotalElements": 11, "content": [{"groupType": 1, "searchContractListItems": [{"contractId": "9223372036854775701", "businessTypeCode": 10, "contractNumber": "GROUP-DEMO-01"}]}]}},
+      "expected": "不宣称父组唯一，不自行深分页或选择第一组，要求更精确的业务编号。"
+    },
+    {
+      "id": "permission-denied",
+      "request": "成员详情失败了，用父组继续交接。",
+      "known_parent_id": "9223372036854775701",
+      "earlier_member_info": {"code": 403, "success": false, "msg": "无权限"}
+    },
+    {
+      "id": "membership-mismatch",
+      "request": "父组已找到，请继续交接。",
+      "parent": {"contractAssemblyId": "9223372036854775701", "childrenCount": 1},
+      "selected_member_id": "9223372036854775703",
+      "children_pages": [[{"contractId": "9223372036854775704", "assemblyId": "9223372036854775709"}], []]
+    },
+    {
+      "id": "partial-readback",
+      "request": "刚才交接请求已经发送，请核对结果。",
+      "confirmed_scope": {"parent_id": "9223372036854775701", "member_ids": ["9223372036854775703", "9223372036854775704"], "recipient_employee_id": "81002", "recipient_tenant_id": "71001", "expected_owner_and_submitter": "81002"},
+      "write_response": {"code": 200, "success": true, "data": {"authorizations": [{"businessId": "9223372036854775701", "businessTypeCode": 10, "authorizedEmployeeId": "81002", "authorizedTenantId": "71001"}]}},
+      "parent_readback": {"contractAssemblyId": "9223372036854775701", "ownerEmployee": {"employeeId": "81002"}, "submitterEmployee": {"employeeId": "81002"}, "childrenCount": 2},
+      "children_readback": [{"contractId": "9223372036854775703", "assemblyId": "9223372036854775701", "ownerEmployee": {"employeeId": "81002"}, "submitterEmployee": {"employeeId": "81002"}}, {"contractId": "9223372036854775704", "assemblyId": "9223372036854775701", "ownerEmployee": {"employeeId": "81003"}, "submitterEmployee": {"employeeId": "81003"}}]
+    }
+  ]
+}

@@ -207,6 +207,9 @@ func TestMatrixExtensionRoutes(t *testing.T) {
 					if req.Method != tc.method || req.URL.Path != "/open-apis/rule_engine/v1/products/contract/groups/approve_matrix/"+tc.suffix {
 						t.Fatalf("unexpected %s %s", req.Method, req.URL.Path)
 					}
+					if tc.command == "department batch-get" && req.URL.Query().Get("department_id_type") != "tenant_department_id" {
+						t.Fatalf("default department_id_type = %q", req.URL.Query().Get("department_id_type"))
+					}
 					if req.Header.Get("Authorization") != "Bearer "+string(identity)+"-token" {
 						t.Fatal("wrong identity")
 					}
@@ -244,7 +247,7 @@ func TestMatrixExtensionRoutes(t *testing.T) {
 }
 
 /*
-TestDepartmentDirectoryIDContract 验证部门目录明确返回可写入的 open_department_id，并保留数字 department_id 作为批量回查输入。
+TestDepartmentDirectoryIDContract 验证部门目录返回的 SaaS department_id 可直接用于规则行。
 入参 t（*testing.T）为测试上下文；返回值为空。
 */
 func TestDepartmentDirectoryIDContract(t *testing.T) {
@@ -261,6 +264,9 @@ func TestDepartmentDirectoryIDContract(t *testing.T) {
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			if req.URL.Path != "/open-apis/rule_engine/v1/products/contract/groups/approve_matrix/departments/search" {
 				t.Fatalf("unexpected path: %s", req.URL.Path)
+			}
+			if req.URL.Query().Get("department_id_type") != "tenant_department_id" {
+				t.Fatalf("department_id_type = %q", req.URL.Query().Get("department_id_type"))
 			}
 			return jsonResponse(`{"code":0,"msg":"success","data":{"items":[{"department_id":"1018399484738012242","open_department_id":"od-1b1b803a7df98989bf457d9ba203c350","name":"产品研发部","selectable":true}],"missing_ids":[]}}`), nil
 		})},
@@ -292,7 +298,7 @@ func TestDepartmentDirectoryIDContract(t *testing.T) {
 }
 
 /*
-TestDepartmentBatchGetRejectsWritableIDAsLookupID 验证 batch-get 只接收数字目录 ID，并给出 open_department_id 的后续用途。
+TestDepartmentBatchGetRejectsWritableIDAsLookupID 验证默认模式只接收 SaaS 部门 id。
 入参 t（*testing.T）为测试上下文；返回值为空。
 */
 func TestDepartmentBatchGetRejectsWritableIDAsLookupID(t *testing.T) {
@@ -316,8 +322,8 @@ func TestDepartmentBatchGetRejectsWritableIDAsLookupID(t *testing.T) {
 		"--product-id", "contract", "--group-id", "approve_matrix",
 		"--data", `{"ids":["od-1b1b803a7df98989bf457d9ba203c350"]}`,
 	})
-	if err == nil || !strings.Contains(err.Error(), "positive numeric directory department_id") || !strings.Contains(err.Error(), "open_department_id") {
-		t.Fatalf("error = %v, want directory ID conversion guidance", err)
+	if err == nil || !strings.Contains(err.Error(), "positive numeric SaaS department id") {
+		t.Fatalf("error = %v, want SaaS department ID guidance", err)
 	}
 	if requests != 0 {
 		t.Fatalf("invalid batch-get request reached backend: %d", requests)
@@ -325,7 +331,94 @@ func TestDepartmentBatchGetRejectsWritableIDAsLookupID(t *testing.T) {
 }
 
 /*
-TestDepartmentHelpExplainsIDContract 验证命令帮助覆盖目录数字 ID 到规则行 open_department_id 的完整转换链路。
+TestDepartmentBatchGetAcceptsExplicitExternalIDs 验证显式兼容类型可用目录外部 ID 发出请求。
+入参 t（*testing.T）为测试上下文；无返回值，逐项核对 user/app 身份、查询参数、请求体和回包。
+*/
+func TestDepartmentBatchGetAcceptsExplicitExternalIDs(t *testing.T) {
+	cases := []struct{ idType, id string }{
+		{"department_id", "4155855a78e8cged"},
+		{"open_department_id", "od-1b1b803a7df98989bf457d9ba203c350"},
+	}
+	for _, identity := range []config.IdentityKind{config.IdentityUser, config.IdentityApp} {
+		for _, tc := range cases {
+			t.Run(string(identity)+"/"+tc.idType, func(t *testing.T) {
+				store := config.NewStore(t.TempDir())
+				if err := store.UpsertProfile(uploadProfile(identity), true); err != nil {
+					t.Fatal(err)
+				}
+				body := `{"ids":["` + tc.id + `"]}`
+				input := filepath.Join(t.TempDir(), "department.json")
+				if err := os.WriteFile(input, []byte(body), 0600); err != nil {
+					t.Fatal(err)
+				}
+				var stdout bytes.Buffer
+				requests := 0
+				app := cli.New(cli.Options{Store: store, Stdout: &stdout, Stderr: &bytes.Buffer{},
+					HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+						requests++
+						if req.URL.Path != "/open-apis/rule_engine/v1/products/contract/groups/approve_matrix/departments/batch_get" ||
+							req.URL.Query().Get("department_id_type") != tc.idType {
+							t.Fatalf("unexpected request URL: %s", req.URL.String())
+						}
+						if req.Header.Get("Authorization") != "Bearer "+string(identity)+"-token" {
+							t.Fatal("wrong identity")
+						}
+						got, err := io.ReadAll(req.Body)
+						if err != nil || string(got) != body {
+							t.Fatalf("body = %s, read error = %v", got, err)
+						}
+						return jsonResponse(`{"code":0,"data":{"items":[{"department_id":"` + tc.id + `"}],"missing_ids":[]}}`), nil
+					})}})
+				err := app.Run(context.Background(), []string{"rule", "department", "batch-get", "--as", string(identity),
+					"--profile", "contract", "--product-id", "contract", "--group-id", "approve_matrix",
+					"--department-id-type", tc.idType, "--input-file", input})
+				if err != nil || requests != 1 {
+					t.Fatalf("error = %v, requests = %d", err, requests)
+				}
+				data := decodeJSONObject(t, stdout.Bytes())["data"].(map[string]any)
+				if data["items"].([]any)[0].(map[string]any)["department_id"] != tc.id {
+					t.Fatalf("response data = %#v", data)
+				}
+			})
+		}
+	}
+}
+
+/*
+TestDepartmentBatchGetRejectsIDsForWrongType 验证显式类型与 ID 不匹配时在发请求前拒绝。
+入参 t（*testing.T）为测试上下文；无返回值，逐项核对错误和零 HTTP 请求。
+*/
+func TestDepartmentBatchGetRejectsIDsForWrongType(t *testing.T) {
+	cases := []struct{ idType, id string }{
+		{"tenant_department_id", "4155855a78e8cged"},
+		{"open_department_id", "4155855a78e8cged"},
+		{"department_id", " "},
+		{"unsupported_type", "1018399484738012242"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.idType, func(t *testing.T) {
+			store := config.NewStore(t.TempDir())
+			if err := store.UpsertProfile(uploadProfile(config.IdentityApp), true); err != nil {
+				t.Fatal(err)
+			}
+			requests := 0
+			app := cli.New(cli.Options{Store: store, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{},
+				HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					requests++
+					return jsonResponse(`{"code":0}`), nil
+				})}})
+			err := app.Run(context.Background(), []string{"rule", "department", "batch-get", "--as", "app",
+				"--profile", "contract", "--product-id", "contract", "--group-id", "approve_matrix",
+				"--department-id-type", tc.idType, "--data", `{"ids":["` + tc.id + `"]}`})
+			if err == nil || requests != 0 {
+				t.Fatalf("error = %v, requests = %d", err, requests)
+			}
+		})
+	}
+}
+
+/*
+TestDepartmentHelpExplainsIDContract 验证命令帮助说明目录 id 可直接用于规则行。
 入参 t（*testing.T）为测试上下文；返回值为空。
 */
 func TestDepartmentHelpExplainsIDContract(t *testing.T) {
@@ -336,8 +429,11 @@ func TestDepartmentHelpExplainsIDContract(t *testing.T) {
 		if err := app.Run(context.Background(), command); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(stdout.String(), "open_department_id") {
+		if !strings.Contains(stdout.String(), "SaaS") {
 			t.Fatalf("help %v does not explain writable department ID: %s", command, stdout.String())
+		}
+		if len(command) == 4 && command[3] == "batch-get" && !strings.Contains(stdout.String(), "对应目录字段") {
+			t.Fatalf("help %v does not explain explicit department ID types: %s", command, stdout.String())
 		}
 	}
 }

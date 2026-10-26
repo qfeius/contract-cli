@@ -19,6 +19,7 @@ var sensitiveArgumentNames = map[string]struct{}{
 	"header":        {},
 	"password":      {},
 	"private-key":   {},
+	"query":         {},
 	"refresh-token": {},
 	"secret":        {},
 	"token":         {},

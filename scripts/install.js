@@ -176,14 +176,50 @@ function install() {
   throw new Error("download base URL template not configured and no bundled release archive is available");
 }
 
+// Only global npm installations update persistent user Skill locations.
+function cliInstallSummary(binaryPath, installedVersion, env) {
+  const lines = [
+    `CLI 安装：成功；版本：${installedVersion}`,
+    `CLI 实际可执行文件：${binaryPath}`,
+    "此路径仅代表本次安装的 CLI，不代表其他 CLI 副本已更新或所有终端的 PATH 已指向它。",
+  ];
+  if (String(env.npm_config_global).toLowerCase() !== "true") {
+    lines.push("Skill 自动同步：未执行（项目内安装，不修改用户持久化 Skill 或登记）");
+  }
+  return lines.join("\n");
+}
+
+function syncFailureSummary(reason) {
+  return `CLI installed / CLI 已安装；Skill 同步：失败或未完成（不代表所有位置失败，成功数量和失败目录以上述逐目录结果为准）。\n失败原因：${reason}\n恢复结果：无法确认，请以逐目录结果为准，不代表旧文件已恢复。\n处理建议：仅对仍需使用的位置核实并修复；已停用的位置不要重新安装。无法启动 CLI 时先检查实际可执行文件及权限。`;
+}
+
+function synchronizeSkills(binaryPath, env = process.env, execute = spawnSync, warn = console.warn) {
+  if (String(env.npm_config_global).toLowerCase() !== "true") return;
+  console.log("Starting official Skill synchronization");
+  try {
+    const result = execute(binaryPath, ["__internal", "skill-sync-on-install"], {
+      stdio: "inherit", shell: false, env,
+    });
+    if (!result || result.error || result.status !== 0) {
+      const reason = result?.error?.message || (result?.signal ? `process signal ${result.signal}` : `process exit code ${result?.status ?? "unknown"}`);
+      warn(syncFailureSummary(reason));
+    }
+  } catch (error) {
+    warn(syncFailureSummary(error.message));
+  }
+}
+
 if (require.main === module) {
   try {
     install();
+    console.log(cliInstallSummary(destination, version, process.env));
+    synchronizeSkills(destination);
   } catch (error) {
     console.error(`Failed to install ${binaryName}: ${error.message}`);
+    console.error(`CLI 安装：失败；目标位置：${destination}；失败原因：${error.message}。本次安装流程未继续执行 Skill 自动同步。`);
     console.error("Verify the release platform, download URL, and published checksums.txt, then retry installation.");
     process.exit(1);
   }
 }
 
-module.exports = { verifyArchiveChecksum };
+module.exports = { verifyArchiveChecksum, synchronizeSkills, cliInstallSummary };

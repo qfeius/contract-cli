@@ -24,7 +24,8 @@ type ToolSpec struct {
 }
 
 func IdentityPolicyForPath(path string) IdentityPolicy {
-	if strings.HasPrefix(strings.TrimSpace(path), "/open-apis/contract/v1/mcp/") {
+	trimmed := strings.TrimSpace(path)
+	if strings.HasPrefix(trimmed, "/open-apis/contract/v1/mcp/") || strings.HasPrefix(trimmed, OpenWebPathPrefix) {
 		return IdentityPolicyUserOnly
 	}
 	return IdentityPolicyAny

@@ -46,7 +46,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - 先确认规则表：`rule table list --product-id --group-id`
 - 主流程与页面一致：新矩阵 `table create` → `table get` → `row list --page-size 10` → 配置条件列/结果列 → 重新读取列头 → 写入规则行并回读。创建接口会生成一条后端默认空白行；首条规则优先使用 `row update <blank-row-id>` 填充该行，只有追加额外规则时才使用 `row create`。已有矩阵从 get/row list 开始，不重复创建。接口映射见 [结构参数](references/structure-parameters.md)。
 - 通过 `table get` 或 `column-headers list` 获取列 ID 和现有列配置。已有列若返回 `value_id/value_code/value_name/value_type`，更新时原样复用；新增或未绑定列按名称、类型和操作符配置并省略 `value_*`，不猜测业务元素 ID。
-- 已有当前租户已确认且可选的人员外部 ID 时直接用于规则行；只有姓名或候选不明确时才用 `rule employee search`，读取 [人员搜索参数](references/employee-search-parameters.md)。不要为了跳过搜索而猜 ID，也不要直接要求用户手工找 ID。
+- 已有当前租户已确认且可选的人员 SaaS `id` 时直接用于规则行；只有姓名或候选不明确时才用 `rule employee search`，读取 [人员搜索参数](references/employee-search-parameters.md)。不要为了跳过搜索而猜 ID，也不要直接要求用户手工找 ID。
 - 查列头：`rule table column-headers list --product-id --group-id --table-id`
 - 配置条件列时使用 CLI 内置的 `symbol` 映射；`rule symbol query` 仅输出本地候选，不访问 `symbols/query`。部门/角色先搜索并核对候选，已有 ID 用 batch-get 回读名称。参见 [配套查询及版本保护](references/configuration-completion.md)。
 - 新增或修改规则行：`row create|update --input-file row.json`
@@ -85,16 +85,16 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - 任何列结构写入前先按完整目标方案计算容量：规则表总列数上限为 12，优先级列和备注列固定占 2 列，因此条件列与结果列合计最多 10 列。必须满足 `目标条件列数 + 目标结果列数 + 2 <= 12`；例如 10 个条件列加 2～3 个结果列会得到 14～15 列，应在首个 add 前说明超限并停止。直接调用 `column add` 时 CLI 也会读取当前列头，在总数达到 12 后本地阻断写入。
 - 修改已有列不调用 `column preview`：先读取当前配置和规则行，展示变更并确认，再调用已有 update-condition/update-result 更新接口，回读核验。PUT 需要带齐已确认的配置字段，避免遗漏覆盖；缺少保留字段时先补齐，不猜测。类型或运算符变更仍由服务端校验，不自动清空数据。
 - 有值的列改变类型或导致单元格类型变化的操作符时，服务端阻止更新。先展示影响，另行确认清空，再配置列；确认改类型不等于自动授权清空。
-- 人员集合使用正整数外部 ID，批量输入接受数字或十进制字符串数组，发往后端为整数数组；部门集合统一使用 `open_department_id` 字符串（形如 `od-...`），不得把目录返回的数字 `department_id` 直接写入规则行。角色仍为字符串数组。
-- 部门搜索结果直接取 `selectable=true` 候选的 `open_department_id`；兼容结果中的数字 `department_id` 只用于 `department batch-get` 回查，batch-get 返回的 `open_department_id` 才可用于行创建、更新、搜索和 import plan。若候选缺少 `open_department_id`，停止写入并提示部署目录接口修复，不使用数字 ID 兜底。
-- 人员搜索返回的 `employee_id` 是矩阵写入使用的外部 ID；只采用 `selectable=true` 的候选。重名时展示姓名、部门、邮箱和 ID 让用户选；无结果或不可选时说明原因，不使用内部员工编号兜底。查询不需要写入确认，写入仍需先展示计划。
+- `contract/approve_matrix` 的目录、规则行和结果列默认值使用私有 SaaS 搜索 `data[].id`。矩阵开平目录的 `employee_id`、`department_id` 在默认模式下均返回同一值的十进制字符串；人员集合在行 JSON 中使用 int64 整数，部门集合使用十进制字符串。角色仍为字符串数组。
+- 部门搜索直接取 `selectable=true` 候选的 `department_id`，用于行创建、更新、搜索和 import plan；批量回查也使用该 ID。`open_department_id` 是另一种显式兼容模式的标识，不用于默认模式。
+- 人员搜索取 `selectable=true` 候选的 `employee_id`。重名时展示姓名、部门、邮箱和 ID 让用户选；无结果或不可选时说明原因，不猜测其他人员编号。查询不需要写入确认，写入仍需先展示计划。
 - 列 ID 只取 `table get` 或 `column-headers list` 的返回值；已有字段绑定信息原样保留，未绑定列不根据列名推测 `value_id`。金额字段仍需核对业务口径及单位。
 - 此处枚举指五种条件类型及其运算符，不需要额外业务选项数据源。用 `rule symbol query` 查询 CLI 内置映射，提交输出中的 `symbol`；切换类型后重新查询，不把“包含”和“在…之内”混用。列更新时由开平接口做最终合法性校验。详细映射见 [配套查询](references/configuration-completion.md)。金额支持整数 30 位、小数 8 位，保持原单位和精度。
 - 重复导入先搜索/读取已有行，由 Agent 明确追加、跳过或转 update；新建计划没有跨计划自动去重。
 - `import apply --rows 1,3 --batch-size 10` 仅执行所选计划行和本次上限。交互执行可用 `--batch-size 1`。运行中收到暂停要求时调用 `import pause --plan-id`，当前行写入与回读结束后停批；`resume` 清除暂停标记，并将可续跑计划更新为 `status=ready`、清空旧 reason，再次 apply 继续。`needs_verification` 仍须先调用 `verify`，`resume` 不会放行未核验行。get 查询进度，cancel 取消尚未执行的后续操作。
 - 不确定结果立即停批。用 get/list/search 核验后重新整理未完成输入并确认新计划。不直接编辑本地计划；已停用的旧 guarded 计划先核验再重建。
 - plan 绑定列头和全量规则行摘要、身份、应用与环境指纹，24 小时过期；user 额外绑定凭证摘要，重新登录或 Token 轮换后重新生成并确认（不保存原始 Token）。每次 apply 前行快照变化使计划失效，本计划经回读验证的写入会推进快照；仍没有服务端原子 revision 条件写。结构变更后重新计划。
-- 新接口已提供结构化命令，继续遵守项目 api call 关闭约定。
+- 审批矩阵接口已提供结构化命令，本 Skill 继续使用这些命令。项目的 `api call --channel web` 已开放为已验证业务配方的 Open Web 执行通道，不替代矩阵命令及其写入确认、计划与回读规则。
 - 缺信息、歧义、重复导入、部分确认、暂停恢复、结果不确定或目标切换时，参见 [交互与组合操作契约](references/interaction-contract.md)。
 
 ## 参数文档

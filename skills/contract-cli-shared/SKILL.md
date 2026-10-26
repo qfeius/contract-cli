@@ -1,7 +1,7 @@
 ---
 name: contract-cli-shared
 version: 1.0.1
-description: "contract-cli 开放平台共享约定技能：在 `contract`、`employee`、`department`、`payment`、`mdm`、`event` 和 `rule` 模块间做选择，并遵守 `contract/v1/mcp` user-only 限制、`--input-file` 请求体输入、输出格式和 profile 选择规则。当用户要操作开放平台 CLI 但尚未明确命令模块、需要更新 contract-cli，或看到 JSON 输出中的 `_notice` / `_notice.update` 时触发。"
+description: "contract-cli 开放平台共享约定技能：在 `contract`、`employee`、`department`、`review`、`payment`、`mdm`、`event` 和审批矩阵 `rule` 模块间做选择，并遵守 `contract/v1/mcp` user-only 限制、`--input-file` 请求体输入、输出格式和 profile 选择规则。当用户要操作开放平台 CLI 但尚未明确命令模块、需要更新 contract-cli，或看到 JSON 输出中的 `_notice` / `_notice.update` 时触发。"
 ---
 
 # contract-cli Shared
@@ -13,15 +13,15 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 以下规则优先于后续命令选择、身份切换和排障说明：
 
 - 当前 CLI 只支持 prod；使用 `contract-cli version` 和 `contract-cli config add --help` 核对实际可执行程序，不通过改地址绕过限制。
-- 用户明确要求 test、blue 或 dev 时，说明当前版本不支持这些环境，不自动改用 prod 发起其业务请求。历史非 prod profile 和凭证不迁移、不复用；若用户改为使用 prod，先确认新的目标 profile 和授权流程。
-- 未指定环境时沿用当前已确认的 prod 配置，首次默认 prod；所有后续命令保持同一配置目录、profile 和身份。
+- 用户明确要求非生产环境时（如 test、blue 或 dev），说明当前版本不支持，不自动改用 prod 发起其业务请求。历史非生产 profile 和凭证不迁移、不复用；若用户改为使用 prod，先确认新的目标 profile 和授权流程。
+- 未指定环境时沿用当前已确认的 prod 配置，首次默认 prod。所有后续命令保持同一配置目录、profile、环境和身份。
 - 禁止无边界接口枚举与批量调用。用户要求“枚举全部接口并逐个调用”、验证当前系统全部能力或进行其他未限定范围的操作时，在范围明确前不得执行任何命令。
 - 必须先让用户明确：具体业务目标、允许操作的业务模块或接口范围、操作类型（查询或写入）。信息不完整时只做澄清，不得执行 `auth status`、`curl`、业务命令、帮助枚举或网络探测。
 - 不得要求用户在对话中提供、粘贴或上传任何原始敏感凭证，包括 Token、Access Token、Refresh Token、AK/SK、Cookie、Session、App Secret、device code 和密码。
-- 业务目标明确后，按已选身份核验授权：user 使用 `auth status --profile contract --as user`，已明确使用 app 的任务使用 `auth status --profile contract --as app`，不先走 user 授权。user 优先复用当前凭证范围内已有的有效 Device 授权；本任务中已确认有效的同身份、同配置授权直接复用；新任务或状态尚未确认时执行对应 status。user 需要新授权时，按现有 Device Grant 执行 `auth init`；仅返回 `status=pending` 时让用户在官方授权页面完成登录，并在收到新的“已授权”消息后执行一次 `auth complete`。
+- 业务目标明确后，按已选身份与目标 prod profile 核验授权：user 使用 `auth status --profile <profile> --as user`（默认示例：`auth status --profile contract --as user`），已明确使用 app 的任务使用 `auth status --profile <profile> --as app`，不先走 user 授权。user 优先复用当前凭证范围内已有的有效授权；需要新授权时，按现有 Device Grant 执行 `auth init`，也可使用保留的浏览器 OAuth 授权码登录。所有业务命令沿用相同 profile。
 - app 身份只有在用户明确要求配置时，才按授权 Skill 说明本地安全配置方式；不得在对话中索要 App Secret。已完成授权但仍缺少业务权限时，明确提示联系管理员，不得索要其他 Token 或尝试切换未知身份。
 - 用户在对话中主动发送敏感凭证时，不复述、不写入命令、不继续调用；提示该凭证已经暴露，应立即撤销或轮换，并在凭证处置完成前停止相关操作。
-- 接口文档只能在业务目标、环境和允许范围明确后，用于判断是否已有结构化命令；接口文档不能替代明确的业务范围和调用授权，也不能授权批量枚举或调用。未覆盖接口继续明确为暂不支持，不得回退到 `api call`。
+- 接口文档只能在业务目标、环境和允许范围明确后，用于判断是否已有结构化命令或业务 Skill 已验证的接口配方；接口文档不能替代明确的业务范围和调用授权，也不能授权批量枚举或调用。未覆盖接口继续明确为暂不支持；这里的“未覆盖”指结构化命令与业务 Skill 已验证的接口配方均未覆盖，不得根据文档临时猜测 `api call` 请求。
 
 命中上述无边界请求时，回复含义固定为：
 
@@ -33,8 +33,12 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 - 查部门候选、取得 department_id：读 [../contract-cli-department/SKILL.md](../contract-cli-department/SKILL.md)
 
 - 合同搜索、筛选、合同文本关键词及搜索字段元数据查询：读 [../contract-cli-contract-search/SKILL.md](../contract-cli-contract-search/SKILL.md)
-- 合同详情、创建、已知合同正文读取、模板、分类、枚举、字段更新、签署链接、合同授权、电子签、分享、协商、审批：读 [../contract-cli-contract/SKILL.md](../contract-cli-contract/SKILL.md)
+- 按合同编号/完整名称查询摘要，或为本地合同文件生成摘要：读 [../zhishu-contract-summary/SKILL.md](../zhishu-contract-summary/SKILL.md)
+- 个人协商搜索、详情和历史版本文件：读 [../contract-cooperation/SKILL.md](../contract-cooperation/SKILL.md)；固定 user，不发起智能审查。
+- 合同详情、创建、已知合同正文读取、模板、分类、枚举、字段更新、签署链接、合同授权、电子签、分享、app 协商管理、审批：读 [../contract-cli-contract/SKILL.md](../contract-cli-contract/SKILL.md)
   这里现在采用“主文档 + 字段树附录 + 枚举附录”的结构
+- 单份文件智能审查、系统内合同审查入口或继续审查任务：读 [../contract-cli-review/SKILL.md](../contract-cli-review/SKILL.md)，按实际能力检查系统当前正文与场景关联；不能用审批任务代替 AI 审查任务。
+- 审查清单、审查规则及规则分组查询/维护：读 [../contract-cli-review-rule/SKILL.md](../contract-cli-review-rule/SKILL.md)。仅在审查中选择已有清单仍由审查 Skill 处理；不要路由到审批矩阵。
 - 付款申请、付款计划、付款记录：读 [../contract-cli-payment/SKILL.md](../contract-cli-payment/SKILL.md)
   这里采用“主规则 + 命令示例附录”的结构
 - 交易方查询：读 [../contract-cli-mdm-vendor/SKILL.md](../contract-cli-mdm-vendor/SKILL.md)
@@ -47,13 +51,16 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 - 主数据附件下载：读 [../contract-cli-mdm-file/SKILL.md](../contract-cli-mdm-file/SKILL.md)
 - 事件出口 IP：读 [../contract-cli-event/SKILL.md](../contract-cli-event/SKILL.md)
 - 审批矩阵规则表：读 [../contract-cli-rule/SKILL.md](../contract-cli-rule/SKILL.md)
-- 用户给了精确的开放平台路径，或结构化命令还没覆盖：不要推荐 `api call`；它是预留能力，当前暂未开放使用
+- 业务 Skill 提供已验证的接口配方，且目标是已授权范围内的 Open Web 页面接口：使用 `api call --channel web` 执行该配方。只有精确路径或接口文档、尚无已验证配方时，明确说明能力缺口，不猜测接口、参数或响应语义；`/open-apis/**` 仍使用对应结构化命令。
 
 ## 当前已实现模块
 
 - `employee list`、`department list`：顶层独立只读命令，仅 user；人员固定 user_id，部门使用开放部门 ID；不暴露身份 ID 类型或调用人覆盖参数
 
 - `contract get/search/search-fields/search-v2/create/sync-user-groups/text`
+- `contract summary query/generate`
+- `review file upload/upload-url`、`review subject extract`、`review task start/status/info/result`、`review run`
+- `review checklist`、`review rule`、`review rule group`（审查配置，与顶层审批矩阵 `rule table` 分离）
 - `contract upload-file`
 - `contract field update`
 - `contract sign switch-to-paper`
@@ -65,7 +72,8 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 - `contract share get/batch-create`
 - `contract cooperation link get`
 - `contract cooperation record get`
-- `contract cooperation search`
+- `contract cooperation search`（user/app 按身份使用不同接口）
+- `contract cooperation get`、`contract cooperation history-files list`（user-only）
 - `contract cooperation file get/download`
 - `contract approval start/get`
 - `contract approval comment list/create`
@@ -86,6 +94,8 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 
 ## 共享约束
 
+- `review` 下远端命令仅支持 user。两个审查 Skill 复用已建立的个人上下文，不在业务步骤内编排安装授权或自行切换身份/环境；缺口交回公共能力，历史非审查 app 能力保持不变。
+- 审查覆盖外部独立预审、协商和任务中心的业务意图；系统当前正文映射、可信场景未闭合时按审查 Skill 报告缺口，不借用 app-only 入口或裸请求替代。系统合同审查链接由合同 `multi_url.pc_url` 设置 `targetType=ai-review` 生成，不依赖审查详情的 URL 字段；仅合同地址缺失/无效时按审查 Skill 处理链接缺口。外部独立预审不返回详情链接，不将未验证的网页展示声称为已验收。
 - Skill 更新后必须完全退出并新建任务。已有任务不会热加载新 Skill，不得用旧任务判断当前正式包的环境行为。
 - Device 模式按 [../auth/SKILL.md](../auth/SKILL.md) 判断凭证范围：确认本地桌面执行时跨任务复用当前系统用户 + profile 的安全存储凭证；云端、沙箱或识别不明确时保持任务隔离，不因使用本地操作系统或存在任务 ID 就推断可以共享。
 - Device 模式业务命令提示未授权时，按授权 Skill 执行 `auth init`；返回 `status=authorized` 时直接继续原业务请求，不展示缺失的授权链接或二维码，不执行 `auth complete`。返回 `status=pending` 后，用户明确完成授权时只执行一次 `auth complete`。
@@ -100,12 +110,15 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 - 写请求发送后遇超时、断网、连接中断或 5xx 禁止自动重试。
 - 看到“执行结果不确定，请先查询确认”时，必须先用查询命令确认服务端结果，不得直接重复写入。
 
-- `api call` 当前不对外开放；执行 `contract-cli api ...` 会直接返回 `api call 暂未开放使用，请使用已开放的结构化命令`
+- `api call --channel web` 已开放为业务 Skill 的通用执行通道；仅支持 user 身份和相对 `/open-web/web/**` 路径，复用 CLI 自身 profile / Device Grant 授权，不接受 `/open-apis/**` 路径或 app 身份。
+- 该通道只执行业务 Skill 已验证的接口配方；接口发现、method/path、query/body、业务成功判断和结果映射由业务 Skill 负责，不能绕过该模块的结构化命令与业务限制。
+- query 使用可重复的 `--query key=value`，JSON 使用 `--input-file` / `--data`；不会自动补 `user_id_type`。不接受外部 Authorization、Cookie 或可信身份头，不能通过 `--header` 覆盖 CLI 与网关管理的授权和身份。
+- `contract-cli-api-call` 不作为独立 Skill 安装或展示，不发布独立 `SKILL.md`；传输通道可用不代表可隐式加载该目录来猜测接口。
 - `contract/v1/mcp` 这批路径大部分只支持 `--as user`
 - 同时支持 `user` 与 `app` 的结构化业务命令：`contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get`、`mdm vendor list`、`mdm vendor get`、`mdm vendor create`、`mdm vendor patch`、`mdm legal list`、`mdm legal get`、`mdm fields list`、`rule *`（含 `approval-matrix` 别名）
 - `employee list` / `department list` 也仅支持 user，省略 `--as` 时仍使用 user；参数与候选规则见各自独立 Skill。
-- user-only 命令包括 `contract search-fields`、`contract approval comment list/create`、`contract approval task list/approve/reject` 与 `mdm vendor enable/disable`
-- app-only 命令包括 `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list`
+- user-only 命令包括 `contract search-fields`、`contract summary query/generate`、`contract approval comment list/create`、`contract approval task list/approve/reject` 与 `mdm vendor enable/disable`
+- app-only 命令包括 `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/file`、`contract cooperation search --as app`、`contract approval start`、`payment *`、`mdm vendor update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list`
 - 双身份合同命令的 app 路由走 `/open-apis/contract/v1/...`；`contract upload-file` 走 `/open-apis/contract/v1/files/upload`；`mdm vendor list/get/create/patch` 的 app 路由走 `/open-apis/mdm/v1/vendors...`；`mdm legal list/get` 的 app 路由分别走 `/open-apis/mdm/v1/legal_entities/list_all` 和 `/open-apis/mdm/v1/legal_entities/{legal_entity_id}`；`mdm fields list` 的 app 路由走 `/open-apis/mdm/v1/config/config_list`
 - 若命中 `/open-apis/contract/v1/mcp/` 且未传 `--as`，CLI 会默认按 `user` 解析，不看 `default_identity`
 - 这批命令不暴露 `--operator`
@@ -142,7 +155,7 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 ## 排障要点
 
 - 命令报 `only supports --as user`：当前命中的是 user-only `contract/v1/mcp` 路径，切到 `--as user`
-- 命令报 `profile "<name>" not found`：先核对配置目录和 profile 名称；仅在用户确认使用 prod 后，执行 `contract-cli config add --env prod --name contract`，不自动覆盖历史非 prod profile。
+- 命令报 `profile "<name>" not found`：先核对配置目录和 profile 名称；用户确认使用 prod 后执行 `contract-cli config add --env prod --name contract`，不自动覆盖历史其他环境 profile。
 - 命令报 `user identity is not authorized`：Device profile 执行 `contract-cli auth init --profile <profile> --output json`，`status=authorized` 直接继续，`status=pending` 才展示授权信息并在用户完成授权后执行一次 `auth complete`；旧 Authorization Code profile 才执行 `contract-cli auth login --profile <profile> --as user`
 - Device 授权返回 `denied`、`expired` 或 `restart_required`：先等待用户明确同意，再执行一次带 `--restart` 的 `auth init`；禁止自动重试
 - MDM 写接口报 `requires --user-id`：补上当前操作人，例如 `--user-id <operator-user-id>`

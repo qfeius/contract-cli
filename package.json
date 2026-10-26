@@ -9,8 +9,9 @@
   "scripts": {
     "postinstall": "node scripts/install.js",
     "build": "./build.sh",
-    "test": "go test ./...",
-    "test:installer": "node --test scripts/install.test.js scripts/setup.test.js"
+    "test": "node --test scripts/skill-merge.test.js && go test ./...",
+    "test:installer": "node --test scripts/install.test.js scripts/setup.test.js tests/release/test-package.test.js",
+    "test:skill-sync-install": "node --test tests/release/skill-sync-install.test.js"
   },
   "config": {
     "binaryName": "contract-cli",

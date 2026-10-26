@@ -56,7 +56,7 @@ contract-cli rule table import verify --profile contract --as app --plan-id <pla
 - `operation` 默认 `create`，也可为 `update`；`update` 必须有 `row_id`。
 - `cells` 的 key 可以是列名或列 ID；重名列必须使用列 ID。
 - 值类型必须与列头 `table_cell_content_type` 一致。
-- 人员集合使用正整数外部 ID；部门集合使用 `open_department_id` 字符串数组（形如 `od-...`）；角色集合使用角色 ID 字符串数组。目录搜索候选可直接取 `open_department_id`；只有数字 `department_id` 时，先用 `rule department batch-get` 回查并取返回的 `open_department_id`，数字值不可直接导入。
+- `contract/approve_matrix` 的人员集合使用私有 SaaS 搜索返回的人员 `id`，部门集合使用部门 `id` 的十进制字符串数组；角色集合使用角色 ID 字符串数组。目录搜索候选直接取 `employee_id` 或 `department_id`。
 - 计划阶段查询列头和全部分页规则行，不写矩阵；按现有行数加计划 `create` 数校验 2000 行上限，`update` 不增加行数。成功返回 `needs_confirmation` 和 `plan_id`，超限、目标行不存在或其他校验问题返回 `needs_input`。
 
 ### 新建矩阵批量写入的首行
@@ -104,13 +104,13 @@ contract-cli rule table import verify --profile contract --as app --plan-id <pla
 - `import pause --plan-id` 可在执行中提交暂停意图，当前行写入和回读结束后不再启动下一行；`import resume --plan-id` 清除标记，若计划有待执行行且无需核验，返回 `status=ready`、空 reason，再次调用 `apply` 续跑。`needs_verification` 必须先 `verify`；`get` 返回持久化状态和 `pause_requested`。
 - `plan` 和 `apply` 都不支持 `--raw`。
 
-## 2026-09-21 部门 ID 约定
+## 部门 ID 约定
 
-- `DEPARTMENT_COLLECTION` 在 `import plan` 中按 `open_department_id` 字符串校验并原样发往行接口；例如 `["od-1b1b803a7df98989bf457d9ba203c350"]`。数字部门主键会返回明确的本地校验错误，不再提示使用正整数 ID。
+- `DEPARTMENT_COLLECTION` 在 `import plan` 中按 SaaS 部门 `id` 的十进制字符串校验并原样发往行接口；例如 `["1018399484738012242"]`。JSON 数字 token 会返回本地校验错误，以避免大整数精度丢失。
 
 ## 2026-09-14 实现更新
 
-- 人员接收正 int64 数字或十进制字符串数组并输出数字数组；部门接收 `open_department_id` 字符串数组并原样输出；角色、普通集合仍用字符串数组。NUMBER 支持整数 30 位、小数 8 位的精确 JSON 数字，不经 float64；保留金额单位，不自动换算。显式 null 清空该单元格，省略单元格不修改；集合也可用 [] 清空。
+- 人员接收正 int64 数字或十进制字符串数组并输出数字数组；部门接收 SaaS `id` 十进制字符串数组并原样输出；角色、普通集合仍用字符串数组。NUMBER 支持整数 30 位、小数 8 位的精确 JSON 数字，不经 float64；保留金额单位，不自动换算。显式 null 清空该单元格，省略单元格不修改；集合也可用 [] 清空。
 - apply 执行前重读列头和全部规则行，计划 24 小时有效；身份/应用/环境指纹、列头或行快照变化返回 invalidated。每条本计划写入经回读确认后推进预期快照。旧版未完成计划需重新生成。user 计划还绑定凭证摘要，重新授权或 Token 轮换后需重新生成并确认；app Token 轮换仍保持兼容。
 - --rows 1,3 只执行指定计划行；--batch-size 10 限定本次写入数。剩余进度为 paused，再次 apply 继续。
 - import get --plan-id 查看进度；import cancel --plan-id 取消后续操作，已成功数据保留。

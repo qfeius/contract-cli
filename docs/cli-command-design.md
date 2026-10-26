@@ -1,6 +1,6 @@
 # contract-cli 命令设计文档
 
-> 维护说明：本文是阶段性设计记录。`api call` 目前仅作为代码中的预留能力保留，当前不对外开放；公开命令请以 [cli-command-reference.md](/Users/lyy/contract-cli/docs/cli-command-reference.md) 为准。
+> 维护说明：本文是阶段性设计记录，其中旧 `/open-apis/` 通用调用示例不代表当前能力。当前已开放 `api call --channel web`，仅支持 user 身份、相对 `/open-web/web/**` 路径与业务 Skill 已验证的接口配方；公开命令及参数请以 [cli-command-reference.md](cli-command-reference.md) 为准。
 
 ## 1. 背景
 
