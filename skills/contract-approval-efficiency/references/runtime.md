@@ -17,6 +17,22 @@ contract-cli api call --channel web --profile <当前任务所用 profile> --as 
 
 退出成功或 HTTP 200 不能单独代表业务成功。
 
+## 数据范围与权限闸门
+
+接口的实际范围分两层：
+
+- 人员候选、部门候选、部门成员、`getTasks` 任务元数据和历史流程实例可能是租户级数据，它们只用于发现候选、分页和诊断，不能证明当前调用人有权读取相关合同。
+- `contract/info` 和 `process/records` 按当前 USER 校验合同读取权限。最终统计、在途、个人表、部门总览和用户明细只接纳当前 USER 成功读取 `process/records` 的实例。
+
+对候选实例调用 `process/records` 返回 110004、无权读取或业务失败时：
+
+1. 不计完成任务、在途任务、合同数或用时；
+2. 不把失败解释成零；
+3. 报告标记 `record_collection_status=partial`；
+4. 不导出该实例的租户级任务元数据、人员候选或合同 ID，只在内部诊断保留脱敏对象标识、失败阶段和安全错误码。
+
+因此报告范围必须写成“目录及任务候选来自当前租户；指标仅包含当前 USER 成功读取流程记录的合同”，不能笼统写成所有发现数据均为当前 USER 可见。
+
 ## 必需配方
 
 | 配方 | 方法和 Open Web 路径 | 关键输入 | 用途 |
@@ -24,13 +40,13 @@ contract-cli api call --channel web --profile <当前任务所用 profile> --as 
 | 人员候选 | `GET /open-web/web/clm/employee/findEmployeesByKeyword` | `keywords`、`filterCurrentEmployee=false`、`noFilterDeletedEmployee=true` | 返回真实 `employeeId`、`larkId`、姓名、状态和当前部门 |
 | 部门候选 | `GET /open-web/web/clm/department/findDepartmentsByKeyword` | `keyword`、`requireAll=false`、`showAllStatus=true` | 返回真实部门 ID 和已发现子部门 |
 | 部门成员 | `GET /open-web/web/clm/department/organization/list` | `parentDepartmentId`、`employeePageIndex`、`employeePageSize=50` | 从第 1 页读取每个部门直属成员和子部门 |
-| 人员原始任务 | `GET /open-web/web/clm-openapi/v1/tasks/getTasks` | `assignee_user_id=<真实 larkId>`、`task_status=0或1`、`sort_type=DESC`、游标参数 | 发现任意目标人员当前权限可见的已办和待办 |
+| 人员原始任务 | `GET /open-web/web/clm-openapi/v1/tasks/getTasks` | `assignee_user_id=<真实 larkId>`、`task_status=0或1`、`sort_type=DESC`、游标参数 | 在租户范围按目标人员发现候选任务；不证明合同读取权限 |
 | 流程记录 | `GET /open-web/web/clm/workflow/runtime/process/records` | 必传真实 `processInstanceId`；已知时附 `businessId`、`businessTypeCode` | 取得 `done`、`todo`、任务动作、人员和时间 |
 | 普通合同详情 | `GET /open-web/web/clm/contract/info` | `contractId`、`tianyancha=false`、`generateContractName=false` | 补全普通合同实例和元数据 |
-| 轻量合同详情 | `GET /open-web/web/clm/contract/briefInfo` | `contractId` | 仅供普通详情 110002 的一次回退 |
+| 轻量合同详情 | `GET /open-web/web/clm/contract/briefInfo` | `contractId` | 普通详情 110002 重试耗尽后的可选元数据恢复；可能返回空 |
 | 历史节点人员 | `GET /open-web/web/clm/workflow/runtime/listAllApprovalEmployees` | `businessId`、`businessTypeCode`、`processInstanceId`、`filterRobot=false` | 审计历史节点人员；不能单独证明唯一归因 |
-| 历史流程实例 | `GET /open-web/web/clm-openapi/v1/process_instances/{process_instance_id}` | 路径中的真实实例 ID | 核对历史 definition、任务和动作 |
-| 历史表单定义 | `GET /open-web/web/clm/form/getFormDefinition` | `formId` | 在 definition 严格一致时核对固定人员配置 |
+| 历史流程实例 | `GET /open-web/web/clm-openapi/v1/process_instances/{process_instance_id}` | 路径中的真实实例 ID | 仅作辅助诊断，不作为合同读取授权依据 |
+| 历史表单定义 | `GET /open-web/web/clm/form/getFormDefinition` | `formId` | 仅当前 USER 本身具备管理员权限时用于可选审计 |
 
 普通合同类型接受集合为 `0/1/2/3/9/11/12/16`。实际运行时把“已经真实出现并成功读取的类型”和“接口规则允许但本次没有样本的类型”分开记录。合同组类型 `10/17` 只有在宿主已有经过验证的合同组详情配方时处理；缺少该能力时把相应对象标为未覆盖，不能当作普通合同读取。
 
@@ -38,9 +54,9 @@ contract-cli api call --channel web --profile <当前任务所用 profile> --as 
 
 对每名人员和每个任务状态分别建立分页流：
 
-1. 首次请求不传 `last_sort_value` 和 `last_cursor`；`cursor_size` 只控制单页大小，不限制总量。
+1. 首次请求不传 `last_sort_value`、`last_cursor` 或用于后续游标的 `cursor_size`；首屏由服务端默认页大小决定。
 2. 已办使用上一页最后任务的 `end_time` 作为 `last_sort_value`；待办使用 `create_time`。
-3. 同时原样传回最后任务的整数 `cursor`，保持长整数精度。
+3. 从第二页起同时原样传回最后任务的整数 `cursor` 和 `last_sort_value`，此时 `cursor_size` 才控制后续页大小；保持长整数精度。
 4. 继续读取到空页或协议明确的终点。短页不是结束条件。
 5. 页内容重复、最后游标不前进、缺少续页字段或业务失败时停止该流并记录续读位置。
 
@@ -54,6 +70,7 @@ contract-cli api call --channel web --profile <当前任务所用 profile> --as 
 
 - 超时、连接中断等传输错误；
 - 429、503；
+- 只读详情或元数据请求返回通用系统错误 110002；重试耗尽后的恢复规则见下文；
 - 明显截断或无法解析的 JSON；
 - 只读调用非零退出且无法判断为确定性业务错误。
 
@@ -66,23 +83,31 @@ contract-cli api call --channel web --profile <当前任务所用 profile> --as 
 
 诊断至少记录配方、对象标识、人员和任务状态分页流、失败阶段、尝试次数、最后安全错误码及续读位置。重试成功的请求视为成功，不把整份报告标为 `partial`。
 
-## 110002 元数据回退
+## 110002 与元数据恢复
 
-无论对象来自明确合同范围还是人员原始任务，只要需要普通合同元数据，都适用同一规则：
+110002 表示通用系统错误，不是合同类型或对象不存在信号。需要普通合同元数据时适用：
 
 1. 调用 `contract/info`。
-2. 仅当业务码明确为 `110002` 时调用一次 `contract/briefInfo`。
-3. 核对返回 `contractId` 与请求一致，再采用真实名称、编号、类型和实例 ID。
-4. 回退为空、ID 不一致或失败时保留缺口。
+2. 110002 先执行适用的只读有界重试，不能立即改走其他接口。
+3. 重试耗尽且对象已由可信业务类型字段确认为普通合同时，才调用一次 `contract/briefInfo` 尝试恢复可选元数据。
+4. 核对返回 `contractId` 与请求一致，再采用真实名称、编号、类型和实例 ID；返回 `null`、ID 不一致或失败时保留缺口。
 
-110004 不得回退，不得切换身份或接口绕过权限。元数据补齐成功后，原 110002 不应让核心记录采集状态变成 `partial`。
+110004 不得回退，不得切换身份或接口绕过权限。`briefInfo` 成功不能替代 `process/records` 的当前 USER 权限校验，也不能把无权读取的对象升级为可统计。
+
+## 合同和流程实例范围
+
+- 普通合同 ID：用 `contract/info` 取得真实实例，再以 `process/records` 为任务事实源。
+- 流程实例 ID：直接调用 `process/records`；实例不匹配或无权读取时停止该对象。
+- 合同组 `10/17`：只有宿主存在已验证合同组详情配方时处理，否则返回范围未覆盖。
+- 处理人清单：对可读流程的 `done[].records[].assigneeEmployees` 和 `todo[].records[].assigneeEmployees` 按 `employeeId` 去重。done 唯一人员视为实际处理人；todo 人员视为当前候选/经办人。
+- 此模式不调用 `getTasks` 反查人员，不构造 `discovered_for_employee_ids`，也不使用部门零行规则。
 
 ## 多人合并
 
 每个人都要先完成独立的目录解析和两类任务分页，再在内存或宿主的结构化数据能力中合并：
 
 - `employees`、`approver_ids` 按 `employeeId` 取并集；同 ID 显示名冲突进入诊断。
-- 任务唯一键是 `(process_instance_id, task_instance_id)`；`discovered_for_employee_ids` 取并集。
+- 任务唯一键是 `(process_instance_id, task_instance_id)`；`discovered_for_employee_ids` 只合并各目标人员独立查询流的命中人员，不合并 `getTasks.assignee_ids`。
 - 同一任务的状态、时间、业务 ID、业务类型、节点 ID 冲突时，不静默挑选，标记 `task_conflict` 并排除汇总。
 - 实例按 `processInstanceId` 合并，`source_task_ids`、`matched_employee_ids` 取并集；业务归属冲突时标记 `instance_conflict`。
 - 所有目标人员的目录清单、已办和待办分页均完成，人员发现才是 `complete`。
@@ -97,6 +122,14 @@ contract-cli api call --channel web --profile <当前任务所用 profile> --as 
 
 任一状态使用 `complete`、`partial`、`not_applicable`。报告总状态由会影响本次统计的状态决定；可选名称缺失只影响明细可读性，不应覆盖核心统计状态。
 
+历史表单定义属于管理员能力。普通 USER 不调用该配方；任务中心和可读流程记录已能唯一归因时状态仍可为 `complete`，只有确实依赖该历史证据且无法取得时才把 `attribution_evidence_status` 标为 `partial`。
+
+## 长 ID
+
+`getTasks.contract_id`、`assignee_ids`、游标以及其他数值 ID 可能超过 JavaScript 安全整数范围。调用器必须保留原始 JSON 数字词法，或使用任意精度整数/字符串解析；不得先经过普通浮点 JSON 解析再转字符串。
+
+业务归属优先采用 `process/records.businessId` 的字符串值。若当前调用器无法保证长 ID 无损，相关分页流返回 `CAPABILITY_MISSING` 或 `partial`，不能继续用已舍入 ID 查询。报告和 Excel/CSV 一律把合同、人员、流程、任务和游标 ID 当文本保存。
+
 ## 数据最小化
 
-只保存统计所需的人员 ID/姓名/当前部门、合同名称/编号/ID/类型、流程和任务 ID、节点、动作、状态及起止时间。不要保存合同正文、附件、联系方式、认证信息或与统计无关的表单内容。临时原始响应不进入 Skill 包。
+只保存统计所需的人员 ID/姓名/当前部门、合同名称/编号/ID/类型、流程和任务 ID、节点、动作、状态及起止时间。租户级候选在通过 `process/records` 权限闸门前只暂存完成下一步所需的最小 ID；读取失败后立即从用户明细移除，仅保留脱敏诊断。不要保存合同正文、附件、联系方式、认证信息或与统计无关的表单内容。临时原始响应不进入 Skill 包。
