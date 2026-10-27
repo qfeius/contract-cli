@@ -1,4 +1,4 @@
 interface:
   display_name: "合同审批效率统计"
   short_description: "按人员、部门、合同或流程统计审批、盖章和归档效率"
-  default_prompt: "使用 $contract-approval-efficiency 统计指定人员、部门、合同或流程在给定周期内的审批、盖章和归档效率；租户级候选须通过当前 USER 的流程读取权限闸门，再按流程记录中的实际处理人归因，输出规定表格并生成 Excel 明细。"
+  default_prompt: "使用 $contract-approval-efficiency 统计指定人员、部门、合同或流程在给定周期内的审批、盖章和归档效率；租户级候选须通过当前 USER 的流程读取权限闸门，再按流程记录中的实际处理人归因。单人只输出一张规范 Markdown 表格，不添加要点或洞察；生成 Excel 明细。"

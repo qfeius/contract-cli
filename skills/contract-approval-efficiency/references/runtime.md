@@ -13,9 +13,31 @@ contract-cli api call --channel web --profile <当前任务所用 profile> --as 
 同时检查调用器退出状态、HTTP 状态和业务 envelope：
 
 - CLM 目录、合同、流程和表单接口：`success=true` 且 `code=200`。
-- CLM OpenAPI 任务和历史实例接口：`success=true` 且 `code=0`。
+- 只有另行核实的 Open Platform 任务提供方才按其 schema 检查成功条件；不能从页面通道规则推导。
 
 退出成功或 HTTP 200 不能单独代表业务成功。
+
+页面 `--channel web` 能力只覆盖其帮助或协议明确允许的页面业务接口。不得自行添加 `X-Gate-Auth` 等调用器禁止的身份头，也不得假设网关会把页面路径重写为内部 Open Platform 路径。
+
+## 人员和部门模式的能力预检
+
+人员/部门模式需要一个能按真实目标人员标识查询其已办、待办并完整分页的 USER 能力。以下入口均不能自动满足：
+
+- 只返回当前个人令牌对应人员任务的 MCP Tool；
+- `contract approval task list` 等只查询当前登录人的结构化命令；
+- 仅因路径前缀符合 `/open-web/web/**` 就假定可达的 Open Platform 路由；
+- 需要显式传递 `X-Gate-Auth` 或其他调用器禁止身份头的请求。
+
+解析出首个真实目标人员后，在批量采集前执行一次只读探针。历史候选地址 `/open-web/web/clm-openapi/v1/tasks/getTasks` 仅作为兼容性探针，不是已承诺的页面配方。能力判定必须同时满足：
+
+1. 实际帮助、Tool schema 或可信提供方协议明确支持按任意目标人员过滤，而非只支持当前用户。
+2. 使用本次真实目标人员和一个任务状态发起探针，路由与业务 envelope 成功；不添加禁止的身份头。
+3. 提供方明确给出完整分页字段、排序键和终止条件；若探针返回续页信息，至少续读一页并确认游标前进且无整页重复。空首屏本身不能证明分页协议完整。
+4. 响应中的合同、人员、任务和游标 ID 能无损保存。
+
+任一条件不满足，或返回 404、401、110004、路由不支持、只允许当前用户，立即返回 `CAPABILITY_MISSING`。不得进入全量分页、不得生成个人或部门统计，也不得改用当前用户任务命令、数据库、日志、APP 或管理员身份。授权过期可按调用器协议恢复后重试探针；恢复后仍失败则停止。
+
+完整空部门例外：若部门及子部门成员分页已按下文完整结束，且人员清单确实为空，可以输出空部门结果，不需要任务发现探针。
 
 ## 数据范围与权限闸门
 
@@ -40,27 +62,25 @@ contract-cli api call --channel web --profile <当前任务所用 profile> --as 
 | 人员候选 | `GET /open-web/web/clm/employee/findEmployeesByKeyword` | `keywords`、`filterCurrentEmployee=false`、`noFilterDeletedEmployee=true` | 返回真实 `employeeId`、`larkId`、姓名、状态和当前部门 |
 | 部门候选 | `GET /open-web/web/clm/department/findDepartmentsByKeyword` | `keyword`、`requireAll=false`、`showAllStatus=true` | 返回真实部门 ID 和已发现子部门 |
 | 部门成员 | `GET /open-web/web/clm/department/organization/list` | `parentDepartmentId`、`employeePageIndex`、`employeePageSize=50` | 从第 1 页读取每个部门直属成员和子部门 |
-| 人员原始任务 | `GET /open-web/web/clm-openapi/v1/tasks/getTasks` | `assignee_user_id=<真实 larkId>`、`task_status=0或1`、`sort_type=DESC`、游标参数 | 在租户范围按目标人员发现候选任务；不证明合同读取权限 |
 | 流程记录 | `GET /open-web/web/clm/workflow/runtime/process/records` | 必传真实 `processInstanceId`；已知时附 `businessId`、`businessTypeCode` | 取得 `done`、`todo`、任务动作、人员和时间 |
 | 普通合同详情 | `GET /open-web/web/clm/contract/info` | `contractId`、`tianyancha=false`、`generateContractName=false` | 补全普通合同实例和元数据 |
 | 轻量合同详情 | `GET /open-web/web/clm/contract/briefInfo` | `contractId` | 普通详情 110002 重试耗尽后的可选元数据恢复；可能返回空 |
 | 历史节点人员 | `GET /open-web/web/clm/workflow/runtime/listAllApprovalEmployees` | `businessId`、`businessTypeCode`、`processInstanceId`、`filterRobot=false` | 审计历史节点人员；不能单独证明唯一归因 |
-| 历史流程实例 | `GET /open-web/web/clm-openapi/v1/process_instances/{process_instance_id}` | 路径中的真实实例 ID | 仅作辅助诊断，不作为合同读取授权依据 |
 | 历史表单定义 | `GET /open-web/web/clm/form/getFormDefinition` | `formId` | 仅当前 USER 本身具备管理员权限时用于可选审计 |
 
-普通合同类型接受集合为 `0/1/2/3/9/11/12/16`。实际运行时把“已经真实出现并成功读取的类型”和“接口规则允许但本次没有样本的类型”分开记录。合同组类型 `10/17` 只有在宿主已有经过验证的合同组详情配方时处理；缺少该能力时把相应对象标为未覆盖，不能当作普通合同读取。
+普通合同类型接受集合 `0/1/2/3/9/11/12/16` 仅适用于响应字段 `businessTypeCode`。`contractTypeCode` 是另一套枚举，不得拿来选择合同详情路由或映射到上述集合。实际运行时把“已经真实出现并成功读取的类型”和“接口规则允许但本次没有样本的类型”分开记录。合同组 `businessTypeCode=10/17` 只有在宿主已有经过验证的合同组详情配方时处理；缺少该能力时把相应对象标为未覆盖，不能当作普通合同读取。
 
 ## 任务分页
 
-对每名人员和每个任务状态分别建立分页流：
+任意人员任务能力预检通过后，对每名人员和每个任务状态分别建立分页流：
 
-1. 首次请求不传 `last_sort_value`、`last_cursor` 或用于后续游标的 `cursor_size`；首屏由服务端默认页大小决定。
-2. 已办使用上一页最后任务的 `end_time` 作为 `last_sort_value`；待办使用 `create_time`。
-3. 从第二页起同时原样传回最后任务的整数 `cursor` 和 `last_sort_value`，此时 `cursor_size` 才控制后续页大小；保持长整数精度。
-4. 继续读取到空页或协议明确的终点。短页不是结束条件。
-5. 页内容重复、最后游标不前进、缺少续页字段或业务失败时停止该流并记录续读位置。
+1. 首次请求按提供方协议省略续页字段；首屏大小由提供方决定，不能把后续页大小参数解释为首屏上限。
+2. 后续请求原样使用提供方确认的续页字段和排序值。只有 schema、帮助或真实两页验证明确说明时，才能采用 done=`end_time`、todo=`create_time`；否则返回 `CAPABILITY_MISSING`，不能猜测。
+3. 保持游标和排序值的长整数精度，验证游标前进且无整页重复。
+4. 仅以提供方确认的终止条件结束。短页不是结束条件；空页与 `hasMore` 等状态冲突时标记分页异常。
+5. 页内容重复、游标不前进、缺少必需续页字段或业务失败时停止该流并记录续读位置。
 
-部门成员按每个部门独立从 `employeePageIndex=1` 开始，固定 `employeePageSize=50`。根部门直属成员为空时仍继续已发现的子部门。部门 ID 和人员 ID 去重并防止层级循环。
+部门成员按每个部门独立从 `employeePageIndex=1` 开始，固定 `employeePageSize=50`。每个部门仅在成功响应明确返回 `hasMore=false` 时完成；`hasMore=true` 时页码加一继续。`hasMore=true` 但员工页为空、成员集合无进展、页重复或缺少下一页所需字段时标记分页异常，`roster_complete=false`。根部门直属成员为空时仍继续已发现的子部门；部门 ID 和人员 ID 去重并防止层级循环。只有所有已发现部门均以 `hasMore=false` 结束、子部门队列耗尽且无分页异常时，才设置 `roster_complete=true`。
 
 ## 统一有界重试
 
@@ -102,9 +122,15 @@ contract-cli api call --channel web --profile <当前任务所用 profile> --as 
 - 处理人清单：对可读流程的 `done[].records[].assigneeEmployees` 和 `todo[].records[].assigneeEmployees` 按 `employeeId` 去重。done 唯一人员视为实际处理人；todo 人员视为当前候选/经办人。
 - 此模式不调用 `getTasks` 反查人员，不构造 `discovered_for_employee_ids`，也不使用部门零行规则。
 
+`process/records` 即使返回 `success=true, code=200`，`data=null` 也不是空流程成功：
+
+- 明确合同或流程查询时，若对象没有其他有效存在证据，返回 `not_found`；若合同详情已证明对象存在，则标记 `record_collection_status=partial`。
+- 人员/部门候选实例出现 `data=null` 时标记 `records_data_null` 和 `partial`，排除该实例的完成、在途、合同数和用时。
+- 所有场景都不得把 `data=null` 转成空数组或真实零。
+
 ## 多人合并
 
-每个人都要先完成独立的目录解析和两类任务分页，再在内存或宿主的结构化数据能力中合并：
+只有任意人员任务能力预检通过时，每个人才执行独立目录解析和两类任务分页，再在内存或宿主的结构化数据能力中合并：
 
 - `employees`、`approver_ids` 按 `employeeId` 取并集；同 ID 显示名冲突进入诊断。
 - 任务唯一键是 `(process_instance_id, task_instance_id)`；`discovered_for_employee_ids` 只合并各目标人员独立查询流的命中人员，不合并 `getTasks.assignee_ids`。
