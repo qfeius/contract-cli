@@ -2,9 +2,11 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -28,7 +30,7 @@ var hiddenBundledSkillDirs = map[string]struct{}{
 	"contract-cli-api-call": {},
 }
 
-func (a *App) runSkills(_ context.Context, args []string) error {
+func (a *App) runSkills(ctx context.Context, args []string) error {
 	a.logger.Info("skills command started", "args", redactCommandArgs(args))
 
 	if len(args) == 0 {
@@ -39,14 +41,24 @@ func (a *App) runSkills(_ context.Context, args []string) error {
 	case "list":
 		return a.runSkillsList(args[1:])
 	case "install":
-		return a.runSkillsInstall(args[1:])
+		return a.runSkillsInstall(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown skills subcommand %q", args[0])
 	}
 }
 
 func (a *App) runSkillsList(args []string) error {
-	if len(args) > 0 {
+	flags := flag.NewFlagSet("skills list", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	format := registerJSONOutputFlag(flags)
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	jsonOutput, err := parseJSONOutputFormat(*format)
+	if err != nil {
+		return err
+	}
+	if flags.NArg() > 0 {
 		return fmt.Errorf("skills list does not accept arguments")
 	}
 
@@ -57,6 +69,9 @@ func (a *App) runSkillsList(args []string) error {
 		return err
 	}
 
+	if jsonOutput {
+		return a.renderSkillsJSONList(skills)
+	}
 	_, _ = fmt.Fprintln(a.stdout, "Built-in skills:")
 	cliVersion := build.Current().Version
 	for _, skill := range skills {
@@ -69,26 +84,40 @@ func (a *App) runSkillsList(args []string) error {
 runSkillsInstall 将包内 Skill 安装到目标目录，并可限定只更新一个命名 Skill。
 入参 args（[]string）为 install 参数；返回 error 为参数、选择或文件安装错误。
 */
-func (a *App) runSkillsInstall(args []string) (err error) {
+func (a *App) runSkillsInstall(ctx context.Context, args []string) (err error) {
+	_, logOptions, _ := parseCommandLogOptions(append([]string{"skills", "install"}, args...))
+	jsonOutput := logOptions.outputJSON
 	service := a.skillSyncService()
-	a.printSkillCLIIdentity()
+	if !jsonOutput {
+		a.printSkillCLIIdentity()
+	}
 	var target string
 	defer func() {
+		if jsonOutput {
+			if err != nil {
+				err = skillJSONFailure(err, service, target)
+			}
+			return
+		}
 		if err != nil {
 			a.printSkillFailure("Skill 安装", target, err.Error(), skillsync.RecoveryStatus(err))
 		}
 		a.printRegisteredSkillLocations(service)
 	}()
 	flags := flag.NewFlagSet("skills install", flag.ContinueOnError)
-	flags.SetOutput(a.stderr)
+	flags.SetOutput(io.Discard)
 
 	var selectedName string
 	var force bool
 	flags.StringVar(&target, "target", "", "已确认的当前客户端用户 Skill 目录；省略 --target 时默认使用 Codex（CODEX_HOME/skills 或 ~/.codex/skills），不会自动识别当前客户端")
 	flags.StringVar(&selectedName, "name", "", "install only the named bundled skill")
 	flags.BoolVar(&force, "force", false, "overwrite existing installed skills")
+	format := registerJSONOutputFlag(flags)
 
 	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if _, err := parseJSONOutputFormat(*format); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
@@ -103,9 +132,12 @@ func (a *App) runSkillsInstall(args []string) (err error) {
 	target = resolvedTarget
 	a.logger.Info("skills install started", "target", resolvedTarget, "name", selectedName, "force", force)
 
-	skills, err := loadBundledSkills(a.skillsFS)
+	skills, err := loadBundledSkillsContext(ctx, a.skillsFS)
 	if err != nil {
 		a.logger.Error("load bundled skills failed", "target", resolvedTarget, "error", err.Error())
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if selectedName != "" {
@@ -126,7 +158,7 @@ func (a *App) runSkillsInstall(args []string) (err error) {
 	for _, skill := range skills {
 		names = append(names, skill.Dir)
 	}
-	result, err := service.Install(resolvedTarget, names, force, selectedName == "")
+	result, err := service.InstallContext(ctx, resolvedTarget, names, force, selectedName == "")
 	if result.Target != "" {
 		resolvedTarget = result.Target
 		target = result.Target
@@ -134,7 +166,14 @@ func (a *App) runSkillsInstall(args []string) (err error) {
 	if err != nil {
 		return err
 	}
+	if err := skillInstallationCancellation(ctx, result); err != nil {
+		return err
+	}
 	installed, skipped := len(result.Installed), len(result.Skipped)
+	if jsonOutput {
+		a.logger.Info("skills install completed", "target", resolvedTarget, "installed", installed, "skipped", skipped)
+		return a.renderSkillsJSONInstall(ctx, service, resolvedTarget, result)
+	}
 	for _, name := range result.Installed {
 		_, _ = fmt.Fprintf(a.stdout, "Installed skill: %s\n", name)
 	}
@@ -306,15 +345,23 @@ func skillInstallCommand(target string) string {
 	return prefix + quote(executable) + " skills install --target " + quote(target) + " --force"
 }
 
-func (a *App) warnPendingSkillSync() {
+func (a *App) warnPendingSkillSync(jsonOutput ...bool) {
 	for _, location := range a.skillSyncService().Pending() {
+		var message string
 		if location.Target == "" {
-			_, _ = fmt.Fprintf(a.stderr, "Official Skill synchronization incomplete: %s. 登记读取失败，请核实登记文件和权限；无法生成具体目录修复命令。\n", location.Error)
+			message = fmt.Sprintf("Official Skill synchronization incomplete: %s. 登记读取失败，请核实登记文件和权限；无法生成具体目录修复命令。", location.Error)
 		} else if skillsync.IsClientManagedSkillTarget(runtime.GOOS, location.Target) {
-			_, _ = fmt.Fprintf(a.stderr, "Official Skill synchronization incomplete: %s. Do not reinstall into this SYSTEM directory; confirm the client's user Skill directory and explicitly review the old registration.\n", location.Error)
+			message = fmt.Sprintf("Official Skill synchronization incomplete: %s. Do not reinstall into this SYSTEM directory; confirm the client's user Skill directory and explicitly review the old registration.", location.Error)
 		} else {
-			_, _ = fmt.Fprintf(a.stderr, "Official Skill synchronization incomplete: %s. Repair: %s\n", location.Error, skillInstallCommand(location.Target))
+			message = fmt.Sprintf("Official Skill synchronization incomplete: %s. Repair: %s", location.Error, skillInstallCommand(location.Target))
 		}
+		if len(jsonOutput) > 0 && jsonOutput[0] {
+			encoder := json.NewEncoder(a.stderr)
+			encoder.SetEscapeHTML(false)
+			_ = encoder.Encode(map[string]string{"level": "WARN", "msg": message})
+			continue
+		}
+		_, _ = fmt.Fprintln(a.stderr, message)
 	}
 }
 
@@ -337,13 +384,26 @@ func (a *App) resolveSkillsInstallTarget(target string) (string, error) {
 }
 
 func loadBundledSkills(source fs.FS) ([]skillMetadata, error) {
+	return loadBundledSkillsContext(context.Background(), source)
+}
+
+func loadBundledSkillsContext(ctx context.Context, source fs.FS) ([]skillMetadata, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	entries, err := fs.ReadDir(source, ".")
+	if ctx.Err() != nil {
+		return nil, errors.Join(err, ctx.Err())
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read bundled skills: %w", err)
 	}
 
 	var skills []skillMetadata
 	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if !entry.IsDir() {
 			continue
 		}
@@ -352,6 +412,9 @@ func loadBundledSkills(source fs.FS) ([]skillMetadata, error) {
 			continue
 		}
 		content, err := fs.ReadFile(source, path.Join(dir, "SKILL.md"))
+		if ctx.Err() != nil {
+			return nil, errors.Join(err, ctx.Err())
+		}
 		if err != nil {
 			continue
 		}

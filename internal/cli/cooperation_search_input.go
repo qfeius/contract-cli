@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -25,12 +26,12 @@ type cooperationSearchInput struct {
 	Order          string   `json:"order"`
 }
 
-func cooperationSearchBody(options commandOptions) ([]byte, error) {
+func cooperationSearchBody(ctx context.Context, options commandOptions) ([]byte, error) {
 	if options.userID != "" || options.userIDType != "" || options.departmentIDType != "" {
 		return nil, fmt.Errorf("user cooperation search fixes user_id_type=user_id and department_id_type=open_department_id; caller overrides are not supported")
 	}
 
-	object, err := resolveJSONObjectBody(options, true)
+	object, err := resolveJSONObjectBody(ctx, options, true)
 	if err != nil {
 		return nil, err
 	}

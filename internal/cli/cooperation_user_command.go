@@ -16,7 +16,7 @@ import (
 const cooperationMCPPath = "/open-apis/contract/v1/mcp/cooperations"
 
 func (a *App) runCooperationMCPSearch(ctx context.Context, options commandOptions) error {
-	body, err := cooperationSearchBody(options)
+	body, err := cooperationSearchBody(ctx, options)
 	if err != nil {
 		return err
 	}
@@ -124,7 +124,7 @@ func (a *App) executeCooperationSearch(ctx context.Context, options commandOptio
 	if identity == config.IdentityUser {
 		return a.runCooperationMCPSearch(ctx, options)
 	}
-	body, err := resolveRequiredRawBody(options)
+	body, err := resolveRequiredRawBody(ctx, options)
 	if err != nil {
 		return err
 	}

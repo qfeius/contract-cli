@@ -145,6 +145,12 @@ func renderHelp(writer io.Writer, topic helpTopic) error {
 			return err
 		}
 	}
+	if _, err := fmt.Fprintln(writer, "\nGlobal Flags:"); err != nil {
+		return err
+	}
+	if err := renderHelpFlags(writer, []helpFlag{{"--debug[=true|false]", "启用 stderr 调试日志；显式 --output json 或 --json 时日志使用 JSON，默认关闭"}}); err != nil {
+		return err
+	}
 	if len(topic.Examples) > 0 {
 		if _, err := fmt.Fprintln(writer, "\nExamples:"); err != nil {
 			return err
@@ -240,10 +246,12 @@ func helpRegistry() map[string]helpTopic {
 		"version": {
 			Name:    "version",
 			Summary: "查看当前 CLI 版本、commit 和构建时间。",
-			Usage:   []string{"contract-cli version", "contract-cli --version"},
+			Usage:   []string{"contract-cli version [flags]", "contract-cli --version [flags]"},
+			Flags:   []helpFlag{{"--output <json>", "输出结构化 JSON；省略时保留默认文本"}},
 			Examples: []string{
 				"contract-cli version",
 				"contract-cli --version",
+				"contract-cli version --output json",
 			},
 			Notes: []string{build.FeatureBaseline()},
 		},
@@ -352,14 +360,18 @@ func addConfigHelp(registry map[string]helpTopic) {
 		Summary: "初始化或更新 profile，并写入开放平台、user OAuth 和 app token endpoint 配置。",
 		Usage:   []string{"contract-cli config add [flags]"},
 		Flags: []helpFlag{
-			{"--env <prod>", "环境预设；仅支持 prod，默认 prod"},
+			{"--env <prod|test>", "地址预设；支持 prod/test，默认 prod，实际目标由 profile 地址决定"},
 			{"--name <profile>", "profile 名称，默认 contract"},
+			{"--open-platform-base-url <url>", "覆盖业务基址，同时设置 Resource 和 app token 地址"},
+			{"--authorization-server-metadata-url <url>", "指定可信授权元数据地址；授权端点须与其同源"},
 			{"--resource-metadata-url <url>", "覆盖 protected resource metadata 地址"},
 			{"--redirect-url <url>", "覆盖 OAuth callback 地址"},
 			{"--scope <scopes>", "覆盖默认 OAuth scopes，多个 scope 用空格分隔"},
+			{"--output <json>", "输出结构化 JSON；省略时保留默认文本"},
 		},
 		Examples: []string{
 			"contract-cli config add --env prod --name contract",
+			"contract-cli config add --env test --name contract-test",
 		},
 	}
 }
@@ -413,6 +425,7 @@ func addAuthHelp(registry map[string]helpTopic) {
 			{"--no-open-browser", "只打印授权 URL，不自动打开浏览器"},
 			{"--app-id <id>", "app id；app 登录时可通过 flag/env/secrets 提供"},
 			{"--app-secret <secret>", "app secret；不会输出到日志"},
+			{"--output <json>", "成功结果写 stdout；手动授权指引和错误以 JSON 写 stderr"},
 		},
 		Examples: []string{
 			"contract-cli auth login --profile contract --as user",
@@ -431,6 +444,7 @@ func addAuthHelp(registry map[string]helpTopic) {
 		Flags: []helpFlag{
 			{"--profile <name>", "profile 名称；不传使用当前 profile"},
 			{"--as <user|app>", "查看身份，默认 user"},
+			{"--output <json>", "输出结构化 JSON；省略时保留默认文本"},
 		},
 		Examples: []string{
 			"contract-cli auth status --profile contract --as user",
@@ -444,6 +458,7 @@ func addAuthHelp(registry map[string]helpTopic) {
 		Flags: []helpFlag{
 			{"--profile <name>", "profile 名称；不传使用当前 profile"},
 			{"--as <user|app>", "登出身份，默认 user"},
+			{"--output <json>", "输出结构化 JSON；省略时保留默认文本"},
 		},
 		Examples: []string{
 			"contract-cli auth logout --profile contract --as user",
@@ -460,6 +475,7 @@ func addAuthHelp(registry map[string]helpTopic) {
 		Flags: []helpFlag{
 			{"--profile <name>", "profile 名称；不传使用当前 profile"},
 			{"--as <user|app>", "默认业务身份，默认 user"},
+			{"--output <json>", "输出结构化 JSON；省略时保留默认文本"},
 		},
 		Examples: []string{
 			"contract-cli auth use --profile contract --as app",
@@ -488,7 +504,8 @@ func addSkillsHelp(registry map[string]helpTopic) {
 	registry["skills list"] = helpTopic{
 		Name:    "skills list",
 		Summary: "列出当前二进制内置的 Agent skills。",
-		Usage:   []string{"contract-cli skills list"},
+		Usage:   []string{"contract-cli skills list [flags]"},
+		Flags:   []helpFlag{{"--output <json>", "输出 CLI 版本、执行路径和内置 Skill 清单；省略时保留默认文本"}},
 		Examples: []string{
 			"contract-cli skills list",
 		},
@@ -501,6 +518,7 @@ func addSkillsHelp(registry map[string]helpTopic) {
 			{"--target <dir>", "已确认的用户 Skill 安装目录；省略 --target 时默认使用 Codex：$CODEX_HOME/skills 或 ~/.codex/skills"},
 			{"--name <skill>", "只安装指定的内置 skill；默认安装全部"},
 			{"--force", "覆盖已存在的同名 skill；默认跳过"},
+			{"--output <json>", "输出安装和登记结果；失败时恢复建议放在 JSON error.details 中"},
 		},
 		Examples: []string{
 			"contract-cli skills install --target \"<已确认的当前客户端用户 Skill 目录>\" --force",
@@ -513,6 +531,7 @@ func addSkillsHelp(registry map[string]helpTopic) {
 			"不会自动识别当前客户端；其他客户端必须指定其实际读取且允许安装的用户 Skill 目录，不能省略 --target 来代替目录核实。",
 			"首次安装或未识别的历史位置需要先确认目录和覆盖范围；用户不知道路径时，可由 AI 核实后推荐并等待用户确认，再代为完整安装。",
 			"完整安装且无跳过项才新增整套 Skill 自动同步登记；后续全局升级处理全部已登记位置，不只更新当前客户端。",
+			"Ctrl+C 停止后续安装；已开始替换时先回滚原事务。若安装已提交则保留内容并明确报告已提交，取消退出 130。",
 		},
 	}
 }
@@ -532,6 +551,7 @@ func addUpdateHelp(registry map[string]helpTopic) {
 		Flags: []helpFlag{
 			{"--channel <latest|beta>", "npm dist-tag；正式版通常使用 latest，不传时根据当前版本推断"},
 			{"--json", "输出飞书式结构化 JSON；默认输出文本提示"},
+			{"--output <json>", "与 --json 兼容，成功、失败和取消均输出 JSON"},
 		},
 		Examples: []string{
 			"contract-cli update check",
@@ -725,6 +745,7 @@ func addContractHelp(registry map[string]helpTopic) {
 		Notes: []string{
 			"user: /open-apis/contract/v1/mcp/contracts/{contract_id}/text",
 			"app: /open-apis/contract/v1/contracts/{contract_id}/text",
+			"user 响应的业务 code 非零或 success=false 时，保留业务响应并返回非零退出码；错误保留本次 Trace ID。",
 		},
 	}
 	registry["contract create"] = helpTopic{

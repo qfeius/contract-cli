@@ -2,11 +2,49 @@ package oauth_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 
 	"cn.qfei/contract-cli/internal/oauth"
 )
+
+func TestDiscoverChecksDeclaredAuthorizationOriginBeforeFollowingMetadata(t *testing.T) {
+	const trusted = "https://accounts.example.test/.well-known/oauth-authorization-server/contract"
+	tests := []struct {
+		name, server, trusted string
+		allowed               bool
+	}{
+		{"same origin", "https://accounts.example.test/contract", trusted, true},
+		{"same origin different path", "https://accounts.example.test/another", trusted, true},
+		{"different origin", "https://other.example.test/contract", trusted, false},
+		{"http discovery", "http://accounts.example.test/contract", trusted, false},
+		{"userinfo discovery", "https://user:secret@accounts.example.test/contract", trusted, false},
+		{"different port", "https://accounts.example.test:8443/contract", trusted, false},
+		{"invalid trusted scheme", "https://accounts.example.test/contract", "http://accounts.example.test/metadata", false},
+		{"userinfo trusted URL", "https://accounts.example.test/contract", "https://user:secret@accounts.example.test/metadata", false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			requests := 0
+			client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				requests++
+				if requests == 1 {
+					return jsonResponse(fmt.Sprintf(`{"resource":"https://api.example.test","authorization_servers":[%q]}`, test.server)), nil
+				}
+				return jsonResponse(`{"token_endpoint":"https://accounts.example.test/token"}`), nil
+			})}
+			_, err := oauth.Discover(context.Background(), client, nil, "https://api.example.test/metadata", test.trusted)
+			if test.allowed {
+				if err != nil || requests != 2 {
+					t.Fatalf("allowed discovery error=%v requests=%d", err, requests)
+				}
+			} else if err == nil || requests > 1 {
+				t.Fatalf("untrusted discovery must stop before the second GET: error=%v requests=%d", err, requests)
+			}
+		})
+	}
+}
 
 func TestDiscover(t *testing.T) {
 	t.Parallel()

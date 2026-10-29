@@ -25,7 +25,7 @@ func TestContractSearchFailureLogsDoNotCopyHTTPResponseBody(t *testing.T) {
 			response.StatusCode = http.StatusBadRequest
 			return response, nil
 		})}})
-	err := app.Run(context.Background(), []string{"contract", "search", "--as", "user", "--profile", "contract"})
+	err := app.Run(context.Background(), []string{"contract", "search", "--as", "user", "--profile", "contract", "--debug"})
 	if err == nil {
 		t.Fatal("HTTP failure must return error")
 	}

@@ -19,9 +19,9 @@ func TestContractSkillsEnforceCredentialAndInvocationBoundaries(t *testing.T) {
 	for _, required := range []string{
 		"禁止无边界接口枚举与批量调用",
 		"具体业务目标",
-		"当前 CLI 只支持 prod",
-		"用户明确要求非生产环境时",
-		"历史非生产 profile 和凭证不迁移、不复用",
+		"实际访问目标由 profile 中的地址决定",
+		"用户明确要求 test 时",
+		"不同目标地址的凭证不迁移、不复用",
 		"允许操作的业务模块或接口范围",
 		"操作类型（查询或写入）",
 		"不得执行 `auth status`、`curl`、业务命令、帮助枚举或网络探测",
@@ -52,10 +52,10 @@ func TestContractSkillsEnforceCredentialAndInvocationBoundaries(t *testing.T) {
 
 	for _, required := range []string{
 		"不得主动询问或接收原始凭证",
-		"当前构建只支持 `prod`",
+		"`prod` 和 `test` 是地址预设",
 		"默认 profile 名为 `contract`",
-		"历史非生产 profile",
-		"不将旧环境的 Token 或 App Secret 迁入 prod",
+		"关键地址变化后必须重新授权",
+		"不同目标地址的 Token 或 App Secret 不迁移、不复用",
 		"Skill 更新后必须完全退出并新建任务",
 		"已有任务不会热加载新 Skill",
 		"命令示例仅供本地操作者使用",
@@ -75,11 +75,12 @@ func TestContractSkillsEnforceCredentialAndInvocationBoundaries(t *testing.T) {
 		"contract-dev",
 		"--env dev",
 		"--env blue",
-		"--env test",
+		"当前 CLI 只支持 prod",
+		"当前构建只支持 `prod`",
 		"联调构建支持",
 	} {
 		if strings.Contains(shared, forbidden) || strings.Contains(auth, forbidden) {
-			t.Fatalf("production skills still contain non-production guidance %q", forbidden)
+			t.Fatalf("skills contain unsupported environment guidance %q", forbidden)
 		}
 	}
 }

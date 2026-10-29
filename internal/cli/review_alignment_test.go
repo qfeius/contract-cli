@@ -15,6 +15,7 @@ import (
 
 	"cn.qfei/contract-cli/internal/cli"
 	"cn.qfei/contract-cli/internal/config"
+	"cn.qfei/contract-cli/internal/invocation"
 )
 
 const alignmentConfig = `{"selectedPosition":"甲公司","selectedAuditRole":"甲方","reviewStrength":"中立","selectedCheckListIds":["2001"]}`
@@ -68,15 +69,18 @@ func alignmentApp(t *testing.T, handle func(*http.Request) string) (*cli.App, *b
 		t.Fatal(err)
 	}
 	out := new(bytes.Buffer)
-	return cli.New(cli.Options{Stdout: out, Stderr: io.Discard, Store: store, HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		if handle == nil {
-			t.Fatalf("unexpected HTTP request: %s", r.URL.Path)
-		}
-		if r.Header.Get("Authorization") != "Bearer user-token" {
-			t.Fatalf("review must use user token")
-		}
-		return jsonResponse(handle(r)), nil
-	})}}), out
+	return cli.New(cli.Options{Stdout: out, Stderr: io.Discard, Store: store,
+		LookupEnv:          func(key string) (string, bool) { return "1", key == "CONTRACT_CLI_NO_UPDATE_CHECK" },
+		InspectEnvironment: func(context.Context, int) invocation.Result { return invocation.Result{} },
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if handle == nil {
+				t.Fatalf("unexpected HTTP request: %s", r.URL.Path)
+			}
+			if r.Header.Get("Authorization") != "Bearer user-token" {
+				t.Fatalf("review must use user token")
+			}
+			return jsonResponse(handle(r)), nil
+		})}}), out
 }
 
 func alignmentBody(t *testing.T, r *http.Request) map[string]any {

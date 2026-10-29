@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# 构建独立预发布 npm 包；版本须带 -test 标记，但环境能力与正式包一样仅 prod。
+# 构建独立预发布 npm 包；-test 仅为版本标记，目标服务由 profile 配置。
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${VERSION:-$(node -p "require('$ROOT_DIR/package.json').version")-test.1}"

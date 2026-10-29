@@ -1,6 +1,7 @@
 package skillsync
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -66,12 +67,24 @@ func targetLock(target string) (func(), error) {
 // Install preserves the existing skip/force and single-Skill interface.
 // Only a complete, unskipped installation confirms a synchronization location.
 func (s *Service) Install(target string, names []string, force, confirm bool) (result InstallResult, err error) {
+	return s.InstallContext(context.Background(), target, names, force, confirm)
+}
+
+// InstallContext stops new installation work on cancellation. Recovery of a
+// previous transaction and rollback of live changes always finish before unlock.
+func (s *Service) InstallContext(ctx context.Context, target string, names []string, force, confirm bool) (result InstallResult, err error) {
 	s.log().Info("Skill installation started", "complete", confirm, "force", force)
 	defer func() {
 		if err != nil {
+			if ctx.Err() != nil && !errors.Is(err, ctx.Err()) {
+				err = errors.Join(err, ctx.Err())
+			}
 			s.log().Error("Skill installation failed", "error", err.Error())
 		}
 	}()
+	if err = ctx.Err(); err != nil {
+		return result, err
+	}
 	if _, err = Plan(names, nil); err != nil {
 		return result, err
 	}
@@ -80,6 +93,9 @@ func (s *Service) Install(target string, names []string, force, confirm bool) (r
 		return result, err
 	}
 	result.Target = target
+	if err = ctx.Err(); err != nil {
+		return result, err
+	}
 	unlock, err := s.lock()
 	if err != nil {
 		return result, err
@@ -87,6 +103,9 @@ func (s *Service) Install(target string, names []string, force, confirm bool) (r
 	defer unlock()
 	r, err := s.load()
 	if err != nil {
+		return result, err
+	}
+	if err = ctx.Err(); err != nil {
 		return result, err
 	}
 	if err = os.MkdirAll(target, 0755); err != nil {
@@ -97,10 +116,16 @@ func (s *Service) Install(target string, names []string, force, confirm bool) (r
 		return result, err
 	}
 	defer release()
+	if err = ctx.Err(); err != nil {
+		return result, err
+	}
 	if err = s.recover(target, r); err != nil {
 		return result, err
 	}
 	for _, name := range names {
+		if err = ctx.Err(); err != nil {
+			return result, err
+		}
 		if !force && exists(filepath.Join(target, name)) {
 			result.Skipped = append(result.Skipped, name)
 		} else {
@@ -136,7 +161,9 @@ func (s *Service) Install(target string, names []string, force, confirm bool) (r
 		return s.save(upsert(r, *l))
 	}
 	if len(result.Installed) > 0 || confirm {
-		err = s.replace(target, result.Installed, remove, l, commit)
+		err = s.replaceContext(ctx, target, result.Installed, remove, l, commit)
+	} else {
+		err = ctx.Err()
 	}
 	if err == nil {
 		result.Confirmed = confirm

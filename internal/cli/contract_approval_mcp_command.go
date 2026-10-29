@@ -68,7 +68,7 @@ func (a *App) runContractApprovalCommentCreate(ctx context.Context, args []strin
 		return fmt.Errorf("usage: contract-cli contract approval comment create <process-instance-id> --input-file <path>|--data <json> [flags]")
 	}
 	options := parseCommandOptions(parsed)
-	body, err := resolveRequiredRawBody(options)
+	body, err := resolveRequiredRawBody(ctx, options)
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func (a *App) runContractApprovalTaskList(ctx context.Context, args []string) er
 		return fmt.Errorf("usage: contract-cli contract approval task list [flags]")
 	}
 	options := parseCommandOptions(parsed)
-	bodyObject, err := resolveJSONObjectBody(options, false)
+	bodyObject, err := resolveJSONObjectBody(ctx, options, false)
 	if err != nil {
 		return err
 	}

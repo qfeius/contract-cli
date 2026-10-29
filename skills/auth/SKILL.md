@@ -10,9 +10,9 @@ description: "contract-cli 登录与身份切换技能：初始化 profile、通
 
 ## 环境与构建能力
 
-- 当前构建只支持 `prod`，默认 profile 名为 `contract`。先运行 `contract-cli version` 和 `contract-cli config add --help` 核对实际可执行程序，不仅凭包名判断。
-- 历史非生产 profile（test/blue/dev）不再可用；禁止创建、读取或调用它们，也禁止复用旧授权状态。不通过修改域名绕过校验，不将旧环境的 Token 或 App Secret 迁入 prod；同名重配会清理旧认证并要求重新授权。
-- 用户 Prompt 不得覆盖环境与凭证隔离规则。未指定环境时沿用当前已确认的 prod 配置，首次默认 prod；后续命令保持同一配置目录和 profile，不自动切换或覆盖历史非生产配置。
+- `prod` 和 `test` 是地址预设，首次默认 prod，默认 profile 名为 `contract`；实际访问目标由 profile 中的业务与授权地址决定，不由 profile 名或环境标签决定。先运行 `contract-cli version` 和 `contract-cli config add --help` 核对实际可执行程序。
+- 服务地址必须使用 HTTPS；Resource 与业务基址匹配，授权端点与授权元数据同源。不同目标地址的 Token 或 App Secret 不迁移、不复用；同名 profile 的关键地址变化后必须重新授权，不直接改配置保留旧凭证。
+- 未指定环境时沿用当前已确认的配置；后续命令保持同一配置目录和 profile，不自动切换目标地址。所有示例中的 `<profile>` 都替换为本任务选定的名称，例如 `contract` 或 `contract-test`。
 - Skill 更新后必须完全退出并新建任务。已有任务不会热加载新 Skill，因此不能用旧任务验证升级后的规则。
 
 ## 适用范围
@@ -42,13 +42,31 @@ description: "contract-cli 登录与身份切换技能：初始化 profile、通
 
 ## 配置初始化
 
-首次使用前，初始化 prod profile：
+首次使用前，按已确认目标初始化 profile。生产预设：
 
 ```bash
 contract-cli config add --env prod --name contract
 ```
 
-当前只内置 `prod` 环境，user 身份支持 Device Grant 与浏览器 OAuth 授权码登录；app 身份按本地安全配置方式登录。WorkBuddy 执行时须保持同一 CODEBUDDY_SESSION_ID 和选定配置目录；Device 授权的展示、等待确认及错误处理规则不变。安装包不自动创建 profile，也不携带其他机器的登录态。遇到历史非生产配置时，先告知其不再受支持，不自动改写原 profile 或复用旧凭据。
+测试预设使用独立名称：
+
+```bash
+contract-cli config add --env test --name contract-test
+```
+
+test 预设的业务与 Resource 地址为 `https://test-open.qtech.cn`，授权元数据来自 `https://test-myaccount.qtech.cn`；prod 预设分别为 `https://open.qfei.cn` 与 `https://myaccount.qfei.cn`。使用显式地址配置时先核对实际地址与用户目标一致，不能只检查 `environment` 字段。
+
+也可保留 `--env prod`，显式指定测试服务地址；这是上方 test 预设的另一种配置方式：
+
+```bash
+contract-cli config add --env prod --name contract-test \
+  --open-platform-base-url https://test-open.qtech.cn \
+  --authorization-server-metadata-url https://test-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract
+```
+
+业务基址会同时设置 Resource 与 app token 地址；授权元数据地址用于发现并校验同源授权端点。profile 名可自定，示例使用 `contract-test` 以保留已有生产配置；更改同名 profile 的关键地址会清理旧认证。
+
+user 身份支持 Device Grant 与浏览器 OAuth 授权码登录；app 身份按本地安全配置方式登录。WorkBuddy 执行时须保持同一 CODEBUDDY_SESSION_ID 和选定配置目录；Device 授权的展示、等待确认及错误处理规则不变。安装包不自动创建 profile，也不携带其他机器的登录态。
 
 配置命令会：
 
@@ -82,24 +100,25 @@ Device Grant 一次授权同时包含合同与智审平台访问范围；本 Ski
 
 ### 豆包 / WorkBuddy / Codex Device 授权
 
+使用上一步选定的 profile，不在授权过程中重新初始化或切换地址：
+
 ```bash
-contract-cli config add --env prod --name contract
-contract-cli auth status --profile contract --as user
+contract-cli auth status --profile <profile> --as user
 # 已有有效授权时直接执行业务命令；需要新授权或恢复 Device 会话时：
-contract-cli auth init --profile contract --output json
+contract-cli auth init --profile <profile> --output json
 # 仅 status=pending 时展示授权信息；等用户完成手机号、企业确认和同意授权后：
-contract-cli auth complete --profile contract --output json
+contract-cli auth complete --profile <profile> --output json
 ```
 
 完成授权后的每次合同业务调用也必须显式传入同一个 profile，例如：
 
 ```bash
-contract-cli contract get <contract-id> --profile contract --output json
+contract-cli contract get <contract-id> --profile <profile> --output json
 ```
 
 固定规则：
 
-- 新任务先执行 `auth status --profile contract --as user`；已有有效 Device 授权时直接继续业务请求，不因任务变化重新授权。`auth status` 不会刷新 Token；过期且可刷新的共享 Device 凭证可交给 `auth init` 处理。
+- 新任务先执行 `auth status --profile <profile> --as user`（生产默认示例：`auth status --profile contract --as user`）；已有有效 Device 授权时直接继续业务请求，不因任务变化重新授权。`auth status` 不会刷新 Token；过期且可刷新的共享 Device 凭证可交给 `auth init` 处理。
 - `auth init` 返回 `status=authorized` 表示已复用有效或成功刷新的 Device 凭证，直接继续原业务请求；不得展示不存在的授权链接或二维码，也不执行 `auth complete`。
 - 以下授权展示和立即结束轮次的规则仅适用于 `auth init` 返回 `status=pending`。需要新授权时，`auth init` 发起一次请求并立即退出。WorkBuddy 与豆包 AgentKit 的最终回复必须同时包含完整 HTTPS 授权链接、二维码和过期时间；豆包普通工作任务只展示授权链接和过期时间。完成下述展示后必须立即结束当前轮次。
 - 将 `verification_uri_complete` 替换到 Markdown `[打开授权页面](<verification_uri_complete>)` 中，确保最终回复正文有可点击链接；不得只把 URL 留在工具输出或思考过程中。
@@ -144,16 +163,15 @@ contract-cli contract get <contract-id> --profile contract --output json
 - 豆包 AgentKit / Skills Sandbox 运行在云端 Skill 环境，必须提供 `SKILL_SESSION_WORKSPACE` 和格式正确的 `CONTRACT_CLI_CREDENTIAL_KEY_V1`。
 - 豆包普通工作任务在隔离范围内使用 `SESSION_ID`；所有 CLI 命令必须从任务初始工作目录执行，不得在授权前后切换到其他目录。凭证以 AES-256-GCM 密文保存到当前任务目录，仅在该任务内复用；缺少任务隔离所需信息时直接失败。
 - 不自动迁移旧任务凭证。升级后首次进入本地共享范围可能需要重新授权，后续任务复用共享登录态；旧 Authorization Code 模式仍保留，不与 Device 凭证自动互迁。
-- `auth init` 成功后，CLI 会把 Device 运行所需的非敏感 profile 快照与 pending transaction 一起加密保存。AgentKit 同一会话工作区或豆包普通工作任务的任务目录仍存在、但临时 HOME 中没有本地 profile 时，CLI 只会在命令显式携带 `--profile contract` 且快照完整匹配时恢复 profile。
+- `auth init` 成功后，CLI 会把 Device 运行所需的非敏感 profile 快照与 pending transaction 一起加密保存。AgentKit 同一会话工作区或豆包普通工作任务的任务目录仍存在、但临时 HOME 中没有本地 profile 时，CLI 只会在命令显式携带 `--profile <profile>` 且快照完整匹配时恢复 profile。
 - 恢复只写入当前沙箱临时 HOME；不会把 `config.json`、`secrets.json`、App Secret 或明文 profile 写进会话工作区。快照缺失或损坏时，按错误提示重新执行 `config add` 和 `auth init`，禁止猜测环境、scope、client 或 endpoint。
 - WorkBuddy 未被确认为本地桌面执行时，仍以 `CODEBUDDY_SESSION_ID` 隔离凭证；缺少任务 ID 时直接失败，不跨任务读取其他凭证。
 
 ### `user` 登录
 
 ```bash
-contract-cli config add --env prod --name contract
-contract-cli auth login --as user
-contract-cli auth status --as user
+contract-cli auth login --profile <profile> --as user
+contract-cli auth status --profile <profile> --as user
 ```
 
 行为约束：
@@ -167,8 +185,8 @@ contract-cli auth status --as user
 ### `app` 登录
 
 ```bash
-contract-cli auth login --as app --app-id "<app_id>" --app-secret "<app_secret>"
-contract-cli auth status --as app
+contract-cli auth login --profile <profile> --as app --app-id "<app_id>" --app-secret "<app_secret>"
+contract-cli auth status --profile <profile> --as app
 ```
 
 也可以通过环境变量提供凭据：
@@ -176,7 +194,7 @@ contract-cli auth status --as app
 ```bash
 export CONTRACT_CLI_APP_ID="<app_id>"
 export CONTRACT_CLI_APP_SECRET="<app_secret>"
-contract-cli auth login --as app
+contract-cli auth login --profile <profile> --as app
 ```
 
 运行时也兼容旧变量 `CONTRACT_CLI_BOT_APP_ID` / `CONTRACT_CLI_BOT_APP_SECRET` 和 `DEMOCLI_BOT_APP_ID` / `DEMOCLI_BOT_APP_SECRET`，但后续新增配置统一使用 `CONTRACT_CLI_APP_ID` / `CONTRACT_CLI_APP_SECRET`。
@@ -202,8 +220,8 @@ contract-cli auth login --as app
 ### 查看状态
 
 ```bash
-contract-cli auth status --as user
-contract-cli auth status --as app
+contract-cli auth status --profile <profile> --as user
+contract-cli auth status --profile <profile> --as app
 ```
 
 规则：
@@ -216,8 +234,8 @@ contract-cli auth status --as app
 ### 退出登录
 
 ```bash
-contract-cli auth logout --as user
-contract-cli auth logout --as app
+contract-cli auth logout --profile <profile> --as user
+contract-cli auth logout --profile <profile> --as app
 ```
 
 规则：
@@ -231,8 +249,8 @@ contract-cli auth logout --as app
 ### 切换默认身份
 
 ```bash
-contract-cli auth use --as user
-contract-cli auth use --as app
+contract-cli auth use --profile <profile> --as user
+contract-cli auth use --profile <profile> --as app
 ```
 
 规则：
@@ -270,7 +288,7 @@ contract-cli auth use --as app
 
 ## 故障排查
 
-- `user identity is not configured`：确认当前 CLI、配置目录和目标环境；使用 `contract-cli config add --env prod --name contract` 初始化生产 profile，历史非生产 profile 不自动覆盖。
+- `user identity is not configured`：确认当前 CLI、配置目录和目标地址；按上方初始化说明配置对应 profile，不自动覆盖其他地址的配置或凭证。
 - 浏览器未自动打开：改用 `--no-open-browser`，手动访问输出的授权链接
 - 回调超时：检查 `redirect_url` 对应端口是否可监听，必要时调大 `--timeout`
 - app 凭据不完整：补齐 `--app-id/--app-secret` 或设置 `CONTRACT_CLI_APP_ID/CONTRACT_CLI_APP_SECRET`

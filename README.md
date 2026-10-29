@@ -107,26 +107,48 @@ contract-cli --version
 
 ### 2. 初始化本地 profile
 
-当前源码构建仅支持 `prod`，默认 profile 为 `contract`；其他环境会在发请求前被拒绝，旧环境的同名 profile 重新配置时会清理旧认证，避免复用凭据。prod API 地址为 `https://open.qfei.cn`、账号地址为 `https://myaccount.qfei.cn`。
+当前源码构建提供 `prod` 和 `test` 地址预设，首次默认 prod，默认 profile 为 `contract`。实际访问目标由 profile 中的业务与授权地址决定；profile 名和 `environment` 标签不决定请求域名。服务地址须为 HTTPS，Resource 与业务基址匹配，授权端点与授权元数据同源；同名 profile 的关键地址变化会清理旧认证并要求重新授权。
 
-若需验证 npm 包构建流程，可生成独立的本地预发布包；版本中的 `-test` 只是包标记，运行时仅支持 `prod`，也不发布到 npm：
+| 预设 | 业务与 Resource 地址 | 账号地址 |
+| --- | --- | --- |
+| prod | `https://open.qfei.cn` | `https://myaccount.qfei.cn` |
+| test | `https://test-open.qtech.cn` | `https://test-myaccount.qtech.cn` |
+
+若需验证 npm 包构建流程，可生成独立的本地预发布包；版本中的 `-test` 只是包标记，不决定目标环境，也不发布到 npm。将下方版本占位替换为本次预发布版本：
 
 ```bash
-VERSION=1.8.4-test.20260923.6 bash scripts/build-test-package.sh
+VERSION='X.Y.Z-test.<修订号>' bash scripts/build-test-package.sh
 ```
 
-历史联调包可能仍含 test/blue 等旧环境能力，请通过新构建的 `config add --help` 核对当前能力。审批矩阵的 user/app 双身份和规则 OpenAPI 命令保持不变；真实环境验证仍需对应后端及网关配置，见 [双身份接入说明](docs/approval-matrix-user-app-auth.md)。不要在对话中发送 Token 或 App Secret。
+已安装版本的能力可能不同，请通过实际可执行程序的 `config add --help` 核对。审批矩阵的 user/app 双身份和规则 OpenAPI 命令保持不变；真实环境验证仍需对应后端及网关配置，见 [双身份接入说明](docs/approval-matrix-user-app-auth.md)。不要在对话中发送 Token 或 App Secret。
 
-首次使用前，需要在本机初始化一个 profile。本文统一使用 `contract` 作为示例名称，客户可以按项目名称自行调整。
+首次使用前，需要在本机初始化一个 profile。本文多数命令使用 `contract` 作为生产预设示例；所有后续命令必须替换为本任务实际选定的 profile，不自动切换地址。
 
 ```text
 contract-cli config add --env prod --name contract
 contract-cli auth status --profile contract --as user
 ```
 
+测试预设使用独立 profile；后续授权和业务调用都显式传入 `--profile contract-test`：
+
+```text
+contract-cli config add --env test --name contract-test
+contract-cli auth status --profile contract-test --as user
+```
+
+也可保留 `--env prod`，显式指定测试地址，profile 名可自定；此处使用独立名称以保留生产配置：
+
+```text
+contract-cli config add --env prod --name contract-test \
+  --open-platform-base-url https://test-open.qtech.cn \
+  --authorization-server-metadata-url https://test-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract
+```
+
+`--open-platform-base-url` 同时设置 Resource 和 app token 地址；`--authorization-server-metadata-url` 是授权端点同源校验的依据。配置完成后，授权和查询都沿用选定的 profile。
+
 | 参数 | 含义 | 示例值 |
 | --- | --- | --- |
-| `--env` | 目标环境 | `prod` |
+| `--env` | 默认地址预设 | `prod`、`test` |
 | `--name` | 本机 profile 名称 | `contract` |
 | `--profile` | 后续命令指定使用的 profile | `contract` |
 
@@ -187,7 +209,7 @@ contract-cli auth login --profile contract --as app --app-id <app_id> --app-secr
 contract-cli auth status --profile contract --as app
 ```
 
-正式包默认使用 `contract` profile 和 `prod` 环境；CLI 不会使用历史非生产 profile 发起授权或业务请求，也不会把旧凭据迁入 prod。更新 Skills 后必须完全退出并重新启动，然后新建任务；已有任务不会热加载新 Skill。
+默认使用 `contract` profile 和 `prod` 地址预设；自定义目标以 profile 中的实际地址为准，不同目标地址的凭据不能迁移或复用。更新 Skills 后必须完全退出并重新启动，然后新建任务；已有任务不会热加载新 Skill。
 
 也可以通过环境变量提供应用凭证：
 
@@ -763,6 +785,37 @@ contract-cli contract search --help
 | 维护和搜索规则行 | `contract-cli rule table row create --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --input-file row.json`<br>`contract-cli rule table row search --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --page-size 10 --input-file row-search.json`<br>`contract-cli rule table row update <row-id> --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id> --input-file row.json`<br>`contract-cli rule table row delete <row-id> --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id>` |
 | 预发布/发布规则表 | `contract-cli rule table pre-release --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id>`<br>`contract-cli rule table release --profile contract --as app --product-id <product-id> --group-id <group-id> --table-id <table-id>` |
 
+## 命令链路、调试日志与取消
+
+每次业务命令生成一个 32 位十六进制 Trace ID；命令中的多个接口、分页请求、流式请求和允许的重试共享该 ID。下一次命令生成新 ID，请求覆盖发送：
+
+```text
+traceparent: 00-<32 位 trace_id>-<16 位 span_id>-01
+X-Log-Id: <与 traceparent 相同的 trace_id>
+```
+
+每次 CLI 显式发送尝试（包括允许的只读网络重试或 Token 刷新后的业务重放）使用新的 `span_id`，它对应 W3C 的 parent-id；底层自动重定向和透明重试保持原有行为。命令入口、完成、失败和业务请求的调试日志带 `trace_id`；最终安全错误也带 `trace_id=<值>`，业务 JSON、表格和 raw 输出结构保持不变。
+
+默认不打印内部诊断或请求日志。添加全局 `--debug` 后将调试日志写到 stderr；显式指定 `--output json`（更新检查也兼容 `--json`）时，每条调试记录为独立一行 JSON，其他情况为文本。Trace 请求头始终正常发送，与日志开关无关。
+
+命令失败时，显式 `--output json`（或 `--output=json`）将错误作为单行 JSON 写到 stderr：`{"ok":false,"error":{"type":"command","message":"...","trace_id":"..."},"_notice":{"update":{...}}}`。`update check --json` 同样使用 JSON 错误，其他命令的 `--json` 不切换错误格式。Trace ID 和更新通知仅在本次执行已有相应信息时出现；通知复用命令开始阶段的结果，错误出口不重新联网检查。其他模式保留 `error: ...` 文本摘要；有本次已准备的更新通知时，在摘要后追加一行升级提示和命令。成功的业务输出保持原样，普通失败与超时退出码为 1。
+
+首次 Ctrl+C 取消当前操作、回收环境探测辅助进程并以 130 退出；再次 Ctrl+C 恢复系统默认强退行为。输入文件、stdin 管道及 Unix FIFO 等待支持取消。取消的写请求仍可能已经生效：保留 `uncertain_write` 或本地导入计划的 `uncertain/unverified` 状态，不自动重试后续写入。JSON 错误中此时可同时出现 `type=uncertain_write` 和 `cancelled=true`。
+
+`skills install` 在元数据读取、资源暂存、逐项替换、校验和提交前检查取消；收到首次 Ctrl+C 后停止后续安装。已开始替换时沿现有事务恢复原有 Skill、管理标记和登记；恢复失败则保留事务材料并报告 `recovery.status=failed`。安装提交完成后才收到取消时保留已提交内容，JSON 错误详情报告 `recovery.status=committed` 和 `installation` 实绩。取消为协作式检查，当前文件系统调用及必要的恢复会完成后再退出；新建的空目标根目录可能保留。
+
+```bash
+contract-cli contract search --profile contract --as user --output json
+contract-cli contract search --profile contract --as user --debug
+contract-cli contract search --profile contract --as user --debug --output json >result.json 2>debug.jsonl
+```
+
+调试日志复用既有安全字段与脱敏逻辑，不增加原始凭据、请求体或响应体转储。`--debug=false` 显式关闭调试，同一次调用重复传入时最后一个值生效；同一 App 下次执行不会继承前次开关。显式注入 `cli.Options.Logger` 的库调用方继续自行控制其 observer 的格式与级别，默认 CLI 不注入该选项。
+
+用户附件上传的 prepare、content、commit 共用命令 ID；签名存储下载通过本地日志和安全错误关联 ID，不向签名地址新增 Trace 头。直接使用底层 Client 且没有命令上下文时，仍按每个逻辑请求生成 ID。帮助、版本、本地环境诊断及 config/auth/skills/update 不新建业务命令 Trace；OAuth 和更新请求保持现有独立通道。
+
+Trace ID 只用于日志与链路关联，不参与鉴权、幂等或来源可信度判断。网关和下游服务仍需保留 `traceparent` 才能形成跨服务关联；CLI 本身不导出 Span。
+
 ## 推荐 Agent 提示词
 
 第一次让 Agent 处理合同开放平台任务时，可以直接复制下面这段：
@@ -802,14 +855,7 @@ contract-cli --version
 
 ### 提示 `profile "contract" not found` 怎么办？
 
-说明还没有初始化本地 profile。执行：
-
-```text
-contract-cli config add --env prod --name contract
-
-
-
-```
+先核对 CLI 使用的配置目录和 profile 名称，再按前文“初始化本地 profile”配置本任务已确认的目标地址。不要因为 profile 缺失而自动切换到生产预设或覆盖其他地址的配置。
 
 ### 提示未授权怎么办？
 
@@ -870,6 +916,23 @@ contract-cli contract search --help
 ```
 
 优先查看已安装 skills 中的 `SKILL.md` 和 `references/`；查阅 GitHub 在线文档时，请选择与 CLI 版本对应的发布标签。
+
+## 本地管理命令 JSON 输出
+
+`config add`、`auth login/status/logout/use`、`version`（含 `--version`、`-version`、`-v`）、`skills list/install`、`update check` 均支持显式 `--output json` 或 `--output=json`，省略时保留默认文本。这些本地管理命令仅新增 JSON 格式，不接受 yaml/table。
+
+```bash
+contract-cli version --output json
+contract-cli auth status --profile contract --as user --output json
+contract-cli skills list --output json
+contract-cli update check --output json
+```
+
+新支持的成功结果在 stdout 输出一个 `{"ok":true,"data":{...}}` JSON 对象；`update check` 为兼容已有脚本，继续使用原 `--json` 的顶层字段。失败或取消时 stdout 为空，错误写 stderr；开启 `--debug` 时 stderr 为 JSONL。`auth login` 需要手动打开授权链接时，在 stderr 输出 `authorization_required` JSON 事件，`authorization_url` 为授权链接。`skills install` 的 JSON 失败结果将 CLI 信息、登记位置、恢复状态和建议放入 `error.details`，成功结果包含安装项、跳过项和登记情况。Token 和 App Secret 不写入结果。
+
+管理命令在保存及成功输出前检查取消，并在实际 stdout 写入前再次检查，避免输出 `ok:true` 后又报告取消。写入开始前取消保留旧配置、凭据和更新缓存；已完成的提交通过 `error.details.state=committed`、`operation` 和安全的 `result` 摘要说明实绩。App Secret 已落盘时会完成配套 Profile 保存，Device Token 已确认撤销时会完成本地清理；这些必要收尾不额外切换默认身份或输出成功。普通 App 登录失败仍保留既有的凭据保存行为，Secret 存储错误会在 Token exchange 后发现。Skill 继续使用其原有 `recovery/installation` 详情结构。
+
+取消为协作式检查，不能撤回已经开始写入 stdout 的字节；脚本应同时检查退出码和 stderr。版本命令及其别名收到取消时也退出 130。
 
 ## 参考
 

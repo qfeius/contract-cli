@@ -114,7 +114,7 @@ func (a *App) runMatrixExtension(ctx context.Context, resource string, args []st
 		return fmt.Errorf("matrix extensions support --user-id-type tenant_employee_id or user_id")
 	}
 	var body []byte
-	body, err = resolveRequiredRawBody(options)
+	body, err = resolveRequiredRawBody(ctx, options)
 	if err != nil {
 		return err
 	}

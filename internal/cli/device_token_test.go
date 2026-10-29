@@ -390,19 +390,12 @@ func (f deviceRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, e
 func newDeviceTokenTestApp(t *testing.T, token *config.Token, handler deviceRoundTripFunc) (*App, *deviceMemoryCredentialStore, *int) {
 	t.Helper()
 	store := config.NewStore(t.TempDir())
-	profile := config.Profile{
-		Name: "contract", Environment: "prod", Resource: "https://open.qfei.cn",
-		OpenPlatformBaseURL: "https://open.qfei.cn", BusinessType: "contract", DefaultIdentity: config.IdentityUser,
-		Identities: config.Identities{User: config.UserIdentity{
-			AuthMode: config.UserAuthModeDevice, DeviceClientID: "zscli_892efdadc11a3f53",
-			TokenEndpoint: "https://myaccount.qfei.cn/api/public/oauth/token/contract",
-		}},
-	}
+	profile := validProductionProfile()
 	if err := store.UpsertProfile(profile, true); err != nil {
 		t.Fatal(err)
 	}
 	credentials := &deviceMemoryCredentialStore{values: map[string]credential.DeviceCredential{
-		"contract": {Token: token},
+		"contract": {Token: token, DeviceProfile: snapshotDeviceProfile(profile)},
 	}}
 	calls := 0
 	workspace := t.TempDir()
