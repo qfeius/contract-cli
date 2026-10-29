@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-- 当前仅内置 `prod` 环境预设；历史非生产 profile 和对应网络端点会在请求前被拒绝，不自动迁移凭据。首次配置：`contract-cli config add --env prod --name contract`
+- 内置 `prod/test` 地址预设，实际目标以 profile 的业务和授权地址为准；关键地址变化后重新授权，不迁移旧凭据。首次生产配置：`contract-cli config add --env prod --name contract`
 - `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是当前同时支持 `user` 与 `app` 的结构化业务命令
 - `rule *`（包括 `approval-matrix` 别名）支持 `--as user` / `--as app`；user 当前限 contract 产品且需要合同规则管理权限。
 - `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 当前仅支持 `--as app`
@@ -14,7 +14,7 @@
 - 除上述双身份和 app-only 能力外，当前其他结构化业务命令仍只支持 `--as user`
 - `app` 目前已经支持登录、状态查看、登出、默认身份切换
 - 配套 Skill 使用当前 CLI 内置内容，通过 `contract-cli skills install --target "<已确认的用户 Skill 目录>" --force` 完整安装并登记；历史 `npx skills add ...` 入口保留，但不能替代与当前 CLI 配套的版本同步
-- `update check` 支持手动检查 npm 远端版本；默认输出文本，带 `--json` 时返回飞书式 JSON；CLI 会为符合条件的普通命令按 24 小时缓存检查远端版本，并在 JSON object 输出中注入 `_notice.update`
+- `update check` 支持手动检查 npm 远端版本；默认输出文本，带 `--output json` 或兼容参数 `--json` 时返回飞书式 JSON；CLI 会为符合条件的普通命令按 24 小时缓存检查远端版本，在成功的 JSON object 输出和显式 JSON 错误中附带 `_notice.update`，文本错误显示本次已有的升级提示
 - `environment inspect` 可以在本地查看当前父进程链对应的客户端来源；所有实际业务 HTTP 请求都会在发送前重新探测并覆盖来源 Header
 - 当前全部已支持命令都可以通过 `--help` 查看本地帮助，例如 `contract-cli --help`、`contract-cli contract search --help`、`contract-cli help contract upload-file`
 - `app` 业务接口后续继续新增时，优先在本文件补充命令矩阵
@@ -121,6 +121,22 @@ contract-cli contract get <contract-id> --help
 
 默认输出格式是 `json`。
 
+全局 `--debug` 默认关闭，支持放在命令前或子命令参数中；`--debug=false` 可显式关闭，重复时最后一个值生效。开启后，命令和请求调试日志写入 stderr，显式 `--output json` 或更新检查的 `--json` 使每条日志使用单行 JSON；未显式指定时使用文本。业务结果仍写 stdout，Trace 请求头不受调试开关影响。
+
+```bash
+contract-cli rule table import plan --profile contract --as app --product-id contract --group-id approve_matrix --table-id <table-id> --input-file import.json --debug --output json >result.json 2>debug.jsonl
+```
+
+显式 `--output json` 或 `--output=json` 时，失败或取消结果在 stderr 输出单行 JSON：`{"ok":false,"error":{"type":"...","message":"...","trace_id":"..."},"_notice":{...}}`；`update check --json` 同样使用 JSON 错误，其他命令的 `--json` 不切换错误格式。其他模式保留 `error: ...` 文本摘要，有本次已有的更新通知时，在摘要后追加一行升级提示和命令。业务结果默认是 JSON 不等于错误也默认 JSON。普通失败与超时退出 1，取消退出 130，成功退出 0。
+
+`config add`、`auth login/status/logout/use`、`version`（含 `--version`、`-version`、`-v`）、`skills list/install`、`update check` 均支持显式 JSON，省略输出参数时保留默认文本；这些命令只新增 `--output json`，不接受 yaml/table。成功在 stdout 输出一个 `{"ok":true,"data":{...}}` 对象；`update check` 兼容已有 `--json` 顶层字段。失败或取消时 stdout 为空，stderr 输出错误；调试记录和授权指引为 stderr JSONL，适合分别重定向两条流。非法位置参数会在执行命令操作前被拒绝。
+
+管理命令在配置/认证响应完成后、保存前及实际 stdout 写入前检查取消；写入前取消不会继续保存配置、Token 或更新缓存。已完成的提交在 `error.details` 中返回 `state=committed`、`operation` 与安全 `result`，区分 `credentials_saved/profile_saved`、认证清理和缓存保存等实绩，不输出凭据值。Secret 写入已完成时会完成匹配 Profile 的必要保存，Device 撤销已确认时会完成本地删除；默认身份不因晚到取消而额外切换。普通 App exchange 失败仍保存输入凭据，Secret 存储失败在 exchange 后发现。自动检查自身超时仍降级，命令 context 取消则停止后续分发；版本别名取消退出 130。已经开始写出的 stdout 字节无法撤回。
+
+错误 JSON 的 `error.type` 区分 `command`、`http`、`timeout`、`cancelled`、`uncertain_write`；Trace ID、HTTP 状态及取消标志按实际错误链填写，更新通知复用本次执行已准备的 `_notice.update`，不会在取消后重新请求版本服务。HTTP 200 下的非零业务码是否保留 stdout 业务 JSON，沿用各命令原有行为，不额外包装成功或已有业务输出。
+
+第一次 Ctrl+C 沿上下文取消输入、HTTP、授权等待和环境探测，并等待探测子进程回收；第二次 Ctrl+C 可强退。导入 apply 遇取消先保留原有计划落盘与输出，发送中结果不确定的行仍为 `uncertain`，已写入但回读取消的行仍为 `unverified`，停止后续写入且退出 130，不将取消当成“后端未执行”。
+
 ### 通用请求体输入
 
 需要请求体的命令统一使用：
@@ -168,11 +184,16 @@ contract-cli config add --env prod --name contract
 
 支持参数：
 
-- `--env`：环境预设，仅支持 `prod`，默认 `prod`
+- `--env`：地址预设，支持 `prod/test`，默认 `prod`；实际目标由 profile 地址决定
 - `--name`：profile 名称，默认 `contract`
+- `--open-platform-base-url`：覆盖业务基址，同时设置 Resource 与 app token 地址
+- `--authorization-server-metadata-url`：指定可信授权元数据地址，发现的授权端点必须与其同源
 - `--resource-metadata-url`：覆盖 protected resource metadata 地址
 - `--redirect-url`：覆盖 OAuth callback 地址
 - `--scope`：覆盖默认 scope 列表
+- `--output json`：返回安全配置摘要 `profile/environment/default_identity/resource/authentication_reset`，不包含凭据
+
+关键地址变化后，旧凭证不能继续复用，需要重新授权；所有后续命令使用同一 profile。
 
 执行结果：
 
@@ -190,7 +211,10 @@ contract-cli config add --env prod --name contract
 ```bash
 contract-cli version
 contract-cli --version
+contract-cli version --output json
 ```
+
+`--output json` 返回 `data.name/version/commit/built_at/feature_baseline`；默认保持原版本文本。
 
 #### `contract-cli update check`
 
@@ -202,12 +226,14 @@ contract-cli --version
 contract-cli update check
 contract-cli update check --channel latest
 contract-cli update check --channel latest --json
+contract-cli update check --channel latest --output json
 ```
 
 支持参数：
 
 - `--channel`：npm dist-tag；不传时根据当前版本推断，预发布版本默认检查 `beta`，稳定版本默认检查 `latest`
 - `--json`：输出飞书式结构化 JSON；默认输出文本提示
+- `--output json`：与 `--json` 返回相同结构，成功、失败、取消及调试记录均使用 JSON；显式 JSON 不会被 `--json=false` 关闭
 
 执行结果：
 
@@ -221,10 +247,10 @@ contract-cli update check --channel latest --json
 
 自动提示：
 
-- 普通命令会先同步读取当前配置目录的 `update-check.json`；缓存里有可升级版本时，仅在 JSON object 输出中注入 `_notice.update`
+- 普通命令会先同步读取当前配置目录的 `update-check.json`；成功的 JSON object 输出通过 `_notice.update` 提示；失败或取消时，显式 JSON 错误携带 `_notice.update`，文本错误在 stderr 追加已有通知的升级提示
 - 命中 fresh cache 时不访问 npm registry，因此不会立即发现刚发布的新包
 - cache 缺失、channel 不匹配或过期时，当前命令会在短超时内同步刷新远端版本；成功结果会写入当前配置目录的 `update-check.json`
-- 网络失败、registry 失败或当前是 dev 构建时不会阻断原命令；刷新失败不会写入失败缓存
+- 网络失败、registry 失败或版本字符串为 `dev`、`unknown` 等不可检查版本时，不会阻断原命令；刷新失败不会写入失败缓存
 - `--raw`、yaml、table、纯文本命令不注入 `_notice.update`
 - CI 环境会跳过自动远端检查
 - 设置 `CONTRACT_CLI_NO_UPDATE_CHECK=1` 可以关闭自动检查
@@ -258,8 +284,10 @@ contract-cli environment inspect --output json --include-processes
 - 当前识别器为 `process-ancestry-v6`；探测共享 5 秒预算，超时保留本次已收到的完整报告，没有有效报告才返回 unknown；用户取消时停止业务请求
 - 来源识别透传 `X-Qfei-Channel-Type: cli`、`X-Qfei-Agent-Source-Type`、`X-Qfei-Product-Code: contract`、`X-Qfei-Evidence-Type`、`X-Qfei-Channel-Confidence`、`X-Qfei-Detector-Version` 和 `X-Qfei-Rule-Id`
 - 业务 Header 不包含 PID、进程路径、完整命令行或用户目录信息
-- 每个 OpenPlatform 逻辑请求生成一个 32 位十六进制 `trace_id`；请求发送 `traceparent: 00-<trace_id>-<span_id>-01` 和同值 `X-Log-Id: <trace_id>`
-- 请求重试复用同一 `trace_id`，每个实际 HTTP attempt 重新生成 `span_id`；最终错误信息包含 `trace_id=<值>`
+- 每次业务命令生成一个 32 位十六进制 `trace_id`，命令内多接口、分页和流式请求共用；下一次命令生成新 ID。请求发送 `traceparent: 00-<trace_id>-<span_id>-01` 和同值 `X-Log-Id: <trace_id>`
+- 每次 CLI 显式发送尝试重新生成 `span_id`（W3C parent-id），包含允许的重试和 Token 刷新后的业务重放；底层自动重定向和透明重试保持原有行为
+- 开启 `--debug` 时，命令边界和业务请求调试日志包含 `trace_id`；默认静默时仍传播 Trace，最终安全错误仍携带 ID，业务输出结构不变；用户附件上传三个阶段共用 ID，签名下载只做本地日志与错误关联
+- 底层 Client 无命令上下文时保留请求级 ID；config/auth/skills/update、本地环境诊断、帮助和版本不新建业务命令 Trace，独立认证和更新通道保持现状
 - Trace ID 只用于可观测性关联，不作为鉴权、幂等键或客户端来源证明
 
 #### `contract-cli skills list`
@@ -270,6 +298,7 @@ contract-cli environment inspect --output json --include-processes
 
 ```bash
 contract-cli skills list
+contract-cli skills list --output json
 ```
 
 输出内容：
@@ -277,6 +306,7 @@ contract-cli skills list
 - skill 名称
 - skill 版本
 - skill 描述
+- 显式 `--output json`：`data.cli` 为当前 CLI 版本和执行路径，`data.skills[]` 包含 `directory/name/version/description`；清单不代表客户端已安装或加载
 
 #### `npx skills add qfeius/contract-cli -y -g`
 
@@ -325,12 +355,15 @@ contract-cli skills install --force
 - `--target`：安装目标目录；默认优先使用 `$CODEX_HOME/skills`，否则使用 `~/.codex/skills`
 - `--name`：只安装指定的内置 Skill，例如 `contract-cli-rule`；不传时处理全部
 - `--force`：覆盖已存在的同名 skill；默认不覆盖，会跳过已有目录
+- `--output json`：成功返回 CLI 信息、目标路径、安装项、跳过项、登记快照和客户端刷新提示；失败时 stdout 为空，`error.details` 保留登记、恢复状态及处理建议
 - 更新本地规则 Skill 时建议组合 `--name contract-cli-rule --force`，仅替换该目录；若有本地自定义内容，先备份。单独使用 `--force` 会覆盖所有同名内置 Skill
 
 执行结果：
 
 - 复制内置 `auth`、`contract-cli-shared`、`contract-cli-contract-search`、`contract-cli-contract`、`zhishu-contract-summary`、`contract-cli-payment`、`contract-cli-mdm-vendor`、`contract-cli-mdm-legal`、`contract-cli-mdm-fields` 等 skill
 - 保留 `SKILL.md`、`agents/openai.yaml` 和 `references/*.md`
+- Ctrl+C 在元数据读取、暂存、替换、校验和提交前阻止后续安装；若已开始替换，先完成原事务回滚再退出 130，原文件、管理标记和登记保持一致。普通文件系统调用不会被强行打断，新建的空目标根目录可能保留。
+- JSON 取消不输出成功结果；`error.details.recovery.status=restored` 表示已恢复，`failed` 表示恢复失败且需保留事务材料，`unconfirmed` 表示无恢复成功证据。提交完成后才收到取消时不回滚，报告 `committed` 并通过 `installation` 保留实际安装项、跳过项和登记结果，避免把取消误判为安装未发生。
 
 ### 2. 鉴权
 
@@ -352,6 +385,7 @@ contract-cli auth login --profile contract --as user
 - `--as user`
 - `--timeout`
 - `--no-open-browser`
+- `--output json`：成功返回安全授权摘要；需要手动打开链接时在 stderr 输出 `{"event":"authorization_required","authorization_url":"..."}`，取消结果也写 stderr，不输出 Token
 
 ##### `contract-cli auth login --as app`
 
@@ -369,6 +403,7 @@ contract-cli auth login --profile contract --as app --app-id <id> --app-secret <
 - `--as app`
 - `--app-id`
 - `--app-secret`
+- `--output json`：返回安全授权摘要，不包含 Token 或 App Secret
 
 补充说明：
 
@@ -398,6 +433,8 @@ contract-cli auth status --profile contract --as app
 - user：`authorized` / `unauthorized`
 - app：`authorized` / `expired` / `configured` / `unconfigured`
 
+支持 `--output json`，返回 `profile/environment/identity/default_identity/authorization` 和 `fields[]`（安全状态项的 `label/value`）。
+
 #### `contract-cli auth logout`
 
 用途：清理指定身份的 token。
@@ -418,6 +455,7 @@ contract-cli auth logout --profile contract --as app
 
 - user logout：清空 user token
 - app logout：只清空 app token，保留 app 凭证
+- 支持 `--output json`，返回 profile、环境、身份、默认身份和退出结果消息
 
 #### `contract-cli auth use`
 
@@ -434,6 +472,8 @@ contract-cli auth use --profile contract --as app
 
 - `--profile`
 - `--as user|app`
+
+`auth use` 也支持 `--output json`，返回切换后的 profile、环境、身份、默认身份和结果消息。
 
 ### 3. Open Web 通用调用
 
@@ -682,6 +722,7 @@ contract-cli contract text <contract-id> --profile contract --as app --user-id-t
 
 - `--as user`
   - 走 `/open-apis/contract/v1/mcp/contracts/{contract_id}/text?user_id_type=user_id&...`
+  - HTTP 200 仍校验业务结果：`code` 非零或 `success=false` 时退出 1；stdout 保留业务响应中的错误码和消息，stderr 的错误保留本次 Trace ID。成功退出 0，`--raw` 也遵循相同退出码规则。
 - `--as app`
   - 走 `GET /open-apis/contract/v1/contracts/{contract_id}/text?...`
   - 额外传入 `--user-id-type` / `--user-id` 时，会原样拼到 query string

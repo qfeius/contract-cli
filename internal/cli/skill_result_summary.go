@@ -38,6 +38,8 @@ func (a *App) printRegisteredSkillLocations(service *skillsync.Service) {
 
 func recoveryDescription(status string) string {
 	switch status {
+	case "committed":
+		return "取消到达前安装已提交；已保留安装文件及登记，未执行回滚"
 	case "restored":
 		return "已恢复本次替换前的原有文件；未保留长期历史备份"
 	case "failed":
@@ -49,14 +51,20 @@ func recoveryDescription(status string) string {
 
 func (a *App) printSkillFailure(operation, target, reason, recovery string) {
 	_, _ = fmt.Fprintf(a.stderr, "%s：失败\nSkill 安装位置：%s\n失败原因：%s\n恢复结果：%s\n", operation, target, reason, recoveryDescription(recovery))
+	_, _ = fmt.Fprintln(a.stderr, "处理建议："+skillFailureGuidance(target, recovery))
+}
+
+func skillFailureGuidance(target, recovery string) string {
 	switch {
+	case recovery == "committed":
+		return "先核实已提交的安装文件和登记；不要把取消当作安装未发生，也不要直接重复覆盖。"
 	case recovery == "failed":
-		_, _ = fmt.Fprintln(a.stderr, "处理建议：先排查恢复失败原因并核实原文件和事务材料，不能假定文件已恢复。")
+		return "先排查恢复失败原因并核实原文件和事务材料，不能假定文件已恢复。"
 	case target == "":
-		_, _ = fmt.Fprintln(a.stderr, "处理建议：先核实参数、登记文件及其权限，不能把本次失败当成没有历史安装。")
+		return "先核实参数、登记文件及其权限，不能把本次失败当成没有历史安装。"
 	case skillsync.IsClientManagedSkillTarget(runtime.GOOS, target):
-		_, _ = fmt.Fprintln(a.stderr, "处理建议：不要向 SYSTEM 目录重新安装；确认客户端用户 Skill 目录并核实旧登记。")
+		return "不要向 SYSTEM 目录重新安装；确认客户端用户 Skill 目录并核实旧登记。"
 	default:
-		_, _ = fmt.Fprintf(a.stderr, "处理建议：先排查失败原因，核实目录、权限和备份；修复并确认后执行：%s\n", skillInstallCommand(target))
+		return fmt.Sprintf("先排查失败原因，核实目录、权限和备份；修复并确认后执行：%s", skillInstallCommand(target))
 	}
 }

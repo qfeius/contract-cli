@@ -31,19 +31,20 @@ type contractFileDownloadEnvelope struct {
 }
 
 func (a *App) runContractDownloadFileAsUser(ctx context.Context, service *contractsvc.Service, requestContext openplatform.RequestContext, contractID string, fileID string, outputFile string, raw bool, force bool, format output.Format) error {
-	a.logger.Info("resolve user contract file download", "contract_id", contractID, "file_id", fileID)
+	logger := a.commandTraceLogger(ctx)
+	logger.Info("resolve user contract file download", "contract_id", contractID, "file_id", fileID)
 	outputPath, err := a.resolveContractDownloadPath(ctx, fileID, outputFile, raw, force)
 	if err != nil {
 		return err
 	}
 	response, err := service.GetFileDownloadMetadata(ctx, requestContext, contractID, fileID)
 	if err != nil {
-		a.logger.Error("resolve user contract file download failed", "contract_id", contractID, "file_id", fileID, "error", err.Error())
+		logger.Error("resolve user contract file download failed", "contract_id", contractID, "file_id", fileID, "error", err.Error())
 		return err
 	}
 	metadata, err := decodeContractFileDownloadMetadata(response.Body)
 	if err != nil {
-		a.logger.Error("decode user contract file download metadata failed", "contract_id", contractID, "file_id", fileID, "error", err.Error())
+		logger.Error("decode user contract file download metadata failed", "contract_id", contractID, "file_id", fileID, "error", err.Error())
 		return err
 	}
 	if raw {
@@ -200,19 +201,22 @@ func copyDownloadedFileNoReplace(temporaryPath string, outputPath string) error 
 }
 
 func (a *App) downloadSignedContractFile(ctx context.Context, rawURL string, expectedSize *int64, writer io.Writer) error {
+	logger := a.commandTraceLogger(ctx)
 	parsedURL, err := validateSignedDownloadURL(rawURL)
 	if err != nil {
 		return err
 	}
-	a.logger.Info("signed contract file download started", "host", parsedURL.Hostname())
+	logger.Info("signed contract file download started", "host", parsedURL.Hostname())
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsedURL.String(), nil)
 	if err != nil {
 		return fmt.Errorf("build signed file download request: %w", err)
 	}
-	downloadClient := signedDownloadHTTPClient(a.httpClient)
+	// Signed downloads carry no CLI credentials and retain their separate HTTPS
+	// redirect policy, including cross-host CDN redirects and header stripping.
+	downloadClient := signedDownloadHTTPClient(a.fileHTTPClient)
 	response, err := downloadClient.Do(request)
 	if err != nil {
-		a.logger.Error("signed contract file download failed", "host", parsedURL.Hostname(), "error_type", fmt.Sprintf("%T", err))
+		logger.Error("signed contract file download failed", "host", parsedURL.Hostname(), "error_type", fmt.Sprintf("%T", err))
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return fmt.Errorf("perform signed file download: %w", ctxErr)
 		}
@@ -220,12 +224,12 @@ func (a *App) downloadSignedContractFile(ctx context.Context, rawURL string, exp
 	}
 	defer func() { _ = response.Body.Close() }() // Response read errors are checked by the download path.
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		a.logger.Error("signed contract file download failed", "host", parsedURL.Hostname(), "status_code", response.StatusCode)
+		logger.Error("signed contract file download failed", "host", parsedURL.Hostname(), "status_code", response.StatusCode)
 		return fmt.Errorf("signed file download failed with status %d", response.StatusCode)
 	}
 	written, err := io.Copy(writer, response.Body)
 	if err != nil {
-		a.logger.Error("copy signed contract file download failed", "host", parsedURL.Hostname(), "error_type", fmt.Sprintf("%T", err))
+		logger.Error("copy signed contract file download failed", "host", parsedURL.Hostname(), "error_type", fmt.Sprintf("%T", err))
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return fmt.Errorf("copy signed file download: %w", ctxErr)
 		}
@@ -236,10 +240,10 @@ func (a *App) downloadSignedContractFile(ctx context.Context, rawURL string, exp
 		expectedSize = &response.ContentLength
 	}
 	if expectedSize != nil && written != *expectedSize {
-		a.logger.Error("signed contract file size mismatch", "host", parsedURL.Hostname(), "expected_size", *expectedSize, "actual_size", written)
+		logger.Error("signed contract file size mismatch", "host", parsedURL.Hostname(), "expected_size", *expectedSize, "actual_size", written)
 		return fmt.Errorf("signed file download size mismatch: expected %d bytes, got %d", *expectedSize, written)
 	}
-	a.logger.Info("signed contract file download completed", "host", parsedURL.Hostname(), "size", written)
+	logger.Info("signed contract file download completed", "host", parsedURL.Hostname(), "size", written)
 	return nil
 }
 

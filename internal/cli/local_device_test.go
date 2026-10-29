@@ -143,10 +143,13 @@ func TestLocalDeviceConcurrentRefreshRotatesOnlyOnceAcrossTasks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Save("contract", credential.DeviceCredential{Token: &config.Token{AccessToken: "old", RefreshToken: "refresh", Expiry: deviceTokenTestNow().Add(-time.Minute)}}); err != nil {
+	profile := mustDeviceProfile(t, first.store)
+	if err := store.Save("contract", credential.DeviceCredential{
+		Token:         &config.Token{AccessToken: "old", RefreshToken: "refresh", Expiry: deviceTokenTestNow().Add(-time.Minute)},
+		DeviceProfile: snapshotDeviceProfile(profile),
+	}); err != nil {
 		t.Fatal(err)
 	}
-	profile := mustDeviceProfile(t, first.store)
 	completed := make(chan error, 1)
 	go func() {
 		_, err := first.refreshDeviceToken(context.Background(), profile, "old", false)

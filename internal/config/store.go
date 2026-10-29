@@ -80,6 +80,7 @@ type Profile struct {
 	BusinessType                   string       `json:"business_type"`
 	ClientName                     string       `json:"client_name"`
 	DefaultIdentity                IdentityKind `json:"default_identity,omitempty"`
+	CredentialBinding              string       `json:"credential_binding,omitempty"`
 	Identities                     Identities   `json:"identities"`
 }
 
@@ -110,6 +111,7 @@ type rawProfile struct {
 	BusinessType                   string        `json:"business_type"`
 	ClientName                     string        `json:"client_name"`
 	DefaultIdentity                IdentityKind  `json:"default_identity,omitempty"`
+	CredentialBinding              string        `json:"credential_binding,omitempty"`
 	Identities                     rawIdentities `json:"identities"`
 
 	// Legacy flat user-auth fields kept for backward-compatible reads.
@@ -230,6 +232,11 @@ func (s *Store) UpsertProfile(profile Profile, makeCurrent bool) error {
 	}
 
 	profile.ensureDefaults()
+	// Programmatic credential creation may establish a first binding. Loading a
+	// file never does so, and subsequent saves never rebind changed addresses.
+	if profile.CredentialBinding == "" && hasStoredCredentials(profile) {
+		profile.CredentialBinding = CredentialTargetBinding(profile)
+	}
 	cfg.Profiles[profile.Name] = profile
 	if makeCurrent || cfg.CurrentProfile == "" {
 		cfg.CurrentProfile = profile.Name
@@ -290,6 +297,9 @@ func (s *Store) SaveToken(profileName string, identity IdentityKind, token *Toke
 	default:
 		return fmt.Errorf("unsupported identity %q", identity)
 	}
+	if token != nil && profile.CredentialBinding == "" {
+		profile.CredentialBinding = CredentialTargetBinding(profile)
+	}
 	cfg.Profiles[profileName] = profile
 	return s.Save(cfg)
 }
@@ -320,6 +330,7 @@ func decodeProfile(data []byte) (Profile, error) {
 		BusinessType:                   raw.BusinessType,
 		ClientName:                     raw.ClientName,
 		DefaultIdentity:                normalizeStoredIdentity(raw.DefaultIdentity),
+		CredentialBinding:              raw.CredentialBinding,
 		Identities: Identities{
 			User: raw.Identities.User,
 			App:  raw.Identities.App,

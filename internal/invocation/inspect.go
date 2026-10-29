@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"os/signal"
 	"runtime"
 	"strconv"
 	"time"
@@ -43,33 +42,9 @@ func Inspect(parent context.Context, maxDepth int) Result {
 		maxDepth = 128
 	}
 	command := exec.CommandContext(ctx, executable, inspectionHelperFlag, strconv.Itoa(maxDepth))
-	// Only intercept Ctrl+C while the isolated helper needs cleanup. Login and
-	// business input retain the release entrypoint's default signal behavior.
-	interrupts := make(chan os.Signal, 1)
-	signal.Notify(interrupts, os.Interrupt)
-	defer signal.Stop(interrupts)
-	completed := make(chan Result, 1)
-	go func() { completed <- inspectCommand(ctx, command) }()
-	var result Result
-	interrupted := false
-	select {
-	case result = <-completed:
-	case <-interrupts:
-		interrupted = true
-		cancel()
-		result = <-completed // Wait for the helper and its pipe readers to be reaped.
-	}
-	signal.Stop(interrupts)
-	// Do not swallow an interrupt queued at the same time as helper completion.
-	select {
-	case <-interrupts:
-		interrupted = true
-	default:
-	}
-	if interrupted {
-		os.Exit(130) // Ctrl+C: cleanup completed; never continue into a business request.
-	}
-	return result
+	// The entrypoint owns SIGINT and error output. CommandContext cancels the
+	// private process group; Run/Wait reaps it before callers inspect ctx.Err().
+	return inspectCommand(ctx, command)
 }
 
 func inspectCommand(ctx context.Context, command *exec.Cmd) Result {

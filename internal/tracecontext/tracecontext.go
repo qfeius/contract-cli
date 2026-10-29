@@ -15,8 +15,8 @@ const (
 	spanIDBytes  = 8
 )
 
-// RequestTrace identifies one logical OpenPlatform request. Retries reuse the
-// trace ID while Apply generates a new parent span ID for each HTTP attempt.
+// RequestTrace identifies a command or standalone logical request. Apply creates
+// a fresh parent span ID for each explicit HTTP sending attempt.
 type RequestTrace struct {
 	TraceID string
 }

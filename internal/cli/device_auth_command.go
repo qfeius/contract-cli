@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,7 +46,7 @@ runAuthDeviceInit 发起 Device 授权并保存状态，授权链接须匹配配
 */
 func (a *App) runAuthDeviceInit(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("auth init", flag.ContinueOnError)
-	flags.SetOutput(a.stderr)
+	flags.SetOutput(io.Discard)
 	var profileName, outputFormat string
 	var restart bool
 	flags.StringVar(&profileName, "profile", "", "profile name")
@@ -120,7 +121,7 @@ func (a *App) runAuthDeviceInit(ctx context.Context, args []string) error {
 		return err
 	}
 	// 授权链接必须属于 profile 所选环境，防止跨环境登录。
-	_, accountOrigin, _ := environmentOrigins(profile.Environment)
+	_, accountOrigin, _ := profileOrigins(profile)
 	if !isProductionOriginURL(response.VerificationURIComplete, accountOrigin, true) {
 		return productionProfileError(profile.Name)
 	}
@@ -154,7 +155,7 @@ func (a *App) runAuthDeviceInit(ctx context.Context, args []string) error {
 
 func (a *App) runAuthDeviceComplete(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("auth complete", flag.ContinueOnError)
-	flags.SetOutput(a.stderr)
+	flags.SetOutput(io.Discard)
 	var profileName, outputFormat string
 	flags.StringVar(&profileName, "profile", "", "profile name")
 	flags.StringVar(&outputFormat, "output", "json", "output format: json")

@@ -30,19 +30,28 @@ test('shared skill gives contract search one destination while preserving review
   }
 });
 
-test('Device quick flow checks and authorizes the prod profile', () => {
+test('Device quick flow keeps the selected profile through authorization', () => {
   const flow = read('auth').split('### 豆包 / WorkBuddy / Codex Device 授权')[1].split('### `user` 登录')[0];
   const commands = [...flow.matchAll(/^contract-cli auth (status|init|complete) --profile (\S+)/gm)];
   assert.deepEqual(commands.map(match => match[1]), ['status', 'init', 'complete']);
-  assert.deepEqual([...new Set(commands.map(match => match[2]))], ['contract']);
+  assert.deepEqual([...new Set(commands.map(match => match[2]))], ['<profile>']);
+  assert.ok(!flow.includes('config add --env prod'));
 });
 
-test('shared auth instructions retain the prod-only environment boundary', () => {
+test('shared auth instructions select services from profile addresses without reusing credentials across targets', () => {
   const shared = read('contract-cli-shared');
   const auth = read('auth');
-  assert.ok(shared.includes('当前 CLI 只支持 prod'));
-  assert.ok(shared.includes('test、blue 或 dev'));
-  assert.ok(auth.includes('当前构建只支持 `prod`'));
+  assert.ok(shared.includes('实际访问目标由 profile 中的地址决定'));
+  assert.ok(shared.includes('所有业务 Skill 中的 `--profile contract` 示例'));
+  assert.ok(shared.includes('不自动改用 prod'));
+  assert.ok(auth.includes('`prod` 和 `test` 是地址预设'));
+  assert.ok(auth.includes('关键地址变化后必须重新授权'));
+  assert.ok(auth.includes('contract-cli config add --env test --name contract-test'));
+  assert.ok(auth.includes('https://test-open.qtech.cn'));
+  assert.ok(auth.includes('https://test-myaccount.qtech.cn'));
+  assert.ok(auth.includes('config add --env prod --name contract-test'));
+  assert.ok(auth.includes('--open-platform-base-url https://test-open.qtech.cn'));
+  assert.ok(auth.includes('--authorization-server-metadata-url https://test-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract'));
   assert.ok(!shared.includes('默认启用 `blue`'));
   assert.ok(!shared.includes('contract-blue'));
   assert.ok(!auth.includes('contract-blue'));
@@ -57,7 +66,7 @@ test('app authorization examples do not enable Blue configuration', () => {
   }
 });
 
-test('Blue profile setup is not recommended by the prod-only Skill bundle', () => {
+test('Blue profile setup remains unsupported by the Skill bundle', () => {
   const shared = read('contract-cli-shared');
   const auth = read('auth');
   assert.ok(!shared.includes('contract-cli config add --env blue'));

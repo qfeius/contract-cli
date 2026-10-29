@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"cn.qfei/contract-cli/internal/build"
 	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/credential"
 	"cn.qfei/contract-cli/internal/invocation"
@@ -25,9 +24,10 @@ import (
 const defaultProfileName = "contract"
 
 type Options struct {
-	Stdin              io.Reader
-	Stdout             io.Writer
-	Stderr             io.Writer
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+	// Logger 显式注入时由调用方控制格式和级别；CLI 默认日志由 --debug 管理。
 	Logger             *slog.Logger
 	Store              *config.Store
 	Secrets            *config.SecretsStore
@@ -51,9 +51,11 @@ type App struct {
 	stdout             io.Writer
 	stderr             io.Writer
 	logger             *slog.Logger
+	logPolicy          *commandLogPolicy
 	store              *config.Store
 	secrets            *config.SecretsStore
 	httpClient         *http.Client
+	fileHTTPClient     *http.Client
 	openBrowser        func(string) error
 	saveFileDialog     func(context.Context, string) (string, error)
 	lookupEnv          func(string) (string, bool)
@@ -118,13 +120,15 @@ func New(options Options) *App {
 		stderr = os.Stderr
 	}
 	logger := options.Logger
+	var logPolicy *commandLogPolicy
 	if logger == nil {
-		logger = slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
+		logger, logPolicy = newCommandLogger(stderr)
 	}
 	httpClient := options.HTTPClient
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
+	fileHTTPClient := httpClient
 	httpClient = withProductionNetworkGuard(httpClient, logger)
 	opener := options.OpenBrowser
 	if opener == nil {
@@ -160,9 +164,11 @@ func New(options Options) *App {
 		stdout:             stdout,
 		stderr:             stderr,
 		logger:             logger,
+		logPolicy:          logPolicy,
 		store:              store,
 		secrets:            secrets,
 		httpClient:         httpClient,
+		fileHTTPClient:     fileHTTPClient,
 		openBrowser:        opener,
 		saveFileDialog:     saveFileDialog,
 		lookupEnv:          lookupEnv,
@@ -176,10 +182,11 @@ func New(options Options) *App {
 		now:                now,
 	}
 	app.userProvider = userAuthProvider{
-		httpClient:             httpClient,
-		logger:                 logger,
-		openBrowser:            opener,
-		authorizationURLWriter: stdout,
+		httpClient:              httpClient,
+		logger:                  logger,
+		openBrowser:             opener,
+		authorizationURLWriter:  stdout,
+		authorizationJSONWriter: stderr,
 		startCallbackServer: func(redirectURL string) (authorizationCallback, error) {
 			return oauth.StartCallbackServer(redirectURL)
 		},
@@ -198,14 +205,31 @@ Run 执行完整 CLI 参数并兼容审批矩阵交互文档别名。
 入参 ctx（context.Context）为运行上下文，args（[]string）为命令参数；返回 error 为执行错误。
 */
 func (a *App) Run(ctx context.Context, args []string) error {
-	args = normalizeApprovalMatrixArgs(args)
 	a.updateNotice = nil
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	args, logOptions, err := parseCommandLogOptions(args)
+	if err != nil {
+		return err
+	}
+	logOptions.outputJSON = commandRequestsJSON(args, logOptions)
+	if logOptions.outputJSON {
+		logOptions.json = true
+	}
+	if a.logPolicy != nil {
+		previous := a.logPolicy.current.Swap(&logOptions)
+		defer a.logPolicy.current.Store(previous)
+	}
+	args = normalizeApprovalMatrixArgs(args)
+	previousContext := a.commandContext
+	defer func() { a.commandContext = previousContext }()
 	a.commandContext = ctx
 	a.runtimeEvidence = nil
 	if len(args) > 0 && args[0] == "__internal" {
-		return a.runSkillSyncOnInstall(args[1:])
+		return withCommandCancellation(ctx, a.runSkillSyncOnInstall(args[1:]))
 	}
-	a.warnPendingSkillSync()
+	a.warnPendingSkillSync(logOptions.outputJSON)
 	if len(args) == 0 {
 		a.printUsage()
 		return nil
@@ -221,16 +245,28 @@ func (a *App) Run(ctx context.Context, args []string) error {
 
 	switch args[0] {
 	case "version", "--version", "-version", "-v":
-		a.printVersion()
-		return nil
+		return withCommandCancellation(ctx, a.runVersion(ctx, args[1:]))
 	}
 
-	a.logger.Info("run command", "args", redactCommandArgs(args))
+	if isBusinessCommand(args[0]) {
+		return a.runWithCommandTrace(ctx, args)
+	}
+	return withCommandCancellation(ctx, a.runCommand(ctx, args))
+}
+
+func (a *App) runCommand(ctx context.Context, args []string) error {
+	a.commandTraceLogger(ctx).Info("run command", "args", redactCommandArgs(args))
 	// 本地来源诊断不访问更新服务，也不读取或刷新更新缓存。
 	if args[0] == "environment" {
 		return a.runEnvironment(ctx, args[1:])
 	}
-	a.maybePrepareUpdateNotice(ctx, args)
+	if err := a.maybePrepareUpdateNotice(ctx, args); err != nil {
+		return err
+	}
+	// 更新检查可失败降级；命令本身已取消时，不再开始后续认证或本地写入。
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	switch args[0] {
 	case "config":
@@ -266,10 +302,6 @@ func (a *App) printUsage() {
 	_ = renderHelp(a.stdout, helpRegistry()["contract-cli"])
 }
 
-func (a *App) printVersion() {
-	_, _ = fmt.Fprintln(a.stdout, build.Current().String())
-}
-
 func (a *App) updateCachePath() string {
 	return filepath.Join(filepath.Dir(a.store.Path()), "update-check.json")
 }
@@ -291,25 +323,38 @@ func (a *App) runConfig(ctx context.Context, args []string) error {
 runConfigAdd 按指定环境发现并保存配置，切换环境时清理原有认证以免串用。
 入参 ctx（context.Context）为请求上下文，args（[]string）为命令参数；返回 error。
 */
-func (a *App) runConfigAdd(ctx context.Context, args []string) error {
+func (a *App) runConfigAdd(ctx context.Context, args []string) (err error) {
+	var outcome *localCommandOutcome
+	defer func() { err = withCompletedLocalCommand(ctx, err, outcome) }()
 	a.logger.Info("config add started")
 
 	flags := flag.NewFlagSet("config add", flag.ContinueOnError)
-	flags.SetOutput(a.stderr)
+	flags.SetOutput(io.Discard)
+	outputFormat := registerJSONOutputFlag(flags)
 
 	var env string
 	var profileName string
 	var protectedResourceURL string
 	var redirectURL string
 	var scopes string
+	var openPlatformURL, authorizationMetadataURL string
 
 	flags.StringVar(&env, "env", "prod", "environment preset")
 	flags.StringVar(&profileName, "name", defaultProfileName, "profile name")
 	flags.StringVar(&protectedResourceURL, "resource-metadata-url", "", "override protected resource metadata URL")
 	flags.StringVar(&redirectURL, "redirect-url", "", "OAuth redirect URL")
 	flags.StringVar(&scopes, "scope", "", "space-separated OAuth scopes")
+	flags.StringVar(&openPlatformURL, "open-platform-base-url", "", "override API base URL and Resource")
+	flags.StringVar(&authorizationMetadataURL, "authorization-server-metadata-url", "", "override trusted authorization metadata URL")
 
 	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("config add does not accept positional arguments")
+	}
+	jsonOutput, err := parseJSONOutputFormat(*outputFormat)
+	if err != nil {
 		return err
 	}
 
@@ -317,6 +362,20 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 	if err != nil {
 		a.logger.Error("resolve environment failed", "environment", env, "error", err.Error())
 		return err
+	}
+	if openPlatformURL != "" {
+		preset.OpenPlatformBaseURL = strings.TrimRight(strings.TrimSpace(openPlatformURL), "/")
+		preset.Resource = preset.OpenPlatformBaseURL
+		preset.AppTokenEndpoint = preset.OpenPlatformBaseURL + "/open-apis/auth/v3/tenant_access_token/internal"
+	}
+	if authorizationMetadataURL != "" {
+		preset.AuthorizationServerMetadataURL = strings.TrimSpace(authorizationMetadataURL)
+	}
+	openOrigin, accountOrigin, valid := profileOrigins(config.Profile{Environment: env,
+		OpenPlatformBaseURL: preset.OpenPlatformBaseURL, AuthorizationServerMetadataURL: preset.AuthorizationServerMetadataURL})
+	if !valid || !isExactEnvironmentResource(preset.OpenPlatformBaseURL, openOrigin) {
+		a.logger.Error("config add rejected invalid target addresses", "profile", profileName)
+		return productionProfileError(profileName)
 	}
 
 	existing, found, err := a.store.LookupProfile(profileName)
@@ -336,10 +395,9 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 	if protectedResourceURL == "" {
 		protectedResourceURL = preset.ProtectedResourceMetadataURL
 	}
-	openOrigin, _, _ := environmentOrigins(env)
 	if protectedResourceURL != "" && !isProductionOriginURL(protectedResourceURL, openOrigin, true) {
 		err := productionProfileError(profileName)
-		a.logger.Error("config add rejected non-production metadata url", "profile", profileName, "error", err.Error())
+		a.logger.Error("config add rejected mismatched metadata url", "profile", profileName, "error", err.Error())
 		return err
 	}
 	if redirectURL == "" {
@@ -353,7 +411,7 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 	var discovery *oauth.DiscoveryResult
 	switch {
 	case protectedResourceURL != "":
-		discovery, err = oauth.Discover(ctx, a.httpClient, a.logger, protectedResourceURL)
+		discovery, err = oauth.Discover(ctx, a.httpClient, a.logger, protectedResourceURL, preset.AuthorizationServerMetadataURL)
 		if err != nil {
 			a.logger.Error("config add discover failed", "profile", profileName, "protected_resource_url", protectedResourceURL, "error", err.Error())
 			return err
@@ -367,6 +425,12 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 	default:
 		return fmt.Errorf("environment %q is missing oauth discovery defaults", env)
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !isProductionOriginURL(discovery.AuthorizationServerMetadataURL, accountOrigin, true) {
+		return productionProfileError(profileName)
+	}
 
 	profile := config.Profile{
 		Name:                           profileName,
@@ -374,7 +438,7 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 		OpenPlatformBaseURL:            preset.OpenPlatformBaseURL,
 		AppTokenEndpoint:               preset.AppTokenEndpoint,
 		ProtectedResourceMetadataURL:   protectedResourceURL,
-		AuthorizationServerMetadataURL: discovery.AuthorizationServerMetadataURL,
+		AuthorizationServerMetadataURL: preset.AuthorizationServerMetadataURL,
 		Resource:                       discovery.ProtectedResource.Resource,
 		Scopes:                         scopeList,
 		BusinessType:                   preset.BusinessType,
@@ -394,22 +458,47 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 	profile.Identities.User.DeviceClientID = preset.DeviceClientID
 	profile.Identities.User.DeviceScope = preset.DeviceScope
 	profile.Identities.User.RedirectURL = redirectURL
+	if found {
+		resetAuthentication = resetAuthentication || config.CredentialTargetBinding(existing) != config.CredentialTargetBinding(profile)
+	}
 	if err := validateProductionProfile(profile); err != nil {
-		a.logger.Error("reject discovered non-production profile", "profile", profileName, "error", err.Error())
+		a.logger.Error("reject inconsistent discovered profile", "profile", profileName, "error", err.Error())
+		return err
+	}
+	a.logger.Info("save profile", "profile", profileName, "environment", env)
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if resetAuthentication {
-		if err := a.clearProfileAuthenticationState(profileName); err != nil {
-			return fmt.Errorf("clear non-production authentication state for profile %q: %w", profileName, err)
+		profile.Identities.User.Token = nil
+		profile.Identities.User.ClientID = ""
+		profile.Identities.User.AuthMode = ""
+		profile.Identities.App = config.AppIdentity{}
+		profile.DefaultIdentity = config.IdentityUser
+		if err := a.clearProfileAuthenticationState(ctx, profileName); err != nil {
+			return fmt.Errorf("clear authentication state for changed profile %q: %w", profileName, err)
 		}
+		outcome = &localCommandOutcome{Operation: "config add", Result: map[string]any{"profile": profileName, "authentication_reset": true, "profile_saved": false}}
 	}
-
-	a.logger.Info("save profile", "profile", profileName, "environment", env)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := a.store.UpsertProfile(profile, true); err != nil {
 		a.logger.Error("save profile failed", "profile", profileName, "error", err.Error())
 		return err
 	}
+	outcome = &localCommandOutcome{Operation: "config add", Result: map[string]any{"profile": profileName, "environment": env, "authentication_reset": resetAuthentication, "profile_saved": true}}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
+	if jsonOutput {
+		return a.renderJSONCommandResult(map[string]any{
+			"profile": profile.Name, "environment": profile.Environment,
+			"default_identity": defaultIdentity(profile), "resource": profile.Resource,
+			"authentication_reset": resetAuthentication,
+		})
+	}
 	_, _ = fmt.Fprintf(a.stdout, "Profile %q saved for %s.\n", profileName, env)
 	return nil
 }
@@ -431,15 +520,18 @@ func (a *App) runAuth(ctx context.Context, args []string) error {
 	case "logout":
 		return a.runAuthLogout(ctx, args[1:])
 	case "use":
-		return a.runAuthUse(args[1:])
+		return a.runAuthUse(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown auth subcommand %q", args[0])
 	}
 }
 
-func (a *App) runAuthLogin(ctx context.Context, args []string) error {
+func (a *App) runAuthLogin(ctx context.Context, args []string) (err error) {
+	var outcome *localCommandOutcome
+	defer func() { err = withCompletedLocalCommand(ctx, err, outcome) }()
 	flags := flag.NewFlagSet("auth login", flag.ContinueOnError)
-	flags.SetOutput(a.stderr)
+	flags.SetOutput(io.Discard)
+	outputFormat := registerJSONOutputFlag(flags)
 
 	var profileName string
 	var timeout time.Duration
@@ -458,6 +550,13 @@ func (a *App) runAuthLogin(ctx context.Context, args []string) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("auth login does not accept positional arguments")
+	}
+	jsonOutput, err := parseJSONOutputFormat(*outputFormat)
+	if err != nil {
+		return err
+	}
 
 	identity, err := config.ParseIdentityKind(as)
 	if err != nil {
@@ -469,6 +568,9 @@ func (a *App) runAuthLogin(ctx context.Context, args []string) error {
 	}
 
 	a.logger.Info("auth login started", "profile", profile.Name, "identity", identity)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	message, err := a.providerFor(identity).Login(ctx, &profile, authCommandOptions{
 		Identity:      identity,
 		ProfileName:   profile.Name,
@@ -476,30 +578,54 @@ func (a *App) runAuthLogin(ctx context.Context, args []string) error {
 		NoOpenBrowser: noOpenBrowser,
 		AppID:         appID,
 		AppSecret:     appSecret,
+		JSONOutput:    jsonOutput,
 	})
+	var committed *appCredentialsCommittedError
+	credentialsSaved := identity == config.IdentityApp && (err == nil || errors.As(err, &committed))
+	if credentialsSaved {
+		outcome = &localCommandOutcome{Operation: "auth login", Result: map[string]any{"profile": profile.Name, "identity": identity, "credentials_saved": true, "profile_saved": false}}
+	}
 	if err != nil {
-		if identity == config.IdentityApp {
+		if identity == config.IdentityApp && (credentialsSaved || ctx.Err() == nil) {
+			// A successful Secret write starts the local credential commit.
+			// Finish its matching profile even if cancellation arrived meanwhile.
 			if saveErr := a.store.SaveProfile(profile); saveErr != nil {
 				a.logger.Error("auth login failed while saving app profile", "profile", profile.Name, "identity", identity, "error", saveErr.Error())
 				return saveErr
 			}
+			outcome = &localCommandOutcome{Operation: "auth login", Result: map[string]any{"profile": profile.Name, "identity": identity, "credentials_saved": credentialsSaved, "profile_saved": true, "default_identity": defaultIdentity(profile)}}
 		}
 		a.logger.Error("auth login failed", "profile", profile.Name, "identity", identity, "error", err.Error())
-		return err
+		return withCommandCancellation(ctx, err)
 	}
 
-	profile.DefaultIdentity = identity
+	if !credentialsSaved {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	if ctx.Err() == nil {
+		profile.DefaultIdentity = identity
+	}
 	if err := a.store.SaveProfile(profile); err != nil {
 		return err
 	}
+	outcome = &localCommandOutcome{Operation: "auth login", Result: map[string]any{"profile": profile.Name, "identity": identity, "credentials_saved": credentialsSaved, "profile_saved": true, "default_identity": defaultIdentity(profile)}}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
+	if jsonOutput {
+		return a.renderJSONCommandResult(authCommandJSONResult(profile, identity, authStatusView{Authorization: "authorized"}, message))
+	}
 	_, _ = fmt.Fprintln(a.stdout, message)
 	return nil
 }
 
 func (a *App) runAuthStatus(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("auth status", flag.ContinueOnError)
-	flags.SetOutput(a.stderr)
+	flags.SetOutput(io.Discard)
+	outputFormat := registerJSONOutputFlag(flags)
 
 	var profileName string
 	var as string
@@ -507,6 +633,13 @@ func (a *App) runAuthStatus(ctx context.Context, args []string) error {
 	flags.StringVar(&as, "as", string(config.IdentityUser), "identity to inspect: user|app")
 
 	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("auth status does not accept positional arguments")
+	}
+	jsonOutput, err := parseJSONOutputFormat(*outputFormat)
+	if err != nil {
 		return err
 	}
 
@@ -532,6 +665,9 @@ func (a *App) runAuthStatus(ctx context.Context, args []string) error {
 		return err
 	}
 
+	if jsonOutput {
+		return a.renderJSONCommandResult(authCommandJSONResult(profile, identity, view, ""))
+	}
 	_, _ = fmt.Fprintf(a.stdout, "Profile: %s\n", profile.Name)
 	_, _ = fmt.Fprintf(a.stdout, "Environment: %s\n", profile.Environment)
 	_, _ = fmt.Fprintf(a.stdout, "Default Identity: %s\n", defaultIdentity(profile))
@@ -543,9 +679,12 @@ func (a *App) runAuthStatus(ctx context.Context, args []string) error {
 	return nil
 }
 
-func (a *App) runAuthLogout(ctx context.Context, args []string) error {
+func (a *App) runAuthLogout(ctx context.Context, args []string) (err error) {
+	var outcome *localCommandOutcome
+	defer func() { err = withCompletedLocalCommand(ctx, err, outcome) }()
 	flags := flag.NewFlagSet("auth logout", flag.ContinueOnError)
-	flags.SetOutput(a.stderr)
+	flags.SetOutput(io.Discard)
+	outputFormat := registerJSONOutputFlag(flags)
 
 	var profileName string
 	var as string
@@ -553,6 +692,13 @@ func (a *App) runAuthLogout(ctx context.Context, args []string) error {
 	flags.StringVar(&as, "as", string(config.IdentityUser), "identity to logout: user|app")
 
 	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("auth logout does not accept positional arguments")
+	}
+	jsonOutput, err := parseJSONOutputFormat(*outputFormat)
+	if err != nil {
 		return err
 	}
 
@@ -568,6 +714,9 @@ func (a *App) runAuthLogout(ctx context.Context, args []string) error {
 	var message string
 	if identity == config.IdentityUser && profile.Identities.User.AuthMode == config.UserAuthModeDevice {
 		message, err = a.deviceAuthLogout(ctx, profile)
+		if err == nil {
+			outcome = &localCommandOutcome{Operation: "auth logout", Result: map[string]any{"profile": profile.Name, "identity": identity, "device_credentials_cleared": true}}
+		}
 	} else {
 		message, err = a.providerFor(identity).Logout(ctx, &profile, authCommandOptions{
 			Identity:    identity,
@@ -577,17 +726,30 @@ func (a *App) runAuthLogout(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := a.store.SaveProfile(profile); err != nil {
 		return err
 	}
+	outcome = &localCommandOutcome{Operation: "auth logout", Result: map[string]any{"profile": profile.Name, "identity": identity, "token_cleared": true, "profile_saved": true}}
 	a.logger.Info("auth logout completed", "profile", profile.Name, "identity", identity)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if jsonOutput {
+		return a.renderJSONCommandResult(authCommandJSONResult(profile, identity, authStatusView{}, message))
+	}
 	_, _ = fmt.Fprintln(a.stdout, message)
 	return nil
 }
 
-func (a *App) runAuthUse(args []string) error {
+func (a *App) runAuthUse(ctx context.Context, args []string) (err error) {
+	var outcome *localCommandOutcome
+	defer func() { err = withCompletedLocalCommand(ctx, err, outcome) }()
 	flags := flag.NewFlagSet("auth use", flag.ContinueOnError)
-	flags.SetOutput(a.stderr)
+	flags.SetOutput(io.Discard)
+	outputFormat := registerJSONOutputFlag(flags)
 
 	var profileName string
 	var as string
@@ -595,6 +757,13 @@ func (a *App) runAuthUse(args []string) error {
 	flags.StringVar(&as, "as", string(config.IdentityUser), "default business identity: user|app")
 
 	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("auth use does not accept positional arguments")
+	}
+	jsonOutput, err := parseJSONOutputFormat(*outputFormat)
+	if err != nil {
 		return err
 	}
 
@@ -607,11 +776,22 @@ func (a *App) runAuthUse(args []string) error {
 		return err
 	}
 	profile.DefaultIdentity = identity
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := a.store.SaveProfile(profile); err != nil {
 		return err
 	}
+	outcome = &localCommandOutcome{Operation: "auth use", Result: map[string]any{"profile": profile.Name, "default_identity": identity, "profile_saved": true}}
 
 	a.logger.Info("default identity switched", "profile", profile.Name, "identity", identity)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if jsonOutput {
+		message := fmt.Sprintf("Default identity for profile %q set to %s.", profile.Name, identity)
+		return a.renderJSONCommandResult(authCommandJSONResult(profile, identity, authStatusView{}, message))
+	}
 	_, _ = fmt.Fprintf(a.stdout, "Default identity for profile %q set to %s.\n", profile.Name, identity)
 	return nil
 }
@@ -628,6 +808,17 @@ func (a *App) providerFor(identity config.IdentityKind) authProvider {
 }
 
 func resolveEnvironment(name string) (environmentPreset, error) {
+	if name == "test" {
+		preset, err := resolveEnvironment(productionEnvironment)
+		if err != nil {
+			return environmentPreset{}, err
+		}
+		preset.OpenPlatformBaseURL = "https://test-open.qtech.cn"
+		preset.Resource = preset.OpenPlatformBaseURL
+		preset.AppTokenEndpoint = preset.OpenPlatformBaseURL + "/open-apis/auth/v3/tenant_access_token/internal"
+		preset.AuthorizationServerMetadataURL = "https://test-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract"
+		return preset, nil
+	}
 	switch name {
 	case productionEnvironment:
 		return environmentPreset{
@@ -644,7 +835,7 @@ func resolveEnvironment(name string) (environmentPreset, error) {
 			DeviceScope:                    "contract:full contract-review:full",
 		}, nil
 	default:
-		return environmentPreset{}, fmt.Errorf("unsupported environment %q; supported environments: prod", name)
+		return environmentPreset{}, fmt.Errorf("unsupported environment %q; supported environments: prod, test", name)
 	}
 }
 

@@ -27,7 +27,7 @@ func (a *App) runEnvironment(ctx context.Context, args []string) error {
 
 func (a *App) runEnvironmentInspect(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("environment inspect", flag.ContinueOnError)
-	flags.SetOutput(a.stderr)
+	flags.SetOutput(io.Discard)
 
 	var maxDepth int
 	var output string

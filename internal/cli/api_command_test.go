@@ -131,7 +131,7 @@ func TestAPIWebCallReusesDeviceGrantCredential(t *testing.T) {
 		t.Fatalf("UpsertProfile() error = %v", err)
 	}
 	credentials := &memoryDeviceCredentialStore{values: map[string]credential.DeviceCredential{
-		"contract": {Token: &config.Token{AccessToken: "device-user-token", Expiry: now.Add(time.Hour)}},
+		"contract": {DeviceProfile: deviceSnapshotFixture(profile), Token: &config.Token{AccessToken: "device-user-token", Expiry: now.Add(time.Hour)}},
 	}}
 	app := cli.New(cli.Options{
 		Stdout:          &bytes.Buffer{},
