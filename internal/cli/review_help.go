@@ -24,12 +24,11 @@ func addReviewHelp(registry map[string]helpTopic) {
 		"拒绝未知 JSON 字段；fileHash 使用上传响应中的 SHA-256；HTTP fileId 为字符串。",
 		"发起请求固定注入 usageReportContext.reportBusinessCode=clm_100_openApi_cli；不接受用户输入覆盖。",
 	}
-	registry["review"] = helpTopic{Name: "review", Summary: "执行合同智能审查。\n\n推荐使用 review run 执行上传、发起、可选等待的一键流程。\n分步控制使用 review file、review subject 和 review task。\n审查清单和规则管理使用 review checklist 和 review rule。", Usage: []string{"contract-cli review <subcommand> [flags]"}, Commands: []helpCommand{
-		{"contract-cli review file <subcommand> [flags]", "准备审查输入文件"}, {"contract-cli review subject extract [flags]", "提取合同主体"}, {"contract-cli review task <subcommand> [flags]", "管理审查任务生命周期"}, {"contract-cli review run [flags]", "上传、发起并可选等待最终详情"}, {"contract-cli review checklist <subcommand> [flags]", "管理审查清单"}, {"contract-cli review rule <subcommand> [flags]", "管理审查规则"},
+	registry["review"] = helpTopic{Name: "review", Summary: "执行合同智能审查。外部本地文件通过 CLM 预审流程准备，系统合同复用文件引用。", Usage: []string{"contract-cli review <subcommand> [flags]"}, Commands: []helpCommand{
+		{"contract-cli review file <subcommand> [flags]", "准备审查输入文件"}, {"contract-cli review subject extract [flags]", "提取合同主体"}, {"contract-cli review task <subcommand> [flags]", "管理审查任务生命周期"}, {"contract-cli review run [flags]", "上传本地文件到 CLM 并输出待选分类阶段"}, {"contract-cli review checklist <subcommand> [flags]", "管理审查清单"}, {"contract-cli review rule <subcommand> [flags]", "管理审查规则"},
 	}, Flags: reviewHelpFlags(), Examples: []string{"contract-cli review run --input review-run.json", "contract-cli review task result --task-id 123"}, Notes: []string{"review 下所有远端请求仅支持 user 身份。"}}
-	registry["review file"] = helpTopic{Name: "review file", Summary: "准备审查输入文件；不会自动发起审查。", Usage: []string{"contract-cli review file <subcommand> [flags]"}, Commands: []helpCommand{{"contract-cli review file upload [flags]", "上传本地文件或 stdin 字节流"}, {"contract-cli review file upload-url [flags]", "通过 URL 上传合同"}}}
-	registry["review file upload"] = helpTopic{Name: "review file upload", Summary: "上传本地或 stdin 合同文件。", Usage: []string{"contract-cli review file upload --file <path>|--stdin --name <name> [flags]"}, Flags: reviewHelpFlags(append([]helpFlag{{"--file <path>", "本地合同文件，与 --stdin 互斥"}, {"--stdin", "从标准输入读取原始合同字节"}, {"--name <name>", "必填，业务文件名（含扩展名）"}}, dry...)...), Examples: []string{"contract-cli review file upload --stdin --name 合同.pdf < 合同.pdf"}, Notes: []string{"仅支持 .doc/.docx/.pdf；文件最大 50 MiB（52,428,800 字节）。", "只准备文件，不发起审查。"}}
-	registry["review file upload-url"] = helpTopic{Name: "review file upload-url", Summary: "通过 HTTP/HTTPS URL 上传合同文件。", Usage: []string{"contract-cli review file upload-url --file-url <url> --name <name> [flags]"}, Flags: reviewHelpFlags(append([]helpFlag{{"--file-url <url>", "必填，完整 HTTP/HTTPS URL"}, {"--name <name>", "必填，.doc/.docx/.pdf 业务文件名"}}, dry...)...), Notes: []string{"只准备文件，不发起审查。"}}
+	registry["review file"] = helpTopic{Name: "review file", Summary: "准备审查输入文件；不会自动发起审查。", Usage: []string{"contract-cli review file <subcommand> [flags]"}, Commands: []helpCommand{{"contract-cli review file upload [flags]", "引用 CLM 已有文件"}}}
+	registry["review file upload"] = helpTopic{Name: "review file upload", Summary: "引用 CLM 已有文件，准备 AI 审查输入。", Usage: []string{"contract-cli review file upload [flags]"}, Flags: reviewHelpFlags(append([]helpFlag{{"--name <name>", "必填，业务文件名（含扩展名）"}}, dry...)...), Notes: []string{"文件名仅支持 .doc/.docx/.pdf；只准备文件引用，不发起审查。", "不接受 --file/--stdin；本地文件请使用 contract-cli review pre-audit prepare。"}}
 	registry["review subject"] = helpTopic{Name: "review subject", Usage: []string{"contract-cli review subject extract [flags]"}, Commands: []helpCommand{{"contract-cli review subject extract [flags]", "提取已上传合同参与方"}}}
 	registry["review subject extract"] = helpTopic{Name: "review subject extract", Summary: "提取已上传合同参与方，不执行完整审查。", Usage: []string{"contract-cli review subject extract --business-id <id> --file-id <id> [flags]"}, Flags: reviewHelpFlags(append([]helpFlag{{"--business-id <id>", "必填，上传返回的业务对象 ID"}, {"--file-id <id>", "必填，大于 0 的平台文件 ID"}, {"--file-hash <hash>", "可选，服务端文件指纹"}}, dry...)...), Notes: []string{"fileId 自动转换为字符串。"}}
 	registry["review task"] = helpTopic{Name: "review task", Usage: []string{"contract-cli review task <subcommand> [flags]"}, Commands: []helpCommand{{"contract-cli review task start [flags]", "发起任务，不上传文件"}, {"contract-cli review task status [flags]", "查询一次当前状态"}, {"contract-cli review task info [flags]", "查询一次任务详情"}, {"contract-cli review task result [flags]", "轮询状态，成功后获取详情"}}}
@@ -48,7 +47,7 @@ func addReviewHelp(registry map[string]helpTopic) {
 		}
 		registry["review task "+action] = helpTopic{Name: "review task " + action, Summary: summary, Usage: []string{"contract-cli review task " + action + " --task-id <id> [flags]"}, Flags: reviewHelpFlags(flags...), Notes: notes}
 	}
-	registry["review run"] = helpTopic{Name: "review run", Summary: "上传合同、可选提取主体、发起审查，并按 wait 决定是否等待最终详情。", Usage: []string{"contract-cli review run --input <path>|--data <json> [flags]"}, Flags: reviewHelpFlags(append(append(append([]helpFlag{}, input...), wait...), dry...)...), Examples: []string{`contract-cli review run --data '{"source":{"type":"url","fileUrl":"https://example.com/合同.pdf","name":"合同.pdf"},"config":{"selectedPosition":"甲公司","selectedAuditRole":"甲方","reviewStrength":"中立","matchContractTypeRulePackage":true},"wait":true}' --dry-run`}, Notes: append([]string{"source、config 必填；source.type=file 时提供 path/name，type=url 时提供 fileUrl/name。", "可选 extractSubjects、wait；wait=true 才等待终态。businessId/fileHash 通常由上传返回，可作为兼容输入。", "--deadline 限制整个工作流；失败时输出已完成阶段，不自动重复发起任务。"}, configNotes...)}
+	registry["review run"] = helpTopic{Name: "review run", Summary: "上传本地文件到 CLM，随后选择分类并继续预审。", Usage: []string{"contract-cli review run --input <path>|--data <json> [flags]"}, Flags: reviewHelpFlags(append(append(append([]helpFlag{}, input...), wait...), dry...)...), Examples: []string{`contract-cli review run --data '{"source":{"type":"file","path":"./合同.pdf","name":"合同.pdf"}}' --dry-run`}}
 	registry["review checklist"] = helpTopic{Name: "review checklist", Summary: "管理审查清单。", Usage: []string{"contract-cli review checklist <subcommand> [flags]"}, Notes: []string{"仅支持 user；删除必须 --yes；批量创建/更新以一次数组请求提交。"}}
 	registry["review rule"] = helpTopic{Name: "review rule", Summary: "管理审查规则及分组。", Usage: []string{"contract-cli review rule <subcommand> [flags]"}, Commands: []helpCommand{{"contract-cli review rule group <subcommand> [flags]", "管理规则分组"}}, Notes: []string{"仅支持 user；规则操作必须指定 --group-id；分组删除会级联删除规则。"}}
 	registry["review rule group"] = helpTopic{Name: "review rule group", Usage: []string{"contract-cli review rule group <subcommand> [flags]"}}
@@ -81,22 +80,45 @@ func addReviewHelp(registry map[string]helpTopic) {
 	}
 	completeReviewHelp(registry, input, dry)
 	completeReviewReferenceHelp(registry)
-	for _, key := range []string{"review file upload-url", "review run"} {
-		topic := registry[key]
-		if key == "review run" {
-			topic.Notes = append(topic.Notes, "本地文件仅支持 .doc/.docx/.pdf，最大 50 MiB；JSON 参数输入上限仍为 2 MiB。")
-		}
-		topic.Notes = append(topic.Notes, "URL 文件由服务端下载并校验大小，CLI 不预先下载。")
-		registry[key] = topic
-	}
+	addPreAuditHelp(registry, input, dry, wait, configNotes)
+	run := registry["review run"]
+	run.Notes = append(run.Notes, "本地文件仅支持 .doc/.docx/.pdf，最大 50 MiB；JSON 参数输入上限仍为 2 MiB。")
+	registry["review run"] = run
+}
+
+func addPreAuditHelp(registry map[string]helpTopic, input, dry, wait []helpFlag, configNotes []string) {
+	root := registry["review"]
+	root.Summary = "执行合同智能审查。本地外部文件使用review pre-audit：上传CLM后选择分类、创建预审、确认配置，等待审查完成后返回预审链接。合同ID使用既有分步引用流程。"
+	root.Commands = append(root.Commands, helpCommand{"contract-cli review pre-audit <subcommand> [flags]", "本地文件预审及链接恢复"})
+	registry["review"] = root
+	registry["review pre-audit"] = helpTopic{Name: "review pre-audit", Summary: "将本地外部文件接入CLM预审，完整成功后返回结果和页面地址。", Usage: []string{"contract-cli review pre-audit <prepare|create|start|resume> [flags]"}, Commands: []helpCommand{
+		{"contract-cli review pre-audit prepare --file <path> --name <name>", "上传CLM，保存runId并等待选择分类"},
+		{"contract-cli review pre-audit create --run-id <id> --category-id <id>", "创建预审并准备AI引用，等待选择配置"},
+		{"contract-cli review pre-audit start --run-id <id> --input-file <config.json>", "使用绑定文件和配置发起，等待结果及链接"},
+		{"contract-cli review pre-audit resume --run-id <id>", "续查原任务或仅重取原预审链接"},
+	}, Notes: []string{"仅支持user身份；分类复用contract category list，在上传后选择。", "不自动打开浏览器；恢复记录位于配置目录preaudit-runs，由用户管理，无后台清理。"}}
+	registry["review pre-audit prepare"] = helpTopic{Name: "review pre-audit prepare", Summary: "上传CLM文件后输出runId、sourceFileId及awaiting_category；不发起AI、不返回页面地址。", Usage: []string{"contract-cli review pre-audit prepare --file <path> --name <name> [flags]"}, Flags: reviewHelpFlags(append([]helpFlag{{"--file <path>", "必填，本地普通文件，DOC/DOCX/PDF最大50 MiB"}, {"--name <name>", "必填，包含扩展名的文件名"}}, dry...)...), Examples: []string{"contract-cli review pre-audit prepare --profile contract --file contract.pdf --name 合同.pdf --output json"}}
+	registry["review pre-audit create"] = helpTopic{Name: "review pre-audit create", Summary: "按所选分类创建预审并准备AI引用，输出awaiting_config和字符串文件身份；不返回页面地址。", Usage: []string{"contract-cli review pre-audit create --run-id <id> --category-id <id> [flags]"}, Flags: reviewHelpFlags(append([]helpFlag{{"--run-id <id>", "必填，prepare返回的32位小写十六进制runId"}, {"--category-id <id>", "必填，上传后选择的真实分类ID"}}, dry...)...), Notes: []string{"首次创建明确拒绝并退回awaiting_category时，保留已上传文件；用户重新选择分类并执行create后才再次单次创建。", "创建结果未知时不支持重试恢复，保留原run及分类并停止；请人工核实，create和resume均不再次创建。"}}
+	startFlags := append([]helpFlag{{"--run-id <id>", "必填，create返回的runId"}}, input...)
+	startFlags = append(startFlags, wait...)
+	startFlags = append(startFlags, dry...)
+	registry["review pre-audit start"] = helpTopic{Name: "review pre-audit start", Summary: "以绑定预审/AI文件发起审查，等待终态和合法CLM链接；完整成功才返回0。", Usage: []string{"contract-cli review pre-audit start --run-id <id> --input-file <config.json>|--data <json> [flags]"}, Flags: reviewHelpFlags(startFlags...), Notes: append([]string{"JSON只接受config对象，禁止覆盖businessId/fileId/fileHash/usageReportContext。", "CLI内部注入usageReportContext.biz1=SMART_PRE_AUDIT；无公开aiFunction字段。", "结果含upload/start/final、runId/preAuditId/taskId；导航只取final.reviewDetailUrl。", "AI成功但链接失败返回错误并保留明细，使用resume仅重新获取链接。"}, configNotes...)}
+	resumeFlags := append([]helpFlag{{"--run-id <id>", "必填，原runId"}}, wait...)
+	resumeFlags = append(resumeFlags, dry...)
+	registry["review pre-audit resume"] = helpTopic{Name: "review pre-audit resume", Summary: "续查已知taskId；审查成功后只重取原详情链接。", Usage: []string{"contract-cli review pre-audit resume --run-id <id> [flags]"}, Flags: reviewHelpFlags(resumeFlags...), Notes: []string{"创建结果未知时不支持重试恢复，请人工核实；未知启动结果且无taskId时停止，不自动重发；上传/引用响应未知也不自动重传。", "账号、租户、profile/API origin必须与原run一致；损坏记录不自动重建。", "未完成选择时返回错误并保留runId；成功明细及合法链接齐备后才返回0。"}}
+	run := registry["review run"]
+	run.Summary = "本地文件上传CLM后停在awaiting_category，由pre-audit create/start继续。"
+	run.Notes = []string{"source.type仅支持file，提供path/name，config可稍后选择；上传后必须选择分类，输出runId/awaiting_category并返回未完成错误，不直接创建AI任务。", "不因wait=false或已有配置跳过分类选择；链接由后续pre-audit start等待成功后交付。"}
+	registry["review run"] = run
 }
 
 func completeReviewReferenceHelp(registry map[string]helpTopic) {
 	topic := registry["review file upload"]
-	topic.Summary = "上传本地/stdin 合同文件，或引用合同系统中的已有文件。"
+	topic.Summary = "引用 CLM 已有文件，准备 AI 审查输入。"
+	topic.Usage = []string{"contract-cli review file upload --business-id <id> --business-file-id <id> --business-file-version <version> --source-locator <json> --name <name> [flags]"}
 	topic.Flags = append(topic.Flags,
-		helpFlag{"--business-id <id>", "引用模式必填；文件流可选，后续使用上传响应的 businessId"},
-		helpFlag{"--business-file-id <id>", "引用模式必填，实际源文件记录 ID；文件流可选"},
+		helpFlag{"--business-id <id>", "必填，引用文件所属的真实业务对象 ID"},
+		helpFlag{"--business-file-id <id>", "必填，实际源文件记录 ID"},
 		helpFlag{"--business-file-version <version>", "引用模式必填，真实文件版本，最多 64 字符"},
 		helpFlag{"--source-locator <json>", "引用模式必填，JSON 对象字符串；sourceFileType 为 0/1/2；最多 4096 UTF-8 字节"},
 		helpFlag{"--source-revision-id <id>", "引用模式可选，内容修订 ID，最多 128 字符"},
@@ -104,10 +126,10 @@ func completeReviewReferenceHelp(registry map[string]helpTopic) {
 		helpFlag{"--channel-type <type>", "可选渠道参数；不传使用服务端默认值，不改变请求头"},
 	)
 	topic.Examples = append(topic.Examples, `contract-cli review file upload --business-id 123 --business-file-id 456 --name 合同.docx --business-file-version V1.0 --source-locator '{"provider":"clm","sourceFileType":1,"cooperationId":"789","cooperationFileId":"456"}' --dry-run`)
-	topic.Notes = append(topic.Notes, "引用模式不传 --file/--stdin；文件流不能混传版本、来源定位、内容修订或 MD5。", "sourceFileType：0 普通文件，1 协商文件，2 合同正文；协商关联 ID 仅放在 sourceLocator。", "引用模式由服务端获取原文件；不得用合同对象 ID 代替业务文件记录 ID。")
+	topic.Notes = append(topic.Notes, "sourceFileType：0 普通文件，1 协商文件，2 合同正文；协商关联 ID 仅放在 sourceLocator。", "引用模式由服务端获取原文件；不得用合同对象 ID 代替业务文件记录 ID。")
 	registry["review file upload"] = topic
 	fileTopic := registry["review file"]
-	fileTopic.Commands[0].Description = "上传文件或引用已有合同文件"
+	fileTopic.Commands[0].Description = "引用 CLM 已有文件"
 	registry["review file"] = fileTopic
 	registry["review cooperation"] = helpTopic{Name: "review cooperation", Summary: "以个人身份读取协商信息，准备审查引用参数。", Usage: []string{"contract-cli review cooperation <subcommand> [flags]"}, Commands: []helpCommand{{"contract-cli review cooperation get [flags]", "查询个人可见协商详情及文件"}}}
 	registry["review cooperation get"] = helpTopic{Name: "review cooperation get", Summary: "查询个人可见协商详情，保留文件类型、版本和关联 ID；不上传或发起审查。", Usage: []string{"contract-cli review cooperation get --cooperation-id <id> [flags]"}, Flags: reviewHelpFlags(helpFlag{"--cooperation-id <id>", "必填，正 int64 协商 ID，不是合同 ID"}), Examples: []string{"contract-cli review cooperation get --profile contract --cooperation-id 123"}, Notes: []string{"仅支持 user 身份，不改变历史 contract cooperation 命令。", "协商引用上传使用 cooperation_file_id，不是底层 file_id；当前主合同需结合文件类型与 latest 标识确定。"}}
@@ -123,7 +145,6 @@ func completeReviewHelp(registry map[string]helpTopic, input, dry []helpFlag) {
 	const identityNote = "仅支持 --as user；不传时自动使用 user。"
 	examples := map[string][]string{
 		"review file upload":     {"contract-cli review file upload --profile contract --file contract.pdf --name 合同.pdf", "contract-cli review file upload --stdin --name 合同.pdf < contract.pdf"},
-		"review file upload-url": {"contract-cli review file upload-url --profile contract --file-url https://example.com/contract.pdf --name 合同.pdf"},
 		"review subject extract": {"contract-cli review subject extract --profile contract --business-id biz-001 --file-id 123", "contract-cli review subject extract --business-id biz-001 --file-id 123 --dry-run"},
 		"review task start":      {"contract-cli review task start --profile contract --input-file review-start.json", "contract-cli review task start --input-file review-start.json --dry-run"},
 		"review task status":     {"contract-cli review task status --profile contract --task-id 123"},

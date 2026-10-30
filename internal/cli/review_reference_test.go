@@ -148,23 +148,19 @@ func TestReviewReferenceValidation(t *testing.T) {
 	}
 }
 
-func TestReviewStreamUploadBusinessFields(t *testing.T) {
+func TestReviewStreamUploadBusinessFieldsRejected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "合同.pdf")
 	if err := os.WriteFile(path, []byte("contract"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	app, _ := alignmentApp(t, func(r *http.Request) string {
-		if err := r.ParseMultipartForm(1 << 20); err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = r.MultipartForm.RemoveAll() }()
-		if len(r.MultipartForm.File["file"]) != 1 || r.FormValue("businessId") != "existing" || r.FormValue("businessFileId") != "123" {
-			t.Fatal("stream context lost")
-		}
+	called := false
+	app, _ := alignmentApp(t, func(*http.Request) string {
+		called = true
 		return `{"code":200,"data":{}}`
 	})
-	if err := app.Run(context.Background(), []string{"review", "file", "upload", "--file", path, "--name", "合同.pdf", "--business-id", "existing", "--business-file-id", "123"}); err != nil {
-		t.Fatal(err)
+	err := app.Run(context.Background(), []string{"review", "file", "upload", "--file", path, "--name", "合同.pdf", "--business-id", "existing", "--business-file-id", "123"})
+	if err == nil || !strings.Contains(err.Error(), "review pre-audit prepare") || called {
+		t.Fatalf("business fields must not enable binary upload: err=%v called=%t", err, called)
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 )
 
 type commandOptions struct {
+	reviewSession    *reviewRequestSession
 	profileName      string
 	identity         string
 	output           output.Format

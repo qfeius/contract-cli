@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -18,6 +18,13 @@ import (
 
 	"cn.qfei/contract-cli/internal/openplatform"
 )
+
+var errReviewURLUploadDisabled = errors.New("暂不支持通过 URL 上传审查文件；预审需先上传 CLM，再以文件引用上传 AI；本地文件请使用 contract-cli review pre-audit prepare --file <path>")
+
+type reviewRequestSession struct {
+	client *openplatform.Client
+	rc     openplatform.RequestContext
+}
 
 func (a *App) renderReviewValue(options commandOptions, value any) error {
 	body, err := json.Marshal(value)
@@ -36,11 +43,17 @@ func reviewJSONRequest(path string, value any) (openplatform.Request, error) {
 func (a *App) doReview(ctx context.Context, options commandOptions, request openplatform.Request) (openplatform.Response, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	client, rc, err := a.openPlatformClientAndContextForOptions(options, request.Path, openplatform.IdentityPolicyUserOnly)
-	if err != nil {
-		return openplatform.Response{}, err
+	var session *reviewRequestSession
+	if options.reviewSession != nil {
+		session = options.reviewSession
+	} else {
+		client, rc, err := a.openPlatformClientAndContextForOptions(options, request.Path, openplatform.IdentityPolicyUserOnly)
+		if err != nil {
+			return openplatform.Response{}, err
+		}
+		session = &reviewRequestSession{client: client, rc: rc}
 	}
-	response, err := client.Do(ctx, rc, request)
+	response, err := session.client.Do(ctx, session.rc, request)
 	if err != nil {
 		return response, err
 	}
@@ -73,6 +86,9 @@ func (a *App) reviewDocument(ctx context.Context, options commandOptions, reques
 	response, err := a.doReview(ctx, options, request)
 	if err != nil {
 		return nil, err
+	}
+	if options.reviewSession != nil {
+		return preAuditResponseData(response)
 	}
 	var envelope struct {
 		Data map[string]any `json:"data"`
@@ -141,78 +157,28 @@ func (a *App) runReviewUpload(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	path, name := parsed.String("--file"), parsed.String("--name")
-	if parsed.Bool("--stdin") && path != "" {
-		return fmt.Errorf("--file 与 --stdin 只能选择一个")
+	if parsed.HasValue("--file") || parsed.HasBool("--stdin") {
+		a.logger.Warn("review binary upload rejected", "file_flag", parsed.HasValue("--file"), "stdin_flag", parsed.HasBool("--stdin"))
+		return fmt.Errorf("review file upload 仅支持 CLM 文件引用，不再接受 --file/--stdin；本地文件请使用 contract-cli review pre-audit prepare")
 	}
+	a.logger.Info("review reference upload requested", "dry_run", parsed.Bool("--dry-run"), "print_input", parsed.Bool("--print-input"))
+	name := parsed.String("--name")
 	if err := validateReviewName(name); err != nil {
 		return err
 	}
-	stream := parsed.Bool("--stdin") || path != ""
-	fields, err := reviewUploadFields(parsed, stream)
+	fields, err := reviewUploadFields(parsed)
 	if err != nil {
 		return err
 	}
-	if !stream {
-		preview := map[string]string{"name": name}
-		for key, value := range fields {
-			preview[key] = value
-		}
-		request, err := reviewUploadRequest(ctx, nil, "", name, fields)
-		if err != nil {
-			return err
-		}
-		return a.executeReview(ctx, parsed, request, preview)
+	preview := map[string]string{"name": name}
+	for key, value := range fields {
+		preview[key] = value
 	}
-	source := path
-	if parsed.Bool("--stdin") {
-		source = "stdin"
-	} else if err := validateReviewFile(path); err != nil {
-		return err
-	}
-	if parsed.Bool("--dry-run") || parsed.Bool("--print-input") {
-		preview := map[string]string{"file": source, "name": name}
-		for key, value := range fields {
-			preview[key] = value
-		}
-		return a.renderReviewValue(parseReviewOptions(parsed), preview)
-	}
-	reader := a.stdin
-	filename := name
-	if !parsed.Bool("--stdin") {
-		file, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = file.Close() }()
-		reader = file
-		filename = path
-	}
-	request, err := reviewUploadRequest(ctx, reader, filename, name, fields)
+	request, err := reviewUploadRequest(ctx, nil, "", name, fields)
 	if err != nil {
 		return err
 	}
-	return a.executeReview(ctx, parsed, request, nil)
-}
-
-func (a *App) runReviewUploadURL(ctx context.Context, args []string) error {
-	parsed, err := parseReviewArgs(args, []string{"--file-url", "--name"}, []string{"--dry-run", "--print-input"})
-	if err != nil {
-		return err
-	}
-	u, name := parsed.String("--file-url"), parsed.String("--name")
-	if err := validateReviewURL(u); err != nil {
-		return err
-	}
-	if err := validateReviewName(name); err != nil {
-		return err
-	}
-	body := map[string]string{"fileUrl": u, "name": name}
-	request, err := reviewJSONRequest("/file/uploadByUrl", body)
-	if err != nil {
-		return err
-	}
-	return a.executeReview(ctx, parsed, request, body)
+	return a.executeReview(ctx, parsed, request, preview)
 }
 
 func (a *App) runReviewSubject(ctx context.Context, args []string) error {
@@ -376,34 +342,30 @@ func (a *App) runReviewWorkflow(ctx context.Context, args []string) error {
 	if err := readReviewJSON(ctx, parsed, &input); err != nil {
 		return err
 	}
-	interval, deadline, err := reviewDurations(parsed)
+	if input.Source.Type == "url" {
+		a.logger.Warn("review URL workflow rejected", "reason", "CLM reference required")
+		return errReviewURLUploadDisabled
+	}
+	_, deadline, err := reviewDurations(parsed)
 	if err != nil {
 		return err
 	}
-	config, err := normalizedReviewConfig(input.Config)
-	if err != nil {
-		return err
+	if input.Config != nil {
+		if _, err := normalizedReviewConfig(input.Config); err != nil {
+			return err
+		}
 	}
 	if err := validateReviewName(input.Source.Name); err != nil {
 		return err
 	}
-	switch input.Source.Type {
-	case "file":
-		if input.Source.FileURL != "" {
-			return fmt.Errorf("file source 不支持 fileUrl")
-		}
-		if err := validateReviewFile(input.Source.Path); err != nil {
-			return err
-		}
-	case "url":
-		if input.Source.Path != "" {
-			return fmt.Errorf("url source 不支持 path")
-		}
-		if err := validateReviewURL(input.Source.FileURL); err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("source.type 必须为 file 或 url")
+	if input.Source.Type != "file" {
+		return fmt.Errorf("source.type 必须为 file；URL 上传已禁用")
+	}
+	if input.Source.FileURL != "" {
+		return fmt.Errorf("file source 不支持 fileUrl")
+	}
+	if err := validateReviewFile(input.Source.Path); err != nil {
+		return err
 	}
 	input.BusinessID = strings.TrimSpace(input.BusinessID)
 	if input.FileHash != "" {
@@ -415,97 +377,13 @@ func (a *App) runReviewWorkflow(ctx context.Context, args []string) error {
 	}
 	options := parseReviewOptions(parsed)
 	if parsed.Bool("--dry-run") || parsed.Bool("--print-input") {
-		// Run previews show normalized workflow input; enum conversion belongs to startReview.
-		strength := input.Config["reviewStrength"]
-		if text, ok := strength.(string); ok {
-			strength = strings.TrimSpace(text)
-		}
-		input.Config = make(map[string]any, len(config))
-		for key, value := range config {
-			input.Config[key] = value
-		}
-		input.Config["reviewStrength"] = strength
-		return a.renderReviewValue(options, input)
+		return a.renderReviewValue(options, map[string]any{"source": input.Source, "workflowStage": "awaiting_category", "nextCommand": "review pre-audit create/start after category selection"})
 	}
 	ctx, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
-	a.logger.Info("review workflow started", "source_type", input.Source.Type, "wait", input.Wait)
-	var request openplatform.Request
-	if input.Source.Type == "file" {
-		file, openErr := os.Open(input.Source.Path)
-		if openErr != nil {
-			return openErr
-		}
-		request, err = reviewUploadRequest(ctx, file, input.Source.Path, input.Source.Name)
-		_ = file.Close()
-	} else {
-		request, err = reviewJSONRequest("/file/uploadByUrl", map[string]string{"fileUrl": input.Source.FileURL, "name": input.Source.Name})
+	run, prepareErr := a.preparePreAudit(ctx, options, input.Source.Path, input.Source.Name)
+	if prepareErr == nil {
+		prepareErr = fmt.Errorf("文件已上传，请按runId执行contract category list选择分类，再用review pre-audit create/start继续")
 	}
-	if err != nil {
-		return err
-	}
-	result, workflowErr := a.performReviewWorkflow(ctx, options, input, config, request, interval)
-	if workflowErr != nil {
-		a.logger.Error("review workflow failed")
-	} else {
-		a.logger.Info("review workflow completed")
-	}
-	return a.finishReviewWorkflow(options, result, workflowErr)
-}
-
-func (a *App) performReviewWorkflow(ctx context.Context, options commandOptions, input reviewRunInput, config map[string]any, uploadRequest openplatform.Request, interval time.Duration) (map[string]any, error) {
-	result := map[string]any{}
-	upload, err := a.reviewDocument(ctx, options, uploadRequest)
-	if err != nil {
-		return result, err
-	}
-	result["upload"] = upload
-	fileID, err := reviewResponseID(upload, "fileId")
-	if err != nil {
-		return result, err
-	}
-	business, _ := upload["businessId"].(string)
-	if strings.TrimSpace(business) == "" {
-		business = input.BusinessID
-	}
-	hash, _ := upload["fileHash"].(string)
-	if strings.TrimSpace(hash) == "" {
-		hash = input.FileHash
-	}
-	payload, err := (reviewStartInput{BusinessID: business, FileID: fileID, FileHash: hash, Config: config}).payload()
-	if err != nil {
-		return result, err
-	}
-	if input.ExtractSubjects {
-		request, err := reviewJSONRequest("/subjects", map[string]any{"businessId": payload["businessId"], "fileId": payload["fileId"], "fileHash": payload["fileHash"]})
-		if err != nil {
-			return result, err
-		}
-		subjects, err := a.reviewDocument(ctx, options, request)
-		if err != nil {
-			return result, err
-		}
-		result["subjects"] = subjects
-	}
-	request, err := reviewJSONRequest("/startReview", payload)
-	if err != nil {
-		return result, err
-	}
-	start, err := a.reviewDocument(ctx, options, request)
-	if err != nil {
-		return result, err
-	}
-	result["start"] = start
-	if !input.Wait {
-		return result, nil
-	}
-	taskID, err := reviewResponseID(start, "taskId")
-	if err != nil {
-		return result, err
-	}
-	final, err := a.waitReviewResult(ctx, options, url.Values{"taskId": {strconv.FormatInt(taskID, 10)}, "businessId": {payload["businessId"].(string)}}, interval)
-	if final != nil {
-		result["final"] = final
-	}
-	return result, err
+	return a.finishReviewWorkflow(options, preAuditOutput(run), prepareErr)
 }

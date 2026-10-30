@@ -118,6 +118,27 @@ func skillDryRun(t *testing.T, args []string, body string) string {
 	t.Helper()
 	app, out := alignmentApp(t, nil) // Any remote request fails the test.
 	if body != "" {
+		if len(args) >= 2 && args[0] == "review" && args[1] == "run" {
+			var input map[string]json.RawMessage
+			if err := json.Unmarshal([]byte(body), &input); err != nil {
+				t.Fatal(err)
+			}
+			var source map[string]string
+			if err := json.Unmarshal(input["source"], &source); err != nil || source["type"] != "file" {
+				t.Fatalf("published run example must use a local CLM file: %s", input["source"])
+			}
+			// Supply the documented local attachment, keeping its business input intact.
+			source["path"] = filepath.Join(t.TempDir(), source["name"])
+			if err := os.WriteFile(source["path"], []byte("contract fixture"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			input["source"], _ = json.Marshal(source)
+			prepared, err := json.Marshal(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body = string(prepared)
+		}
 		file := filepath.Join(t.TempDir(), "input.json")
 		if err := os.WriteFile(file, []byte(body), 0600); err != nil {
 			t.Fatal(err)
@@ -143,7 +164,7 @@ func TestReviewSkillExamplesMatchCLI(t *testing.T) {
 	skillDryRun(t, []string{"review", "run"}, examples[1])
 	skillDryRun(t, []string{"review", "subject", "extract", "--business-id", "biz-fixture", "--file-id", "1175703921365090648"}, "")
 	// The documentation's selected command paths must exist in the public help tree.
-	for _, cmd := range []string{"review file upload", "review file upload-url", "review subject extract", "review task start", "review task status", "review task info", "review task result", "review run", "review checklist list"} {
+	for _, cmd := range []string{"review file upload", "review subject extract", "review task start", "review task status", "review task info", "review task result", "review run", "review checklist list"} {
 		if !strings.Contains(content, "contract-cli "+cmd) {
 			t.Fatalf("workflow lacks command %s", cmd)
 		}
@@ -168,13 +189,23 @@ func TestReviewSkillBuiltinRulePackageExamples(t *testing.T) {
 			}
 			check := func(body string, wantBuiltin, wantCustom bool) {
 				t.Helper()
+				output := skillDryRun(t, command, body)
+				if i == 1 {
+					var preview struct {
+						Stage string `json:"workflowStage"`
+					}
+					if err := json.Unmarshal([]byte(output), &preview); err != nil || preview.Stage != "awaiting_category" {
+						t.Fatalf("run must stop before category/config selection regardless of configured rules: %s", output)
+					}
+					return
+				}
 				var preview struct {
 					Config struct {
 						Builtin bool     `json:"matchContractTypeRulePackage"`
 						IDs     []string `json:"selectedCheckListIds"`
 					} `json:"config"`
 				}
-				if err := json.Unmarshal([]byte(skillDryRun(t, command, body)), &preview); err != nil {
+				if err := json.Unmarshal([]byte(output), &preview); err != nil {
 					t.Fatal(err)
 				}
 				if preview.Config.Builtin != wantBuiltin {

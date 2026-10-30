@@ -8,26 +8,28 @@ import (
 	"testing"
 )
 
-func TestReviewWorkflowSharesCommandTraceAcrossRequests(t *testing.T) {
+func TestReviewResultSharesCommandTraceAcrossRequests(t *testing.T) {
 	t.Parallel()
 	var headers []http.Header
+	statusCalls := 0
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	app := newDebugLoggingApp(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		headers = append(headers, req.Header.Clone())
 		switch {
-		case strings.HasSuffix(req.URL.Path, "/file/uploadByUrl"):
-			return jsonResponse(`{"code":200,"data":{"fileId":"123","businessId":"test","fileHash":"` + strings.Repeat("a", 64) + `"}}`), nil
-		case strings.HasSuffix(req.URL.Path, "/subjects"):
-			return jsonResponse(`{"code":200,"data":{"subjects":[]}}`), nil
-		case strings.HasSuffix(req.URL.Path, "/startReview"):
-			return jsonResponse(`{"code":200,"data":{"taskId":"456"}}`), nil
+		case strings.HasSuffix(req.URL.Path, "/status"):
+			statusCalls++
+			if statusCalls == 1 {
+				return jsonResponse(`{"code":200,"data":{"status":"running"}}`), nil
+			}
+			return jsonResponse(`{"code":200,"data":{"status":"success"}}`), nil
+		case strings.HasSuffix(req.URL.Path, "/info"):
+			return jsonResponse(`{"code":200,"data":{"ruleResult":[]}}`), nil
 		default:
 			t.Fatalf("unexpected request %s", req.URL.Path)
 			return nil, nil
 		}
 	}), stdout, stderr)
-	body := `{"source":{"type":"url","fileUrl":"https://example.test/contract","name":"contract.pdf"},"config":` + alignmentConfig + `,"extractSubjects":true,"wait":false}`
-	if err := app.Run(context.Background(), []string{"review", "run", "--data", body, "--debug", "--output", "json"}); err != nil {
+	if err := app.Run(context.Background(), []string{"review", "task", "result", "--task-id", "456", "--business-id", "test", "--interval", "1ms", "--debug", "--output", "json"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(headers) != 3 {
