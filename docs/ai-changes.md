@@ -1,3 +1,12 @@
+## 2026-11-03 — 协商群查询 Skill 上蓝集成
+- 摘要：基于 upstream/blue@cdb50da 创建独立集成分支，merge 开发分支 contract-cooperation-chat-group@933dbcd，保留提交历史。
+- 范围：原样引入 contract-cooperation-chat-group 的 3 个运行文件；固定交付分支仅额外包含测试包与说明，未合入交付二进制。
+- 决策：仅检查分支、安装分发与测试兼容，不修改 Skill 流程或 CLI 运行代码，不发起真实合同业务查询。
+- 回归：先复现新增 Skill 导致的 19/20 数量断言失败，更新两处测试并覆盖协商群 Skill 的增量安装。
+- 质量：修正 blue 基线测试代码的关闭结果检查、nil-context 用例写法及条件分支；保留原有测试语义。
+- 验证：全量 Go race/coverage 通过（CLI 83.0%）；Node 安装升级回归 24 通过、2 项既有跳过；exhaustive lint 0 issues。
+- 分发：npm 打包清单包含新增全部 3 文件，逐字节与开发分支一致；通过独立 MR 进入 blue，未直接合并或部署。
+
 ## 2026-10-22 — 同步 GitHub 1.9.9 到 GitLab master
 - 摘要：同步正式 release 的协商查询、交接 Skill、Open Web 调用及 Skill 元数据版本修正。
 - 来源：从 upstream/master@ef9c980 建集成分支，merge github/release@238ab3e（v1.9.9），保留双方提交历史。

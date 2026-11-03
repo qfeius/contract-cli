@@ -50,6 +50,11 @@ func assertFreshCommandContext(t *testing.T, parent context.Context, prior strin
 func TestRequestContextFallbackDoesNotCreateCommandScope(t *testing.T) {
 	t.Parallel()
 	for _, ctx := range []context.Context{nil, context.Background()} {
+		if ctx == nil {
+			if _, _, err := tracecontext.NewCommandContext(ctx); err == nil {
+				t.Fatal("nil parent must return an error")
+			}
+		}
 		if _, ok := tracecontext.FromContext(ctx); ok {
 			t.Fatal("empty context has a command trace")
 		}
@@ -61,8 +66,5 @@ func TestRequestContextFallbackDoesNotCreateCommandScope(t *testing.T) {
 		if err != nil || first == second {
 			t.Fatalf("fallback request traces = %v, %v, error = %v", first, second, err)
 		}
-	}
-	if _, _, err := tracecontext.NewCommandContext(nil); err == nil {
-		t.Fatal("nil parent must return an error")
 	}
 }
