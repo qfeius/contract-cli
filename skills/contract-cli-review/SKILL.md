@@ -105,7 +105,7 @@ Codex 的风险图表按「风险可视化规范 → Codex 正文内图表固定
 * 用户只给一个 ID 时先按合同 ID 查询。若响应明确为 “合同不存在 / 未找到合同”，无论用户是否说明协商场景，必须将原输入 ID 作为候选协商 ID 做一次上述只读查询；已有相同上下文的查询结果则复用。不要求用户先确认 ID 类型、说明 “协商中”、重复提供 ID、补写 `cooperationId=` 或提供合同链接，也不据合同查询未命中直接断言协商不存在。输入 ID 的真实类型、实际场景和状态以服务返回为准。
 * 协商查询成功后，要求返回的 `cooperation_id` 与查询 ID 精确一致；保存真实 `business_id`，用它执行 `contract-cli contract get <business-id> --profile <profile> --as user --output json`。要求合同返回的 `contract_id` 与该 `business_id` 一致；已有经可信数据核实的目标合同 ID、正式关联字段或合同 `multi_url.pc_url` query 中的 `cooperationId` 时，一并核对，不得存在冲突。分别保存合同 ID 和协商 ID，保留精确字符串；关联核实后复用两次查询结果，继续正文来源选择、状态准入及协商引用上传。已由该链路核实关联时，URL 缺少 `cooperationId` 不单独阻断。
 * 仅对原输入 ID 的合同查询明确未命中执行上述候选查询；认证失效、权限不足、网络 / 服务异常或错误含义不明确时，保留原错误并按既有缺口处理，不换 ID 类型、身份、租户或环境重试。候选协商也未命中、关联合同未命中、必要关联字段缺失或关联冲突时，说明已查询的对象类型和具体缺口，再请用户提供准确 ID 或可核实的合同链接；不将返回的 `business_id` 再当候选协商 ID 递归查询，不枚举其他 ID、不上传、不创建任务。
-* 已有 AI 审查 `taskId` 时仍只恢复原任务，不进入此分支重新定位、上传或创建。此分支也不覆盖已有正文来源选择，不把用户已选的任务中心正文自动改为协商正文。
+* 已有 AI 审查 `taskId` 时按「两轮审查与请求重试」处理，不进入此分支重新定位、上传或创建业务对象。此分支也不覆盖已有正文来源选择，不把用户已选的任务中心正文自动改为协商正文。
 
 ### 系统合同的正文来源选择
 
@@ -141,7 +141,7 @@ Codex 的风险图表按「风险可视化规范 → Codex 正文内图表固定
 
 协商措辞映射：`cooperation_stage_name="草稿制作阶段"` 且 `cooperation_status_name="未发起"` 对应待发起协商；`cooperation_stage_name="协商阶段"` 且 `cooperation_status_name="协商中"` 对应协商中。其他名称仅在场景明确且语义可识别时按上述规则判断，不猜测数字枚举含义。
 
-本节是 Skill 的新发起范围，不替代服务端个人数据权限、角色、权益及文件引用校验。已有 `taskId` 仍只恢复原任务查询，不因当前合同状态变化重新上传 / 创建；取得结果后按 “系统场景与详情导航” 重新判断是否返回链接。
+本节是 Skill 的新发起范围，不替代服务端个人数据权限、角色、权益及文件引用校验。已有 `taskId` 按「两轮审查与请求重试」处理，不因当前合同状态变化重新上传或创建业务对象；取得结果后按 “系统场景与详情导航” 重新判断是否返回链接。
 
 ## 准备外部文件
 
@@ -187,7 +187,7 @@ contract-cli review file upload --profile <profile> --as user --business-id <bus
 
 `sourceRevisionId`、`sourceContentMd5` 是可选项：仅在同一文件版本的可信返回中存在时，通过 --source-revision-id /--source-content-md5 原值传递；未返回则省略，不猜值、不计算其他文件的 MD5、不因此阻断。MD5 不能代替平台 fileHash。不要传顶层 appType/cooperationId/cooperationFileId；两个协商 ID 只放入 sourceLocator。--channel-type 仅在已有明确渠道要求时传入，不改变 CLI 的固定产品 / 渠道请求头。
 
-上传成功后保存响应中的 businessId/fileId/fileHash，并核对业务对象一致；后续使用响应的审查 fileId，不再使用源文件记录 ID。协商继续 `subject extract → task start → task status → task info`；沿用已有分类，收集真实立场、强度和清单后执行首次创建。每次查询携带同一个 businessId，已有 taskId 只恢复查询；未取得 taskId 时统一按 “发起失败与结果不确定” 处理。
+上传成功后保存响应中的 businessId/fileId/fileHash，并核对业务对象一致；后续使用响应的审查 fileId，不再使用源文件记录 ID。协商继续 `subject extract → task start → task status → task info`；沿用已有分类，收集真实立场、强度和清单后执行首次创建。每次查询携带同一个 businessId，已有 taskId 的续查或再次发起按「两轮审查与请求重试」处理；未取得 taskId 时统一按 “发起失败与结果不确定” 处理。
 
 ## 合同 ID → 任务中心引用上传
 
@@ -219,7 +219,7 @@ contract-cli review file upload --profile <profile> --as user --business-id <con
 contract-cli review subject extract --profile <profile> --as user --business-id <business-id> --file-id <file-id> --file-hash <file-hash> --output json
 ```
 
-按 “主体与立场” 规则展示提取候选并让用户选择；确认强度和清单后沿用 `task start → task status → task info` 执行首次创建和查询。已有 taskId 只恢复查询；未取得 taskId 时统一按 “发起失败与结果不确定” 处理。完成后按导航规则重查合同，允许返回链接时用合同 pc\_url 设置 targetType=ai-review 返回 “查看详情”，不依赖 info 中的 URL。字段映射与本地预检不代表后端已经部署或真实审查已通过。
+按 “主体与立场” 规则展示提取候选并让用户选择；确认强度和清单后沿用 `task start → task status → task info` 执行首次创建和查询。已有 taskId 的续查或再次发起按「两轮审查与请求重试」处理；未取得 taskId 时统一按 “发起失败与结果不确定” 处理。完成后按导航规则重查合同，允许返回链接时用合同 pc\_url 设置 targetType=ai-review 返回 “查看详情”，不依赖 info 中的 URL。字段映射与本地预检不代表后端已经部署或真实审查已通过。
 
 ## 选择合同分类
 
@@ -293,7 +293,7 @@ contract-cli review subject extract --profile <profile> --as user --business-id 
 
 所有场景都向用户展示本次文件提取的 “名称（角色）” 候选以确认保护立场；合同详情的登记交易方、我方 / 对方仅作辅助核对，不能替代提取候选或据此推导审查角色。提取失败、候选为空、缺名 / 角色或有歧义时停止在此步骤，保留上传结果并说明原因，不回退登记交易方、不猜甲方 / 乙方、不继续发起审查。
 
-恢复尚未发起的合同 ID 流程时，若旧选择来自登记交易方或无法证明来自同一审查文件的提取结果，作废旧主体选择；复用仍有效的上传结果执行 subject extract，让用户重新选择，不自动将旧名称或 “我方 / 对方” 映射到新候选。只有同一文件提取候选中已获用户明确、唯一确认的 name/role 才可复用；文件版本或 fileHash 改变时重新提取并确认。保留仍有效的分类、强度和清单选择。已有 taskId 则只恢复原任务查询，不为补提取而重新上传、创建或重审。
+恢复尚未发起的合同 ID 流程时，若旧选择来自登记交易方或无法证明来自同一审查文件的提取结果，作废旧主体选择；复用仍有效的上传结果执行 subject extract，让用户重新选择，不自动将旧名称或 “我方 / 对方” 映射到新候选。只有同一文件提取候选中已获用户明确、唯一确认的 name/role 才可复用；文件版本或 fileHash 改变时重新提取并确认。保留仍有效的分类、强度和清单选择。已有 taskId 按「两轮审查与请求重试」处理，不为补提取而重新上传、创建或重审。
 
 ### 强度与交互
 
@@ -420,13 +420,13 @@ contract-cli review pre-audit start --profile <profile> --as user --run-id <runI
 
 始终等待status成功和info完成，再获取原CLM预审详情。仅从 `final.reviewDetailUrl` 交付完整 `/pre-audit/detail?preAuditId=...&from=cli`，保留合法query，不拼环境域名、不用AI地址兜底、不自动打开浏览器。清单沿用OpenAPI现有处理：可忽略的无效项允许跳过，其他错误按真实接口返回；不增加无效清单确认或严格预校验。
 
-本地预审恢复统一使用：
+本地预审续查优先使用：
 
 ```text
 contract-cli review pre-audit resume --profile <profile> --as user --run-id <runId> --output json
 ```
 
-已知taskId只续查原任务。**启动结果未知**且无taskId时提示人工核实，保留runId/preAuditId，不自动重发，也不绕过状态机改用task start；本轮不实现请求号找回AI任务。服务端明确拒绝/原任务明确失败后，只有用户明确要求再次发起才使用原run执行start。审查已成功但**链接失败**时，CLI非零退出并保留final明细和字符串IDs；resume仅重取同一预审地址，不重新创建或审查。准备阶段不冒充审查成功。
+已知taskId按「两轮审查与请求重试」决定续查或第二轮再次发起；再次发起仍通过原run执行 `pre-audit start`，不新建预审。**启动结果未知**且无taskId时提示人工核实，保留runId/preAuditId，不自动重发，也不绕过状态机改用task start；本轮不实现请求号找回AI任务。状态成功但详情未就绪时按下文只读补查，不凭resume的缓存结果认定成功。审查已成功但**链接失败**时，CLI非零退出并保留final明细和字符串IDs；resume仅重取同一预审地址，不重新创建或审查，不因此触发第二轮。准备阶段不冒充审查成功。
 
 恢复记录位于配置目录的 `preaudit-runs`，绑定profile/API origin及实际JWT租户/用户；切换账号、损坏/缺失记录时停止，不新建run代替恢复。不保存token、正文或签名URL，无自动过期或后台清理，由用户管理。
 
@@ -434,15 +434,15 @@ contract-cli review pre-audit resume --profile <profile> --as user --run-id <run
 
 
 
-* 明确未创建任务：修正失败原因后可以重新发起；仅凭未取得 taskId 不能认定创建失败。
+* 明确未创建任务：先区分限流、网络异常与鉴权、权限、参数等业务异常，按「两轮审查与请求重试」处理；业务异常停止，不因未创建任务自动重发。仅凭未取得 taskId 不能认定创建失败。
 
-* 创建请求超时或连接中断且未取得 taskId：告知用户 “任务可能已创建，重新发起可能产生重复任务”，询问是否重新发起。用户未确认、拒绝或未回复时，不重发，保留已有输入和请求标识。
+* 启动请求超时或连接中断且未取得 taskId：任务可能已创建。先用已有可信任务线索和可用的注册查询命令核实；无法确认时停止，说明 “启动结果未知，重新发起可能产生重复任务”，保留已有输入和请求标识，不自动重发，不触发第二轮，不猜taskId或调用未提供的请求号恢复接口。
 
-* 用户明确确认本次重发后，允许重新发起一次；原始发起授权不等于重发授权。复用仍有效的上传结果和已确认配置，通过 `review task start` 重发创建，不重新执行 review run，也不为重发重新上传。再次超时或连接中断仍需重新告知并由用户决定，不循环重试。
+* 已有明确审查状态时，第二轮是否再次发起由统一规则决定，不追加开始审查确认；沿用原文件和已确认配置。用户之后另行要求新的审查属于新请求，不把轮次清零当作自动第三轮。
 
-* 已取得 taskId：继续查询原任务，不因查询超时、连接中断或链接缺失重新创建。
+* 已取得 taskId：保留原任务及业务上下文。查询超时、连接中断、限流或链接缺失本身不构成重新创建理由；只有统一规则中的明确审查状态允许第二轮再次发起。
 
-本节普通重发规则仅适用于协商和任务中心的既有审查；本地CLM预审按上一节状态机处理。不改变 CLI 自动重试策略，不绕过服务端权限和参数校验，不承诺后端幂等或重复请求不会产生额外任务。
+本节异常边界适用于本地CLM预审、协商及任务中心合同审查；具体命令仍使用各自入口。两轮由Skill编排，不改变CLI自身自动重试策略，不绕过CLI状态机、服务端权限和参数校验，不承诺后端幂等。
 
 ### review run 的本地文件兼容入口
 
@@ -476,22 +476,70 @@ source.type仅支持file，path/name由CLM预审流程接管：上传CLM后输�
 
 ## 原任务查询、恢复与结果
 
-本地CLM预审使用 `review pre-audit resume --run-id`，由CLI保留业务和文件绑定并完成链接交付。以下低层查询用于系统合同或只读排查已知taskId；旧URL任务仍可按已知taskId只读查询。只读排查不替代预审状态机恢复，不据此重新发起。
+本地CLM预审优先使用 `review pre-audit resume --run-id`，由CLI保留业务和文件绑定并完成链接交付；详情未就绪时按CLI固定流程续查原任务。以下低层查询用于系统合同或只读排查已知taskId和原businessId的任务；旧URL任务同样需要这两个ID才能只读查询。再次发起审查仍须符合两轮规则并使用对应入口，不修改本地run记录绕过状态机。
 
 
 ```text
-contract-cli review task status --profile <profile> --as user --task-id <review-task-id> --output json
+contract-cli review task status --profile <profile> --as user --task-id <review-task-id> --business-id <business-id> --output json
 
-contract-cli review task info --profile <profile> --as user --task-id <review-task-id> --output json
+contract-cli review task info --profile <profile> --as user --task-id <review-task-id> --business-id <business-id> --output json
 
 contract-cli review task result --profile <profile> --as user --task-id <review-task-id> --business-id <business-id> --interval 2s --deadline 10m --output json
 ```
 
-> **实测硬约束（系统合同/协商发起场景）**：`review task result` 不传 `--business-id` 时服务端直接返回 **HTTP 422「参数错误，businessId 不能为空」**，命令以非 0 退出并只输出 `null`（不是"任务未完成"，不要误判为任务失败或重复发起）。凡是按合同 ID（协商引用上传 / 任务中心引用上传）发起的审查，轮询结果**必须**带上本次真实 `--business-id`；查询恢复原任务时同样复用原 `businessId`。
+> **必填业务上下文**：`review task status/info/result` 均必须提供非空 `--business-id`；缺失、空串或纯空白时，CLI 在发送请求前报参数错误。使用发起该任务时的真实 `businessId`，本地CLM预审为原 `preAuditId`；查询和恢复始终复用原值，不能用 `taskId` 代替。缺参不代表任务失败，不要因此重复发起审查。
 
-status/info 各查询一次，result 轮询同一任务成功后取详情。需要业务关联时复用真实 `--business-id`；指定 `--visibility-scope contractResult` 必须同时提供它，不能用该参数伪造系统场景。查询恢复保留原场景、文件和清单；来源不明时先核实，不从 taskId 猜场景。
+status 查询一次当前状态；info 先查询 status，仅确认 success 后才读取一次详情，未成功或详情未就绪均非零退出，不等待。result 负责等待同一任务的有效成功详情，全程携带同一个真实 `--business-id`。可选 `--visibility-scope contractResult`，不能用该参数伪造系统场景。查询恢复保留原场景、文件和清单；来源不明时先核实，不从 taskId 猜场景。
 
-已创建 / 处理中不代表成功。已取得 taskId 时，明确失败或取消终态则停止；查询遇到未知状态、超时或临时中断时保留任务及最后阶段，只恢复同一任务查询，不重新上传 / 创建。本地预审启动未知按「本地预审发起与链接交付」停止核实；其他来源未取得taskId时按「发起失败与结果不确定」处理。失败时显示实际可用错误和请求标识，不猜后台原因。
+已创建 / 处理中不代表成功。取得状态和详情后按下节统一决定第二轮；失败时显示实际可用错误和请求标识，不猜后台原因。
+
+### CLI 固定审查流程
+
+审查请求顺序由 CLI 强制执行：发起任务 → 轮询 status → 状态成功后读取 info → 确认详情有效成功 → 本地预审获取CLM链接并返回 completed。正常审查使用 `review pre-audit start/resume` 或 `review task result`，禁止并行或提前单独调用 `review task info`。
+
+- `status=running` 时只轮询状态，`status=success` 后才请求 `info`；明确失败、无权限、任务不存在或未知状态时停止并说明实际错误。
+- `info.status=running`、`ruleResult` 缺失或为 null，或显式 `reviewReady=false` 时，详情尚未就绪；等待命令在原间隔和截止时间内继续查询同一任务，不返回 `completed`，不交付预审结果链接，不重新创建任务。
+- 详情须为 success 且 `ruleResult` 为数组；合法空数组代表有效零风险结果。兼容未返回 `reviewReady` 的成功响应，但返回该字段时必须为 true；法律法规等独立可选结果不作为额外阻塞条件。
+- 单次 info 也会先校验 status；即使前一次查询成功，info 实读仍未就绪时也非零退出，保留实际响应。需要等待时继续使用原任务的 result/resume，不把请求成功、退出码或已有链接当作结果完成。
+- 本地run仅在缓存详情满足同一成功门槛时复用结果并重取链接；历史 completed/review_succeeded 记录的缓存无效时，CLI恢复查询原taskId，不信任旧阶段标签，也不要求调用方修改run记录。
+
+### 两轮审查与请求重试
+
+本节统一适用于**外部文件预审**和**合同 ID**发起的审查（协商正文、任务中心正文），由Skill编排，**最多两轮**。同一轮中的请求重试不增加轮次。保存当前轮次、该轮截止时间、最近一次可信响应及原taskId；同一请求的续查不把轮次清零。只查询既有任务时，也按本节判断；若历史轮次无法核实，先只读续查，不凭缺失的轮次记录自动再次发起。
+
+**业务异常优先于审查状态判断**：先排除鉴权、权限、参数等业务拒绝；即使错误被包装成fail，也停止并说明原因，不进入第二轮。以下决策仅依据服务端明确返回的审查状态和实际详情，不把CLI非零退出、HTTP错误、缺失/无法解析的状态当作审查失败。未知枚举须能由当前契约明确判定为审查状态，否则报告响应异常。
+
+| 轮次 | 取得的审查状态 / 结果 | 下一动作 |
+| --- | --- | --- |
+| 第一轮 | success 且详情完整 | 按既有格式输出成功结果并结束，不进入第二轮 |
+| 第一轮 | running | 第二轮续查原 taskId，不重新发起审查 |
+| 第一轮 | success 但详情未就绪 | 第二轮继续获取原 taskId 的详情，只读补查，不重审 |
+| 第一轮 | fail 或其他明确审查状态 | 第二轮在原业务对象上重新发起一次审查，再查询新任务；仅适用于非success、非running状态 |
+| 第二轮 | 任意状态、结果或错误 | 输出实际状态、结果或错误并结束，不触发第三轮 |
+
+一轮内持续获取状态和所需详情，直到取得完整成功结果、明确审查终态、不可恢复的业务错误或本轮时限到达；收到一次running不立即进入第二轮。第二轮沿用同样的轮询和请求重试规则，只有该轮结束后才输出最终结果。第二轮成功依旧使用现有结果展示格式；失败、超时或仍running则说明真实状态、已取得的可用结果及任务/请求标识，不声称成功或零风险，不伪造统计和链接。
+
+**时限**：每轮沿用 `--deadline`，默认10分钟，并记录独立的**绝对截止时间**。限流等待、网络重试、详情补查和第二轮重新发起的请求均计入对应轮次；同轮换命令、命令提前退出或请求重试均**不重置**时限，支持deadline的后续命令只使用本轮剩余时间。到期停止发起新请求。若因请求异常始终无法取得可信状态或结果，输出查询异常并结束，不用缓存状态触发重新发起。不得因进入第二轮改变服务端原任务的截止时间。
+
+| 分类 | 异常 | 当前轮处理 |
+| --- | --- | --- |
+| 请求异常 | HTTP 429 | 优先遵循Retry-After并增大请求间隔；未提供时按10s、20s、40s、最多60s退避，同轮重试，不触发第二轮 |
+| 请求异常 | 查询网络超时 | 等待后重试原请求，按5s、10s、20s、最多60s退避；同轮恢复原任务查询，不触发第二轮 |
+| 请求异常 | 鉴权、权限、参数等业务异常 | 停止并说明实际原因，不触发第二轮，不切换身份、环境或业务对象重试 |
+| 请求异常 | 启动超时且没有 taskId | 启动结果未知，先核实；无法确认时停止，不自动重发，不触发第二轮 |
+
+等待时间必须受本轮剩余时限约束；服务端要求的Retry-After超过剩余时限时结束本轮请求恢复，不提前请求。限流后将增大的轮询间隔传给后续 `result` / `pre-audit resume`，跨第二轮也保留，不能立即回落到默认2s。网络超时重试仅针对可安全重试的查询；启动请求是否成功未知时不适用。限流或网络恢复耗尽时输出真实错误，不把请求失败转成重新发起条件。
+
+**详情未就绪的只读补查**：同时检查实际审查状态和按下文规则判断的详情完整性。CLI退出码为0、`workflowStage=completed`、已拿到链接均不能单独证明结果完整；合法空数组代表完整零风险，列表缺失或详情仍running不等于零风险。预审resume会校验缓存final，无效缓存自动续查原任务；有效成功缓存仍只重取链接。需要单次复核时，按下面顺序先查询status，明确success后再执行info；info内部仍会再次校验status，不并行执行这两个命令，也不修改run记录：
+
+```text
+contract-cli review task status --profile <profile> --as user --task-id <review-task-id> --business-id <business-id> --output json
+contract-cli review task info --profile <profile> --as user --task-id <review-task-id> --business-id <business-id> --output json
+```
+
+各次查询及后续补查（包括info内部的status校验）始终携带原taskId和同一个businessId；本地预审businessId为原preAuditId。补查循环共享所在轮次的间隔及截止时间。详情完整后，本地预审仍通过原run的resume获取合法CLM链接；合同ID审查仍按原导航规则取合同pc_url，不改变结果展示格式。
+
+**第二轮再次发起**：复用原profile、租户、user身份、businessId、文件引用及已确认的立场、强度、清单；不重新上传、不重新创建预审、不切换文件或重复询问配置。合同ID使用原 `review task start` 输入；本地预审使用原run的 `review pre-audit start`。再次发起前保留旧taskId，取得新taskId后只轮询新任务；未取得新taskId按启动结果未知处理。若CLI状态机或服务端拒绝本次发起，直接按第二轮实际错误结束，不绕过入口或改写本地状态。审查成功但页面链接获取失败仍只重取原链接，不消耗或触发重审轮次。
 
 成功后展示文件名、分类、立场、强度、全部清单名称和真实风险概览。风险统计缺失写 “未返回”；仅完整列表才能自行汇总，分页 / 截断不能声称无风险或完整结果。
 

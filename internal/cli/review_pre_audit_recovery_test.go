@@ -198,7 +198,7 @@ func TestPreAuditKnownTaskResumesPollingWithoutNewWrites(t *testing.T) {
 			if r.URL.Query().Get("simplifyReviewResult") != "true" {
 				t.Fatal("resumed preaudit info must request simplified results", r.URL)
 			}
-			return jsonResponse(`{"code":200,"data":{"ruleResult":[]}}`), nil
+			return jsonResponse(`{"code":200,"data":{"status":"success","ruleResult":[]}}`), nil
 		default:
 			if resume {
 				t.Fatal("known-task resume must only read existing objects", r.URL)
@@ -245,7 +245,7 @@ func TestPreAuditRejectsInvalidPagesAndChangedCurrentFile(t *testing.T) {
 				case "/open-apis/contract/v3/review/status":
 					return jsonResponse(`{"code":200,"data":{"status":"success"}}`), nil
 				case "/open-apis/contract/v3/review/info":
-					return jsonResponse(`{"code":200,"data":{"ruleResult":[]}}`), nil
+					return jsonResponse(`{"code":200,"data":{"status":"success","ruleResult":[]}}`), nil
 				default:
 					return preAuditPreparationRequest(t, r)
 				}

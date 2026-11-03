@@ -21,6 +21,7 @@ import (
 )
 
 var errReviewURLUploadDisabled = errors.New("暂不支持通过 URL 上传审查文件；预审需先上传 CLM，再以文件引用上传 AI；本地文件请使用 contract-cli review pre-audit prepare --file <path>")
+var errReviewInfoNotReady = errors.New("审查详情尚未就绪，请继续查询原任务")
 
 type reviewRequestSession struct {
 	client *openplatform.Client
@@ -91,6 +92,10 @@ func (a *App) reviewDocument(ctx context.Context, options commandOptions, reques
 	if options.reviewSession != nil {
 		return preAuditResponseData(response)
 	}
+	return reviewResponseData(response)
+}
+
+func reviewResponseData(response openplatform.Response) (map[string]any, error) {
 	var envelope struct {
 		Data map[string]any `json:"data"`
 	}
@@ -254,11 +259,71 @@ func (a *App) runReviewTask(ctx context.Context, args []string) error {
 		result, err := a.waitReviewResult(ctx, parseReviewOptions(parsed), query, interval)
 		return a.finishReviewWorkflow(parseReviewOptions(parsed), result, err)
 	}
+	if args[0] == "info" {
+		snapshot, err := a.reviewDocument(ctx, parseReviewOptions(parsed), reviewQueryRequest("/status", query))
+		if err != nil {
+			return err
+		}
+		status, _ := snapshot["status"].(string)
+		var statusErr error
+		switch status {
+		case "success":
+		case "running":
+			statusErr = fmt.Errorf("审查任务仍在处理中，暂不获取详情；请继续查询原任务")
+		case "fail":
+			statusErr = fmt.Errorf("审查任务失败，暂不获取详情")
+		case "":
+			statusErr = fmt.Errorf("任务不存在或当前用户无权访问")
+		default:
+			statusErr = fmt.Errorf("未知审查任务状态 %q", status)
+		}
+		if statusErr != nil {
+			a.logger.Warn("review info blocked by task status", "task_id", query.Get("taskId"), "status", status)
+			return a.finishReviewWorkflow(parseReviewOptions(parsed), snapshot, statusErr)
+		}
+	}
 	response, err := a.doReview(ctx, parseReviewOptions(parsed), reviewQueryRequest("/"+args[0], query))
 	if err != nil {
 		return err
 	}
+	if args[0] == "info" {
+		info, err := reviewResponseData(response)
+		if err != nil {
+			return err
+		}
+		if infoErr := reviewInfoResultError(info); infoErr != nil {
+			a.logger.Warn("review info is not complete", "task_id", query.Get("taskId"), "status", info["status"])
+			if err := a.renderOpenPlatformResponse(parseReviewOptions(parsed), response); err != nil {
+				return fmt.Errorf("%w; output failed: %v", infoErr, err)
+			}
+			return infoErr
+		}
+	}
 	return a.renderOpenPlatformResponse(parseReviewOptions(parsed), response)
+}
+
+// A successful request is not a completed review. An empty array is a valid
+// zero-risk result; missing/null lists and explicitly unready reviews are not.
+func reviewInfoResultError(info map[string]any) error {
+	status, _ := info["status"].(string)
+	switch status {
+	case "running":
+		return errReviewInfoNotReady
+	case "fail":
+		return fmt.Errorf("审查任务失败")
+	case "success":
+		if _, ok := info["ruleResult"].([]any); !ok {
+			return errReviewInfoNotReady
+		}
+		if ready, exists := info["reviewReady"]; exists && ready != true {
+			return errReviewInfoNotReady
+		}
+		return nil
+	case "":
+		return fmt.Errorf("审查详情缺少有效任务状态")
+	default:
+		return fmt.Errorf("未知审查详情状态 %q", status)
+	}
 }
 
 func reviewQueryRequest(path string, query url.Values) openplatform.Request {
@@ -287,6 +352,14 @@ func (a *App) waitReviewResult(ctx context.Context, options commandOptions, quer
 			info, err := a.reviewDocument(ctx, options, reviewQueryRequest("/info", query))
 			if err != nil {
 				return last, err
+			}
+			last = info
+			if infoErr := reviewInfoResultError(info); infoErr != nil {
+				if !errors.Is(infoErr, errReviewInfoNotReady) {
+					return info, infoErr
+				}
+				a.logger.Warn("review details pending; continuing original task", "task_id", query.Get("taskId"), "status", info["status"])
+				break
 			}
 			for _, key := range []string{"url", "reviewDetailUrl", "review_detail_url", "detailUrl", "detail_url", "resultUrl", "result_url", "reportUrl", "report_url"} {
 				if u, ok := info[key].(string); ok && validateReviewURL(strings.TrimSpace(u)) == nil {

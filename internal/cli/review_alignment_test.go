@@ -209,14 +209,14 @@ func TestReviewAlignmentQuery(t *testing.T) {
 			}
 			return `{"code":200,"data":{"status":"fail","message":"failed"}}`
 		})
-		if err := app.Run(context.Background(), []string{"review", "task", "result", "--task-id", "99", "--interval", "1ms", "--deadline", "1s"}); err == nil {
+		if err := app.Run(context.Background(), []string{"review", "task", "result", "--task-id", "99", "--business-id", "biz", "--interval", "1ms", "--deadline", "1s"}); err == nil {
 			t.Fatal("failure must return error")
 		}
 		if !strings.Contains(out.String(), "fail") {
 			t.Fatal(out.String())
 		}
 	})
-	for _, args := range [][]string{{"status", "--task-id", "0"}, {"info", "--task-id", "1", "--visibility-scope", "other"}, {"info", "--task-id", "1", "--visibility-scope", "contractResult"}, {"status", "--task-id", "1", "--app-type", "CLM"}} {
+	for _, args := range [][]string{{"status", "--task-id", "0", "--business-id", "biz"}, {"info", "--task-id", "1", "--business-id", "biz", "--visibility-scope", "other"}, {"info", "--task-id", "1", "--visibility-scope", "contractResult"}, {"status", "--task-id", "1", "--app-type", "CLM"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			app, _ := alignmentApp(t, nil)
 			if err := app.Run(context.Background(), append([]string{"review", "task"}, args...)); err == nil {
@@ -303,7 +303,7 @@ func TestReviewAlignmentBoundaries(t *testing.T) {
 		}
 	})
 	t.Run("user only", func(t *testing.T) {
-		for _, args := range [][]string{{"task", "start", "--data", alignmentStart()}, {"task", "status", "--task-id", "1"}, {"checklist", "list"}, {"rule", "list", "--group-id", "g"}} {
+		for _, args := range [][]string{{"task", "start", "--data", alignmentStart()}, {"task", "status", "--task-id", "1", "--business-id", "biz"}, {"checklist", "list"}, {"rule", "list", "--group-id", "g"}} {
 			app, _ := alignmentApp(t, nil)
 			err := app.Run(context.Background(), append(append([]string{"review"}, args...), "--as", "app"))
 			if err == nil || !strings.Contains(err.Error(), "user") {
@@ -319,7 +319,7 @@ func TestReviewAlignmentBoundaries(t *testing.T) {
 			return `{"code":200,"data":{"status":"running","taskId":"99"}}`
 		})
 		start := time.Now()
-		err := app.Run(context.Background(), []string{"review", "task", "result", "--task-id", "99", "--interval", "1s", "--deadline", "20ms"})
+		err := app.Run(context.Background(), []string{"review", "task", "result", "--task-id", "99", "--business-id", "biz", "--interval", "1s", "--deadline", "20ms"})
 		if err == nil || time.Since(start) > time.Second || !strings.Contains(out.String(), "running") {
 			t.Fatalf("timeout %v, %s", err, out.String())
 		}
@@ -341,13 +341,13 @@ func TestReviewAlignmentBoundaries(t *testing.T) {
 					} else if r.URL.Path != "/open-apis/contract/v3/review/status" || q.Has("simplifyReviewResult") {
 						t.Fatalf("status must keep its existing query: %s", r.URL)
 					}
-					return `{"code":200,"data":{"status":"success"}}`
+					return `{"code":200,"data":{"status":"success","ruleResult":[]}}`
 				})
 				if err := app.Run(context.Background(), []string{"review", "task", command, "--task-id", "1175703921365090648", "--business-id", "biz", "--visibility-scope", "contractResult"}); err != nil {
 					t.Fatal(err)
 				}
 				want := []string{"/open-apis/contract/v3/review/" + command}
-				if command == "result" {
+				if command == "result" || command == "info" {
 					want = []string{"/open-apis/contract/v3/review/status", "/open-apis/contract/v3/review/info"}
 				}
 				if !reflect.DeepEqual(paths, want) {

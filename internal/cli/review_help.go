@@ -15,7 +15,7 @@ func addReviewHelp(registry map[string]helpTopic) {
 	dry := []helpFlag{{"--dry-run", "校验并输出请求，不调用远端"}, {"--print-input", "输出规范化输入，不调用远端"}}
 	input := []helpFlag{{"--input-file <path>", "从 JSON 文件读取请求体；与 --data 互斥"}, {"--input <path>", "--input-file 的兼容别名"}, {"--data <json>", "内联 JSON 请求体；与文件输入互斥"}}
 	wait := []helpFlag{{"--interval <duration>", "轮询间隔，默认 2s"}, {"--deadline <duration>", "最长等待时间，默认 10m；run 覆盖整个工作流"}}
-	query := []helpFlag{{"--task-id <id>", "必填，大于 0 的审查任务 ID"}, {"--business-id <id>", "业务对象 ID"}, {"--visibility-scope <scope>", "可选 contractResult；指定时必须提供 --business-id"}}
+	query := []helpFlag{{"--task-id <id>", "必填，大于 0 的审查任务 ID"}, {"--business-id <id>", "必填，发起该任务时的业务对象 ID；预审为 preAuditId"}, {"--visibility-scope <scope>", "可选 contractResult"}}
 	paging := []helpFlag{{"--sort <csv>", "排序，可重复或 CSV；保留逗号示例：--sort '\"name,desc\"'"}, {"--page-index <n>", "页码从 1 开始；0 或省略不传"}, {"--page-size <n>", "每页数量；0 或省略不传"}}
 	configNotes := []string{
 		"config.selectedPosition、selectedAuditRole、reviewStrength 必填。",
@@ -26,7 +26,7 @@ func addReviewHelp(registry map[string]helpTopic) {
 	}
 	registry["review"] = helpTopic{Name: "review", Summary: "执行合同智能审查。外部本地文件通过 CLM 预审流程准备，系统合同复用文件引用。", Usage: []string{"contract-cli review <subcommand> [flags]"}, Commands: []helpCommand{
 		{"contract-cli review file <subcommand> [flags]", "准备审查输入文件"}, {"contract-cli review subject extract [flags]", "提取合同主体"}, {"contract-cli review task <subcommand> [flags]", "管理审查任务生命周期"}, {"contract-cli review run [flags]", "上传本地文件到 CLM 并输出待选分类阶段"}, {"contract-cli review checklist <subcommand> [flags]", "管理审查清单"}, {"contract-cli review rule <subcommand> [flags]", "管理审查规则"},
-	}, Flags: reviewHelpFlags(), Examples: []string{"contract-cli review run --input review-run.json", "contract-cli review task result --task-id 123"}, Notes: []string{"review 下所有远端请求仅支持 user 身份。"}}
+	}, Flags: reviewHelpFlags(), Examples: []string{"contract-cli review run --input review-run.json", "contract-cli review task result --task-id 123 --business-id biz-001"}, Notes: []string{"review 下所有远端请求仅支持 user 身份。"}}
 	registry["review file"] = helpTopic{Name: "review file", Summary: "准备审查输入文件；不会自动发起审查。", Usage: []string{"contract-cli review file <subcommand> [flags]"}, Commands: []helpCommand{{"contract-cli review file upload [flags]", "引用 CLM 已有文件"}}}
 	registry["review file upload"] = helpTopic{Name: "review file upload", Summary: "引用 CLM 已有文件，准备 AI 审查输入。", Usage: []string{"contract-cli review file upload [flags]"}, Flags: reviewHelpFlags(append([]helpFlag{{"--name <name>", "必填，业务文件名（含扩展名）"}}, dry...)...), Notes: []string{"文件名仅支持 .doc/.docx/.pdf；只准备文件引用，不发起审查。", "不接受 --file/--stdin；本地文件请使用 contract-cli review pre-audit prepare。"}}
 	registry["review subject"] = helpTopic{Name: "review subject", Usage: []string{"contract-cli review subject extract [flags]"}, Commands: []helpCommand{{"contract-cli review subject extract [flags]", "提取已上传合同参与方"}}}
@@ -38,14 +38,15 @@ func addReviewHelp(registry map[string]helpTopic) {
 		summary := "查询一次审查任务状态"
 		var notes []string
 		if action == "info" {
-			summary = "查询一次任务详情，不等待"
+			summary = "先查询 status，成功后获取一次详情，不等待"
+			notes = []string{"仅当 status=success 时请求 info；任务未成功或详情未就绪均非零退出。", "详情须为 success 且 ruleResult 为数组，空数组有效；明确 reviewReady=false 时仍未就绪。"}
 		}
 		if action == "result" {
 			flags = append(flags, wait...)
 			summary = "等待任务完成并获取最终结果"
-			notes = []string{"内部轮询 status，成功后调用一次 info；失败、取消或超时返回错误和最后可用快照。", "详情中存在有效预览链接时补充 reviewDetailUrl，完整保留签名参数；缺少链接不影响成功。"}
+			notes = []string{"内部轮询 status，仅 success 后请求 info；详情未就绪时继续查询原任务，共用原截止时间。", "失败、取消或超时返回错误和最后可用快照。", "详情中存在有效预览链接时补充 reviewDetailUrl，完整保留签名参数；缺少链接不影响成功。"}
 		}
-		registry["review task "+action] = helpTopic{Name: "review task " + action, Summary: summary, Usage: []string{"contract-cli review task " + action + " --task-id <id> [flags]"}, Flags: reviewHelpFlags(flags...), Notes: notes}
+		registry["review task "+action] = helpTopic{Name: "review task " + action, Summary: summary, Usage: []string{"contract-cli review task " + action + " --task-id <id> --business-id <id> [flags]"}, Flags: reviewHelpFlags(flags...), Notes: notes}
 	}
 	registry["review run"] = helpTopic{Name: "review run", Summary: "上传本地文件到 CLM，随后选择分类并继续预审。", Usage: []string{"contract-cli review run --input <path>|--data <json> [flags]"}, Flags: reviewHelpFlags(append(append(append([]helpFlag{}, input...), wait...), dry...)...), Examples: []string{`contract-cli review run --data '{"source":{"type":"file","path":"./合同.pdf","name":"合同.pdf"}}' --dry-run`}}
 	registry["review checklist"] = helpTopic{Name: "review checklist", Summary: "管理审查清单。", Usage: []string{"contract-cli review checklist <subcommand> [flags]"}, Notes: []string{"仅支持 user；删除必须 --yes；批量创建/更新以一次数组请求提交。"}}
@@ -147,9 +148,9 @@ func completeReviewHelp(registry map[string]helpTopic, input, dry []helpFlag) {
 		"review file upload":     {"contract-cli review file upload --profile contract --file contract.pdf --name 合同.pdf", "contract-cli review file upload --stdin --name 合同.pdf < contract.pdf"},
 		"review subject extract": {"contract-cli review subject extract --profile contract --business-id biz-001 --file-id 123", "contract-cli review subject extract --business-id biz-001 --file-id 123 --dry-run"},
 		"review task start":      {"contract-cli review task start --profile contract --input-file review-start.json", "contract-cli review task start --input-file review-start.json --dry-run"},
-		"review task status":     {"contract-cli review task status --profile contract --task-id 123"},
-		"review task info":       {"contract-cli review task info --profile contract --task-id 123", "contract-cli review task info --task-id 123 --business-id biz-001 --visibility-scope contractResult"},
-		"review task result":     {"contract-cli review task result --profile contract --task-id 123 --interval 2s --deadline 10m"},
+		"review task status":     {"contract-cli review task status --profile contract --task-id 123 --business-id biz-001"},
+		"review task info":       {"contract-cli review task info --profile contract --task-id 123 --business-id biz-001", "contract-cli review task info --task-id 123 --business-id biz-001 --visibility-scope contractResult"},
+		"review task result":     {"contract-cli review task result --profile contract --task-id 123 --business-id biz-001 --interval 2s --deadline 10m"},
 		"review run":             {"contract-cli review run --profile contract --input-file review-run.json", "contract-cli review run --input-file review-run.json --dry-run"},
 		"review checklist list":  {"contract-cli review checklist list --profile contract --name 采购 --enabled=true --page-index 1 --page-size 20", "contract-cli review checklist list --review-stage 1,2 --sort '\"name,desc\"'"},
 		"review rule list":       {"contract-cli review rule list --profile contract --group-id group-001 --page-index 1 --page-size 20"},
@@ -259,7 +260,9 @@ func completeReviewHelp(registry map[string]helpTopic, input, dry []helpFlag) {
 			topic.Examples = values
 		}
 		if len(topic.Commands) == 0 {
-			topic.Usage = []string{"contract-cli " + key + " [flags]"}
+			if key != "review task status" && key != "review task info" && key != "review task result" {
+				topic.Usage = []string{"contract-cli " + key + " [flags]"}
+			}
 			clean := []string{identityNote, "单次远端请求默认超时 30s；run/result 还受整体 deadline 限制。"}
 			for _, note := range topic.Notes {
 				if note == "仅支持 user 身份。" {

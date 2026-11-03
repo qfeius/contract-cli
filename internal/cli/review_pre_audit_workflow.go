@@ -148,7 +148,15 @@ func (a *App) resumePreAudit(ctx context.Context, options commandOptions, run *p
 			return err
 		}
 		return fmt.Errorf("预审及引用已准备，请选择配置后执行review pre-audit start")
-	case "running":
+	case "running", "review_succeeded", "completed":
+		if run.Stage != "running" {
+			if reviewInfoResultError(run.Final) == nil {
+				// A valid successful result still needs only the original CLM URL.
+				break
+			}
+			a.logger.Warn("pre-audit cached result is not complete; rechecking original task", "run_id", run.RunID, "task_id", run.TaskID)
+			run.Stage = "running"
+		}
 		if run.TaskID == "" {
 			return fmt.Errorf("原任务ID缺失，不能重新发起")
 		}
@@ -169,8 +177,6 @@ func (a *App) resumePreAudit(ctx context.Context, options commandOptions, run *p
 		if err := a.preAuditStore().save(run); err != nil {
 			return err
 		}
-	case "review_succeeded", "completed":
-		// Already have the successful info; only the original CLM URL is read.
 	case "start_unknown":
 		return fmt.Errorf("启动结果不确定，没有taskId；请人工核实，不自动重发")
 	case "upload_unknown", "reference_unknown", "reference_not_ready":

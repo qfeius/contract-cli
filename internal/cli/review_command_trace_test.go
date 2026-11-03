@@ -23,7 +23,7 @@ func TestReviewResultSharesCommandTraceAcrossRequests(t *testing.T) {
 			}
 			return jsonResponse(`{"code":200,"data":{"status":"success"}}`), nil
 		case strings.HasSuffix(req.URL.Path, "/info"):
-			return jsonResponse(`{"code":200,"data":{"ruleResult":[]}}`), nil
+			return jsonResponse(`{"code":200,"data":{"status":"success","ruleResult":[]}}`), nil
 		default:
 			t.Fatalf("unexpected request %s", req.URL.Path)
 			return nil, nil

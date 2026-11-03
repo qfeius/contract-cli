@@ -417,7 +417,7 @@ func TestPreAuditLinkFailureRetainsResultsAndResumeOnlyFetchesLink(t *testing.T)
 			pollCount++
 			return jsonResponse(`{"code":200,"data":{"status":"success"}}`), nil
 		case "/open-apis/contract/v3/review/info":
-			return jsonResponse(`{"code":200,"data":{"ruleResult":[{"id":"risk1"}],"url":"https://ai.example.cn/fallback"}}`), nil
+			return jsonResponse(`{"code":200,"data":{"status":"success","ruleResult":[{"id":"risk1"}],"url":"https://ai.example.cn/fallback"}}`), nil
 		default:
 			if resume {
 				t.Fatal("D5-F recovery must only fetch the original page", r.URL)
