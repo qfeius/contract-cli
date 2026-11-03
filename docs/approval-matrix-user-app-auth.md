@@ -22,7 +22,7 @@
 
 ## prod 验证步骤
 
-当前 CLI 仅支持 prod。先确认后端及上述网关配置已部署，再使用独立、已授权的 prod profile 做只读验证；历史 dev/test/blue 凭证不迁移。
+先确认后端及上述网关配置已部署，再使用独立、已授权的目标 profile 做只读验证。实际环境由 profile 的业务和授权地址决定，下面以 prod 预设为例；地址变化后须重新授权，不能跨目标复用凭证。
 
 ```bash
 contract-cli config add --env prod --name contract

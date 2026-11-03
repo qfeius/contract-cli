@@ -29,11 +29,12 @@ type authCommandOptions struct {
 	NoOpenBrowser bool
 	AppID         string
 	AppSecret     string
+	JSONOutput    bool
 }
 
 type authStatusField struct {
-	Label string
-	Value string
+	Label string `json:"label"`
+	Value string `json:"value"`
 }
 
 type authStatusView struct {
@@ -48,11 +49,12 @@ type authProvider interface {
 }
 
 type userAuthProvider struct {
-	httpClient             *http.Client
-	logger                 *slog.Logger
-	openBrowser            func(string) error
-	authorizationURLWriter io.Writer
-	startCallbackServer    func(string) (authorizationCallback, error)
+	httpClient              *http.Client
+	logger                  *slog.Logger
+	openBrowser             func(string) error
+	authorizationURLWriter  io.Writer
+	authorizationJSONWriter io.Writer
+	startCallbackServer     func(string) (authorizationCallback, error)
 }
 
 type authorizationCallback interface {
@@ -61,14 +63,20 @@ type authorizationCallback interface {
 
 func (p userAuthProvider) Login(ctx context.Context, profile *config.Profile, options authCommandOptions) (string, error) {
 	p.logger.Info("user auth login started", "profile", profile.Name)
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 
-	user := &profile.Identities.User
+	user := profile.Identities.User
 	user.AuthMode = config.UserAuthModeAuthorizationCode
 	if user.RegistrationEndpoint == "" || user.AuthorizationEndpoint == "" || user.TokenEndpoint == "" || user.RedirectURL == "" {
 		return "", fmt.Errorf("user identity is not configured; run `contract-cli config add` first")
 	}
 
 	p.logger.Info("register oauth client", "profile", profile.Name, "registration_endpoint", user.RegistrationEndpoint)
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	registration, err := oauth.RegisterClient(ctx, p.httpClient, p.logger, user.RegistrationEndpoint, oauth.ClientRegistrationRequest{
 		ClientName:              profile.ClientName,
 		RedirectURIs:            []string{user.RedirectURL},
@@ -76,6 +84,9 @@ func (p userAuthProvider) Login(ctx context.Context, profile *config.Profile, op
 		ResponseTypes:           []string{"code"},
 		TokenEndpointAuthMethod: "",
 	})
+	if cancelled := ctx.Err(); cancelled != nil {
+		return "", withCommandCancellation(ctx, err)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -96,9 +107,15 @@ func (p userAuthProvider) Login(ctx context.Context, profile *config.Profile, op
 			return oauth.StartCallbackServer(redirectURL)
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	callbackServer, err := startCallbackServer(user.RedirectURL)
 	if err != nil {
 		return "", err
+	}
+	if closer, ok := callbackServer.(interface{ Close() }); ok {
+		defer closer.Close()
 	}
 
 	authURL, err := oauth.BuildAuthorizationURL(oauth.AuthorizationRequest{
@@ -114,15 +131,17 @@ func (p userAuthProvider) Login(ctx context.Context, profile *config.Profile, op
 	if err != nil {
 		return "", err
 	}
-
 	p.logger.Info("user auth authorization url prepared", "profile", profile.Name, "no_open_browser", options.NoOpenBrowser)
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if options.NoOpenBrowser {
-		if p.authorizationURLWriter != nil {
-			_, _ = fmt.Fprint(p.authorizationURLWriter, authorizationURLMessage(authURL))
-		}
+		p.writeAuthorizationGuidance(authURL, options.JSONOutput)
 	} else {
 		if err := p.openBrowser(authURL); err != nil {
 			p.logger.Warn("open browser failed", "profile", profile.Name, "error", err.Error())
+			// 手动授权属于用户操作指引，不依赖可关闭的诊断日志。
+			p.writeAuthorizationGuidance(authURL, options.JSONOutput)
 		}
 	}
 
@@ -130,6 +149,9 @@ func (p userAuthProvider) Login(ctx context.Context, profile *config.Profile, op
 	defer cancel()
 
 	code, err := callbackServer.Wait(waitCtx, state)
+	if cancelled := waitCtx.Err(); cancelled != nil {
+		return "", withCommandCancellation(waitCtx, err)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -142,11 +164,16 @@ func (p userAuthProvider) Login(ctx context.Context, profile *config.Profile, op
 		RedirectURL:   user.RedirectURL,
 		Resource:      profile.Resource,
 	})
+	if cancelled := ctx.Err(); cancelled != nil {
+		return "", withCommandCancellation(ctx, err)
+	}
 	if err != nil {
 		return "", err
 	}
 
 	user.Token = token
+	profile.Identities.User = user
+	profile.CredentialBinding = config.CredentialTargetBinding(*profile)
 	p.logger.Info("user auth login completed", "profile", profile.Name)
 
 	var builder strings.Builder
@@ -205,12 +232,24 @@ type appCredentials struct {
 	source    string
 }
 
+// The caller must persist the matching profile after the Secret write succeeds,
+// including the necessary completion of an operation cancelled at that boundary.
+type appCredentialsCommittedError struct {
+	cause error
+}
+
+func (err *appCredentialsCommittedError) Error() string { return err.cause.Error() }
+func (err *appCredentialsCommittedError) Unwrap() error { return err.cause }
+
 /*
 Login 使用所选 profile 的环境端点完成 app 身份登录，并保存本地凭据引用。
 入参 ctx（context.Context）为请求上下文，profile（*config.Profile）为目标配置，options（authCommandOptions）为登录参数；返回提示文本（string）和 error。
 */
 func (p appAuthProvider) Login(ctx context.Context, profile *config.Profile, options authCommandOptions) (string, error) {
 	p.logger.Info("app auth login started", "profile", profile.Name)
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 
 	credentials, err := p.resolveCredentials(*profile, options, true)
 	if err != nil {
@@ -223,12 +262,24 @@ func (p appAuthProvider) Login(ctx context.Context, profile *config.Profile, opt
 		return "", err
 	}
 
-	secretKey := config.AppSecretKey(profile.Name)
-	if err := p.secrets.Set(secretKey, credentials.appSecret); err != nil {
-		p.logger.Error("app auth save secret failed", "profile", profile.Name, "error", err.Error())
+	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-
+	p.logger.Info("app token exchange started", "profile", profile.Name, "token_endpoint", profile.AppTokenEndpoint)
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	token, err := oauth.ExchangeTenantAccessToken(ctx, p.httpClient, p.logger, profile.AppTokenEndpoint, credentials.appID, credentials.appSecret)
+	if cancelled := ctx.Err(); cancelled != nil {
+		return "", withCommandCancellation(ctx, err)
+	}
+	// Keep existing failure recovery: a completed, non-cancelled exchange still
+	// saves the supplied credentials, even when the server rejected the login.
+	secretKey := config.AppSecretKey(profile.Name)
+	if saveErr := p.secrets.Set(secretKey, credentials.appSecret); saveErr != nil {
+		p.logger.Error("app auth save secret failed", "profile", profile.Name, "error", saveErr.Error())
+		return "", withCommandCancellation(ctx, saveErr)
+	}
 	profile.Identities.App = config.AppIdentity{
 		AuthMode:     config.AppAuthModeAppCredentials,
 		AppID:        credentials.appID,
@@ -236,18 +287,18 @@ func (p appAuthProvider) Login(ctx context.Context, profile *config.Profile, opt
 		ConfiguredAt: time.Now().UTC(),
 		Token:        nil,
 	}
+	profile.CredentialBinding = config.CredentialTargetBinding(*profile)
 	p.logger.Info("app credentials saved", "profile", profile.Name, "source", credentials.source)
-
-	p.logger.Info("app token exchange started", "profile", profile.Name, "token_endpoint", profile.AppTokenEndpoint)
-	token, err := oauth.ExchangeTenantAccessToken(ctx, p.httpClient, p.logger, profile.AppTokenEndpoint, credentials.appID, credentials.appSecret)
 	if err != nil {
 		p.logger.Error("app token exchange failed", "profile", profile.Name, "token_endpoint", profile.AppTokenEndpoint, "error", err.Error())
-		profile.Identities.App.Token = nil
-		return "", err
+		return "", &appCredentialsCommittedError{cause: withCommandCancellation(ctx, err)}
 	}
 
 	profile.Identities.App.Token = token
 	p.logger.Info("app auth login completed", "profile", profile.Name, "token_endpoint", profile.AppTokenEndpoint, "expires_at", token.Expiry.Format(time.RFC3339))
+	if err := ctx.Err(); err != nil {
+		return "", &appCredentialsCommittedError{cause: err}
+	}
 
 	var builder strings.Builder
 	_, _ = fmt.Fprintf(&builder, "App authorization succeeded for profile %q.", profile.Name)

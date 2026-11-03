@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -11,11 +12,12 @@ import (
 
 	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/credential"
+	"cn.qfei/contract-cli/internal/openplatform"
 )
 
 /*
-legacyNonProductionProfile 构造历史 dev/blue 配置，确保旧端点与环境字段完整一致。
-入参 t（*testing.T）为测试上下文，environment、openOrigin、accountOrigin（string）为旧环境和端点；返回 config.Profile 为待拒绝配置。
+legacyNonProductionProfile 构造完整的自定义环境配置，不通过环境标签推断地址。
+入参 t（*testing.T）为测试上下文，environment、openOrigin、accountOrigin（string）为环境和端点；返回自洽配置。
 */
 func legacyNonProductionProfile(t *testing.T, environment, openOrigin, accountOrigin string) config.Profile {
 	t.Helper()
@@ -42,7 +44,7 @@ TestConfigAddRejectsNonProductionBeforeHTTPRequest 验证非生产预设在配�
 入参 t（*testing.T）为测试上下文；返回值为空，失败时报告测试错误。
 */
 func TestConfigAddRejectsNonProductionBeforeHTTPRequest(t *testing.T) {
-	for _, environment := range []string{"test", "dev", "blue"} {
+	for _, environment := range []string{"dev", "blue"} {
 		t.Run(environment, func(t *testing.T) {
 			store := config.NewStore(t.TempDir())
 			requests := 0
@@ -64,17 +66,23 @@ func TestConfigAddRejectsNonProductionBeforeHTTPRequest(t *testing.T) {
 }
 
 /*
-TestExistingNonProductionProfilesRejectedBeforeHTTPRequest 验证旧非生产配置在授权和矩阵查询前被阻断。
+TestMismatchedConfiguredProfilesRejectedBeforeHTTPRequest 验证与声明授权地址混用的端点在授权和查询前被阻断。
 入参 t（*testing.T）为测试上下文；返回值为空，失败时报告测试错误。
 */
-func TestExistingNonProductionProfilesRejectedBeforeHTTPRequest(t *testing.T) {
-	for _, item := range []struct{ environment, openOrigin, accountOrigin string }{
-		{"test", "https://test-open.qtech.cn", "https://test-myaccount.qtech.cn"},
-		{"dev", "https://dev-open.qtech.cn", "https://dev-myaccount.qtech.cn"},
-		{"blue", "https://open-b.qfei.cn", "https://myaccount-b.qfei.cn"},
+func TestMismatchedConfiguredProfilesRejectedBeforeHTTPRequest(t *testing.T) {
+	for _, item := range []struct{ environment, openOrigin, accountOrigin, mismatch string }{
+		{"dev", "https://dev-open.qtech.cn", "https://dev-myaccount.qtech.cn", "account"},
+		{"blue", "https://open-b.qfei.cn", "https://myaccount-b.qfei.cn", "account"},
+		{"dev", "https://dev-open.qtech.cn", "https://dev-myaccount.qtech.cn", "resource"},
+		{"blue", "https://open-b.qfei.cn", "https://myaccount-b.qfei.cn", "resource"},
 	} {
-		t.Run(item.environment, func(t *testing.T) {
+		t.Run(item.environment+"/"+item.mismatch, func(t *testing.T) {
 			profile := legacyNonProductionProfile(t, item.environment, item.openOrigin, item.accountOrigin)
+			if item.mismatch == "resource" {
+				profile.Resource = productionOpenPlatformOrigin
+			} else {
+				profile.Identities.User.TokenEndpoint = "https://myaccount.qfei.cn/api/public/oauth/token/contract"
+			}
 			store := config.NewStore(t.TempDir())
 			if err := store.UpsertProfile(profile, true); err != nil {
 				t.Fatal(err)
@@ -105,7 +113,15 @@ func TestExistingNonProductionProfilesRejectedBeforeHTTPRequest(t *testing.T) {
 				{"rule", "table", "get", "--profile", profile.Name, "--as", "app", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1"},
 			} {
 				err := app.Run(context.Background(), args)
-				if err == nil || err.Error() != productionProfileErrorMessage(profile.Name) || requests != 0 {
+				actual := err
+				if isBusinessCommand(args[0]) {
+					var traced *openplatform.TraceError
+					if !errors.As(err, &traced) || len(traced.TraceID) != 32 {
+						t.Fatalf("business command missing trace: %v", err)
+					}
+					actual = traced.Cause
+				}
+				if actual == nil || actual.Error() != productionProfileErrorMessage(profile.Name) || requests != 0 {
 					t.Fatalf("command %v error=%v requests=%d", args, err, requests)
 				}
 			}
@@ -114,31 +130,31 @@ func TestExistingNonProductionProfilesRejectedBeforeHTTPRequest(t *testing.T) {
 }
 
 /*
-TestKnownNonProductionHostsBlocked 验证传输层不会把非生产请求交给底层 HTTP 客户端。
+TestConfiguredHTTPSHostsDoNotDependOnStaticEnvironmentBlacklist 验证 HTTPS 目标不被环境域名黑名单代替配置校验。
 入参 t（*testing.T）为测试上下文；返回值为空，失败时报告测试错误。
 */
-func TestKnownNonProductionHostsBlocked(t *testing.T) {
+func TestConfiguredHTTPSHostsDoNotDependOnStaticEnvironmentBlacklist(t *testing.T) {
 	requests := 0
 	app := New(Options{Store: config.NewStore(t.TempDir()), HTTPClient: &http.Client{Transport: productionRoundTripFunc(func(*http.Request) (*http.Response, error) {
 		requests++
 		return productionResponse(http.StatusOK, `{}`), nil
 	})}})
-	for _, origin := range []string{"https://test-open.qtech.cn", "https://test-myaccount.qtech.cn", "https://dev-open.qtech.cn", "https://dev-myaccount.qtech.cn", "https://open-b.qfei.cn", "https://myaccount-b.qfei.cn"} {
+	for _, origin := range []string{"https://dev-open.qtech.cn", "https://dev-myaccount.qtech.cn", "https://open-b.qfei.cn", "https://myaccount-b.qfei.cn"} {
 		response, err := app.httpClient.Get(origin)
 		if response != nil {
 			_ = response.Body.Close()
 		}
-		if err == nil || !strings.Contains(err.Error(), "blocks non-production host") {
+		if err != nil {
 			t.Fatalf("host %s error=%v", origin, err)
 		}
 	}
-	if requests != 0 {
-		t.Fatalf("non-production requests=%d", requests)
+	if requests != 4 {
+		t.Fatalf("configured HTTPS requests=%d, want 4", requests)
 	}
 }
 
 /*
-TestConfigHelpShowsSupportedEnvironments 验证帮助只向用户展示 prod 预设。
+TestConfigHelpShowsSupportedEnvironments 验证帮助展示 prod/test 预设，默认 prod。
 入参 t（*testing.T）为测试上下文；返回值为空，失败时报告测试错误。
 */
 func TestConfigHelpShowsSupportedEnvironments(t *testing.T) {
@@ -147,21 +163,20 @@ func TestConfigHelpShowsSupportedEnvironments(t *testing.T) {
 	if err := app.Run(context.Background(), []string{"config", "add", "--help"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "--env <prod>") ||
-		!strings.Contains(output.String(), "仅支持 prod，默认 prod") ||
-		strings.Contains(output.String(), "--env test") ||
+	if !strings.Contains(output.String(), "--env <prod|test>") ||
+		!strings.Contains(output.String(), "支持 prod/test，默认 prod") ||
+		!strings.Contains(output.String(), "--env test --name contract-test") ||
 		strings.Contains(output.String(), "--env dev") ||
-		strings.Contains(output.String(), "--env blue") ||
-		strings.Contains(output.String(), "--env <prod|") {
+		strings.Contains(output.String(), "--env blue") {
 		t.Fatalf("unexpected environment help: %s", output.String())
 	}
 }
 
 /*
-TestHistoricalBlueDeviceStateRejected 验证旧蓝环境快照与待授权状态在现有 prod 配置和配置恢复时均被拒绝。
+TestCrossTargetDeviceStateRejected 验证另一目标的快照或待授权端点不能与当前声明地址混用。
 入参 t（*testing.T）为测试上下文；无返回值，失败时报告测试错误。
 */
-func TestHistoricalBlueDeviceStateRejected(t *testing.T) {
+func TestCrossTargetDeviceStateRejected(t *testing.T) {
 	blueProfile := legacyNonProductionProfile(t, "blue", "https://open-b.qfei.cn", "https://myaccount-b.qfei.cn")
 	blueProfile.Name = "contract"
 	prodProfile := validProductionProfile()
@@ -190,6 +205,10 @@ func TestHistoricalBlueDeviceStateRejected(t *testing.T) {
 	}
 	for _, test := range tests {
 		for _, withProfile := range []bool{false, true} {
+			// 无现存 profile 时，自洽的完整快照允许恢复，由单独用例覆盖。
+			if test.name == "snapshot" && !withProfile {
+				continue
+			}
 			mode := "recovery"
 			if withProfile {
 				mode = "existing prod profile"
@@ -223,7 +242,12 @@ func TestHistoricalBlueDeviceStateRejected(t *testing.T) {
 					{"contract", "template", "list", "--profile", "contract", "--as", "user"},
 				} {
 					err := app.Run(context.Background(), args)
-					if err == nil || err.Error() != productionProfileErrorMessage("contract") || requests != 0 {
+					actual := err
+					var traced *openplatform.TraceError
+					if errors.As(err, &traced) {
+						actual = traced.Cause
+					}
+					if actual == nil || actual.Error() != productionProfileErrorMessage("contract") || requests != 0 {
 						t.Fatalf("command %v error=%v requests=%d", args, err, requests)
 					}
 				}
@@ -253,7 +277,7 @@ func TestProductionRedirectToBlueBlocked(t *testing.T) {
 			if response != nil {
 				_ = response.Body.Close()
 			}
-			if err == nil || !strings.Contains(err.Error(), "blocks non-production host") || requests != 1 {
+			if err == nil || !strings.Contains(err.Error(), "different origin") || requests != 1 {
 				t.Fatalf("redirect error=%v requests=%d", err, requests)
 			}
 		})

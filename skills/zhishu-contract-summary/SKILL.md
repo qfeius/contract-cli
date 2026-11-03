@@ -14,7 +14,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ## 环境与授权
 
-- 当前 CLI 仅支持 `prod`；用户明确要求非生产环境时，说明当前版本不支持，不自动改用 prod。
+- 目标服务取自当前已确认 profile 的地址；所有命令中的 `<profile>` 替换为同一个名称，例如 `contract-test`，不因查询失败切换目标。
 - 两个命令都只支持 `--as user`，调用人来自用户 OAuth Token；不得用 app 身份或 `--user-id` 代替当前用户。
 - 按共享 Skill 复用有效 Device 授权；未授权时执行规定的 `auth init` / `auth complete` 流程，不索取 Token、Cookie 或 App Secret。
 - 摘要接口还会校验当前用户的智书席位、摘要功能权限和合同读取权限。权限失败不等同于合同不存在。
@@ -30,8 +30,8 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 编号与完整名称必须二选一，接口执行精确匹配。优先复用用户原始输入，不把 `*` 当通配符，不自行改写名称。
 
 ```bash
-contract-cli contract summary query --profile contract --as user --contract-number '<合同编号>' --output json
-contract-cli contract summary query --profile contract --as user --contract-name '<完整合同名称>' --output json
+contract-cli contract summary query --profile <profile> --as user --contract-number '<合同编号>' --output json
+contract-cli contract summary query --profile <profile> --as user --contract-name '<完整合同名称>' --output json
 ```
 
 也可通过 `--input-file` 或 `--data` 传 JSON；只允许 `contractNumber` / `contract_number` 与 `contractName` / `contract_name` 两组字段中的一组。字段契约见 [连接器与命令契约](references/connector-contract.md)。
@@ -50,7 +50,7 @@ contract-cli contract summary query --profile contract --as user --contract-name
 只接受一个非空 `doc`、`docx` 或 `pdf` 文件，最大 200MB。文件名后缀必须与允许类型一致。
 
 ```bash
-contract-cli contract summary generate --profile contract --as user --file '<本地路径>' --output json
+contract-cli contract summary generate --profile <profile> --as user --file '<本地路径>' --output json
 ```
 
 需要覆盖 multipart 文件名时使用 `--file-name`。命令直接调用生成接口，只发送一个 `file` 字段，不经过独立上传接口，不接受 `--input-file` 或 `--data`。生成会消耗服务端资源；请求结果不确定时禁止自动重试。

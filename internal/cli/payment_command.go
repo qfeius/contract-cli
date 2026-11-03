@@ -48,7 +48,7 @@ func (a *App) runPaymentCreate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	body, err := resolveRequiredRawBody(options)
+	body, err := resolveRequiredRawBody(ctx, options)
 	if err != nil {
 		return err
 	}
@@ -77,7 +77,7 @@ func (a *App) runPaymentUpdate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	body, err := resolveRequiredRawBody(options)
+	body, err := resolveRequiredRawBody(ctx, options)
 	if err != nil {
 		return err
 	}
@@ -181,7 +181,7 @@ func (a *App) runPaymentPlanNotify(ctx context.Context, args []string) error {
 		return fmt.Errorf("usage: contract-cli payment plan notify --input-file <path>|--data <json> [flags]")
 	}
 	options := parseCommandOptions(parsed)
-	body, err := resolveRequiredRawBody(options)
+	body, err := resolveRequiredRawBody(ctx, options)
 	if err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func (a *App) runPaymentPlanSearch(ctx context.Context, args []string) error {
 		return fmt.Errorf("usage: contract-cli payment plan search --input-file <path>|--data <json> [flags]")
 	}
 	options := parseCommandOptions(parsed)
-	body, err := resolveRequiredRawBody(options)
+	body, err := resolveRequiredRawBody(ctx, options)
 	if err != nil {
 		return err
 	}
@@ -253,7 +253,7 @@ func (a *App) runPaymentRecordCreate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	body, err := resolveRequiredRawBody(options)
+	body, err := resolveRequiredRawBody(ctx, options)
 	if err != nil {
 		return err
 	}
@@ -282,7 +282,7 @@ func (a *App) runPaymentRecordUpdate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	body, err := resolveRequiredRawBody(options)
+	body, err := resolveRequiredRawBody(ctx, options)
 	if err != nil {
 		return err
 	}

@@ -1,0 +1,17 @@
+flowchart TB
+    A([业务命令]) -->|仅创建一次 T1| B[命令上下文]
+    B -->|每次复用 T1| C[业务请求]
+    C -->|每次显式尝试新建 Sn| D[生成请求头]
+    D -->|traceparent + X-Log-Id| E[网关与后端]
+    E -->|沿用 T1| F[日志与Span]
+    E -->|业务响应| G[结果与错误]
+    G -->|日志和错误带 T1| H([命令结束])
+    G -.->|后续步骤或允许重试| C
+
+    classDef cli fill:#EFF6FF,stroke:#3B82F6,stroke-width:2px,color:#1E3A8A;
+    classDef lifecycle fill:#DBEAFE,stroke:#2563EB,stroke-width:2px,color:#1E3A8A;
+    classDef unchanged fill:#F3F4F6,stroke:#9CA3AF,stroke-width:2px,color:#374151;
+    class A,B,C,D,G,H cli;
+    class B lifecycle;
+    class E,F unchanged;
+    linkStyle default stroke:#9CA3AF,stroke-width:2px;

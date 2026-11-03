@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 
@@ -376,12 +375,12 @@ func resolveIdentity(profile config.Profile, requested string, path string, poli
 	return identity, nil
 }
 
-func resolveRawBody(options commandOptions) ([]byte, error) {
+func resolveRawBody(ctx context.Context, options commandOptions) ([]byte, error) {
 	switch {
 	case options.inputFile != "" && options.data != "":
 		return nil, fmt.Errorf("only one of --input-file or --data may be provided")
 	case options.inputFile != "":
-		body, err := os.ReadFile(options.inputFile)
+		body, err := readCommandInput(ctx, options.inputFile)
 		if err != nil {
 			return nil, fmt.Errorf("read command input file: %w", err)
 		}
@@ -393,8 +392,8 @@ func resolveRawBody(options commandOptions) ([]byte, error) {
 	}
 }
 
-func resolveRequiredRawBody(options commandOptions) ([]byte, error) {
-	body, err := resolveRawBody(options)
+func resolveRequiredRawBody(ctx context.Context, options commandOptions) ([]byte, error) {
+	body, err := resolveRawBody(ctx, options)
 	if err != nil {
 		return nil, err
 	}
@@ -418,8 +417,8 @@ func commandCommonQuery(options commandOptions) url.Values {
 	return query
 }
 
-func resolveJSONObjectBody(options commandOptions, requireInput bool) (map[string]any, error) {
-	body, err := resolveRawBody(options)
+func resolveJSONObjectBody(ctx context.Context, options commandOptions, requireInput bool) (map[string]any, error) {
+	body, err := resolveRawBody(ctx, options)
 	if err != nil {
 		return nil, err
 	}

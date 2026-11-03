@@ -37,7 +37,7 @@ type DiscoveryResult struct {
 	AuthorizationServer            AuthorizationServerMetadata
 }
 
-func Discover(ctx context.Context, client *http.Client, logger *slog.Logger, protectedResourceURL string) (*DiscoveryResult, error) {
+func Discover(ctx context.Context, client *http.Client, logger *slog.Logger, protectedResourceURL string, trustedAuthorizationServerMetadataURL ...string) (*DiscoveryResult, error) {
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -60,6 +60,13 @@ func Discover(ctx context.Context, client *http.Client, logger *slog.Logger, pro
 	if err != nil {
 		return nil, err
 	}
+	if len(trustedAuthorizationServerMetadataURL) > 0 && !sameHTTPSOrigin(authMetadataURL, trustedAuthorizationServerMetadataURL[0]) {
+		err := fmt.Errorf("authorization server metadata does not match the configured HTTPS origin")
+		if logger != nil {
+			logger.Error("reject discovered authorization server origin", "error", err.Error())
+		}
+		return nil, err
+	}
 	authServer, err := getJSON[AuthorizationServerMetadata](ctx, client, authMetadataURL)
 	if err != nil {
 		if logger != nil {
@@ -78,6 +85,19 @@ func Discover(ctx context.Context, client *http.Client, logger *slog.Logger, pro
 		logger.Info("oauth metadata discovered", "authorization_server_metadata_url", authMetadataURL)
 	}
 	return result, nil
+}
+
+// sameHTTPSOrigin validates both URLs before following a server-provided link.
+func sameHTTPSOrigin(discovered, trusted string) bool {
+	actual, err := url.Parse(discovered)
+	if err != nil || actual.Scheme != "https" || actual.Host == "" || actual.User != nil || actual.Fragment != "" {
+		return false
+	}
+	expected, err := url.Parse(trusted)
+	if err != nil || expected.Scheme != "https" || expected.Host == "" || expected.User != nil || expected.Fragment != "" {
+		return false
+	}
+	return strings.EqualFold(actual.Host, expected.Host)
 }
 
 func DiscoverFromAuthorizationServer(ctx context.Context, client *http.Client, logger *slog.Logger, authorizationServerMetadataURL string, resource string) (*DiscoveryResult, error) {

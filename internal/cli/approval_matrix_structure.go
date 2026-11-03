@@ -130,7 +130,7 @@ func (a *App) runRuleStructure(ctx context.Context, resource string, args []stri
 	}
 	var body []byte
 	if method == http.MethodPost || method == http.MethodPut {
-		body, err = resolveRequiredRawBody(options)
+		body, err = resolveRequiredRawBody(ctx, options)
 		if err != nil {
 			return err
 		}

@@ -24,7 +24,7 @@ func (a *App) executeVendorCreate(ctx context.Context, options commandOptions) e
 	if err := validatePersonalVendorDepartmentIDType(options, requestContext.Identity, "mdm vendor create"); err != nil {
 		return err
 	}
-	body, err := resolveRequiredRawBody(options)
+	body, err := resolveRequiredRawBody(ctx, options)
 	if err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func (a *App) runMDMVendorPatch(ctx context.Context, args []string) error {
 		return fmt.Errorf("usage: contract-cli mdm vendor patch <vendor-id> --input-file <path>|--data <json> [flags]")
 	}
 	options := parseCommandOptions(parsed)
-	body, err := resolveRequiredRawBody(options)
+	body, err := resolveRequiredRawBody(ctx, options)
 	if err != nil {
 		return err
 	}

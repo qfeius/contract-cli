@@ -269,7 +269,7 @@ func TestContractApprovalCommentIsRedactedWithoutChangingRequest(t *testing.T) {
 					})},
 				})
 				args := []string{"contract", "approval", "task", action, "112233", "--profile", "contract", "--as", "user"}
-				args = append(args, flags...)
+				args = append(append(args, flags...), "--debug")
 				if err := app.Run(context.Background(), args); err != nil {
 					t.Fatal(err)
 				}

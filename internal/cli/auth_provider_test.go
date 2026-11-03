@@ -44,6 +44,35 @@ func (f fakeAuthorizationCallback) Wait(ctx context.Context, state string) (stri
 	return f.wait(ctx, state)
 }
 
+func TestUserAuthBrowserFailureKeepsManualURLWithQuietLogger(t *testing.T) {
+	t.Parallel()
+	stdout := &bytes.Buffer{}
+	waitFailure := errors.New("test wait stopped")
+	provider := userAuthProvider{
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		httpClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return jsonResponse(`{"client_id":"client-new"}`), nil
+		})},
+		openBrowser:            func(string) error { return errors.New("browser unavailable") },
+		authorizationURLWriter: stdout,
+		startCallbackServer: func(string) (authorizationCallback, error) {
+			return fakeAuthorizationCallback{wait: func(context.Context, string) (string, error) {
+				if !strings.Contains(stdout.String(), "Open this URL and finish authorization:") {
+					t.Fatalf("manual authorization hidden by quiet logs: %s", stdout)
+				}
+				return "", waitFailure
+			}}, nil
+		},
+	}
+	profile := config.Profile{Identities: config.Identities{User: config.UserIdentity{
+		RegistrationEndpoint: "https://example.test/register", AuthorizationEndpoint: "https://example.test/authorize",
+		TokenEndpoint: "https://example.test/token", RedirectURL: "http://127.0.0.1:8000/callback",
+	}}}
+	if _, err := provider.Login(context.Background(), &profile, authCommandOptions{Timeout: time.Second}); !errors.Is(err, waitFailure) {
+		t.Fatalf("wait error = %v", err)
+	}
+}
+
 func TestUserAuthLoginNoOpenBrowserPrintsAuthorizationURLBeforeWaiting(t *testing.T) {
 	t.Parallel()
 
@@ -264,6 +293,9 @@ func TestUserAuthLoginRegistersClientEveryTime(t *testing.T) {
 					}
 					if profile.Identities.User.Token == nil || profile.Identities.User.Token.AccessToken != "test-token" {
 						t.Fatal("login token was not updated")
+					}
+					if profileCredentialBinding(t, profile) == "" {
+						t.Fatal("successful OAuth login must bind the credential target")
 					}
 				}
 			})

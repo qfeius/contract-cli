@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -19,34 +20,29 @@ const (
 	productionOpenPlatformOrigin = "https://open.qfei.cn"
 )
 
-/*
-environmentOrigins 返回当前构建支持环境的开平和账号域名，避免旧配置跨环境复用。
-入参 environment（string）为环境名；返回 API 域名、账号域名（string）及是否支持（bool）。
-*/
-func environmentOrigins(environment string) (string, string, bool) {
-	switch environment {
-	case productionEnvironment:
-		return productionOpenPlatformOrigin, productionAccountOrigin, true
+// profileOrigins derives trust anchors from the explicitly configured addresses.
+func profileOrigins(profile config.Profile) (string, string, bool) {
+	open, err := parseProductionURL(profile.OpenPlatformBaseURL)
+	if err != nil || strings.TrimSpace(profile.Environment) == "" {
+		return "", "", false
 	}
-	return "", "", false
-}
-
-// 已移除的 dev/test/blue 域名继续拦截，避免历史配置或重定向重新启用旧环境。
-var blockedProductionBuildHosts = map[string]struct{}{
-	"test-open.qtech.cn":      {},
-	"test-myaccount.qtech.cn": {},
-	"dev-open.qtech.cn":       {},
-	"dev-myaccount.qtech.cn":  {},
-	"open-b.qfei.cn":          {},
-	"myaccount-b.qfei.cn":     {},
+	openOrigin := open.Scheme + "://" + open.Host
+	if profile.AuthorizationServerMetadataURL == "" {
+		return openOrigin, "", true
+	}
+	account, err := parseProductionURL(profile.AuthorizationServerMetadataURL)
+	if err != nil {
+		return "", "", false
+	}
+	return openOrigin, account.Scheme + "://" + account.Host, true
 }
 
 /*
-validateProductionProfile 校验配置及认证端点都属于 profile 声明的受支持环境。
+validateProductionProfile 校验资源及认证端点与 profile 声明的地址一致。
 入参 profile（config.Profile）为配置；返回 error 表示环境或端点不合法。
 */
 func validateProductionProfile(profile config.Profile) error {
-	openOrigin, accountOrigin, supported := environmentOrigins(strings.TrimSpace(profile.Environment))
+	openOrigin, accountOrigin, supported := profileOrigins(profile)
 	if !supported {
 		return productionProfileError(profile.Name)
 	}
@@ -78,41 +74,35 @@ func validateProductionProfile(profile config.Profile) error {
 	return nil
 }
 
-/*
-validateProductionDeviceCredential 校验快照与待授权状态属于当前环境。
-入参 profileName（string）为配置名，stored（credential.DeviceCredential）为凭据，environment（可选 string）默认为 prod；返回校验 error。
-*/
-func validateProductionDeviceCredential(profileName string, stored credential.DeviceCredential, environment ...string) error {
-	env := productionEnvironment
-	if len(environment) > 0 {
-		env = environment[0]
-	}
-	if stored.DeviceProfile != nil {
-		profile, err := restoreDeviceProfile(profileName, stored.DeviceProfile)
-		if err != nil || profile.Environment != env || validateProductionProfile(profile) != nil {
-			return productionProfileError(profileName)
+// validateProductionDeviceCredential binds Device state to the actual target,
+// even when the profile name and environment label have not changed.
+func validateProductionDeviceCredential(profile config.Profile, stored credential.DeviceCredential) error {
+	if stored.DeviceProfile == nil {
+		if stored.Token != nil || stored.Pending != nil {
+			return productionProfileError(profile.Name)
 		}
+		return nil
 	}
-	return validateProductionPendingTransaction(profileName, stored.Pending, env)
+	snapshot := stored.DeviceProfile
+	if snapshot.Name != profile.Name || snapshot.Environment != profile.Environment ||
+		snapshot.OpenPlatformBaseURL != profile.OpenPlatformBaseURL || snapshot.Resource != profile.Resource ||
+		snapshot.ProtectedResourceMetadataURL != profile.ProtectedResourceMetadataURL ||
+		snapshot.AuthorizationServerMetadataURL != profile.AuthorizationServerMetadataURL ||
+		snapshot.DeviceAuthorizationEndpoint != profile.Identities.User.DeviceAuthorizationEndpoint ||
+		snapshot.TokenEndpoint != profile.Identities.User.TokenEndpoint ||
+		snapshot.RevocationEndpoint != profile.Identities.User.RevocationEndpoint ||
+		snapshot.DeviceClientID != profile.Identities.User.DeviceClientID || snapshot.DeviceScope != profile.Identities.User.DeviceScope {
+		return productionProfileError(profile.Name)
+	}
+	return validateProductionPendingTransaction(profile, stored.Pending)
 }
 
-/*
-validateProductionPendingTransaction 校验授权中的链接和 token 端点，阻止跨环境续用。
-入参 profileName（string）为配置名，pending（*credential.PendingTransaction）为待授权状态，environment（可选 string）默认为 prod；返回校验 error。
-*/
-func validateProductionPendingTransaction(profileName string, pending *credential.PendingTransaction, environment ...string) error {
-	env := productionEnvironment
-	if len(environment) > 0 {
-		env = environment[0]
-	}
-	_, accountOrigin, supported := environmentOrigins(env)
-	if !supported {
-		return productionProfileError(profileName)
-	}
-	if pending != nil &&
-		(!isProductionOriginURL(pending.TokenEndpoint, accountOrigin, true) ||
-			!isProductionOriginURL(pending.VerificationURIComplete, accountOrigin, false)) {
-		return productionProfileError(profileName)
+func validateProductionPendingTransaction(profile config.Profile, pending *credential.PendingTransaction) error {
+	_, accountOrigin, valid := profileOrigins(profile)
+	if !valid || (pending != nil &&
+		(pending.TokenEndpoint != profile.Identities.User.TokenEndpoint ||
+			!isProductionOriginURL(pending.VerificationURIComplete, accountOrigin, false))) {
+		return productionProfileError(profile.Name)
 	}
 	return nil
 }
@@ -159,42 +149,31 @@ productionProfileError 返回环境配置不合法的统一错误，提示重新
 */
 func productionProfileError(profileName string) error {
 	return fmt.Errorf(
-		"profile %q has unsupported or mismatched environment endpoints; run `contract-cli config add --env prod --name contract` and authorize again",
+		"profile %q has unsupported or mismatched environment endpoints; re-run `contract-cli config add` with the intended addresses and authorize again",
 		profileName,
 	)
 }
 
-/*
-withProductionNetworkGuard 在传输层拦截非生产域名，包括直接请求和 HTTP 重定向。
-入参 client（*http.Client）为原始客户端，logger（*slog.Logger）为日志记录器；返回受保护的 *http.Client。
-*/
+// withProductionNetworkGuard preserves the configured target across redirects.
+// Download/upload clients retain their existing, separate signed-URL policies.
 func withProductionNetworkGuard(client *http.Client, logger *slog.Logger) *http.Client {
 	guarded := *client
-	transport := client.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
+	logger.Debug("configure same-origin network guard")
+	guarded.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+		logger.Debug("check request redirect", "host", request.URL.Hostname())
+		if len(via) > 0 && (request.URL.Scheme != via[0].URL.Scheme || !strings.EqualFold(request.URL.Host, via[0].URL.Host)) {
+			logger.Error("reject cross-origin redirect", "host", request.URL.Hostname())
+			return errors.New("profile request cannot redirect to a different origin")
+		}
+		if client.CheckRedirect != nil {
+			return client.CheckRedirect(request, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
 	}
-	guarded.Transport = productionGuardTransport{next: transport, logger: logger}
 	return &guarded
-}
-
-type productionGuardTransport struct {
-	next   http.RoundTripper
-	logger *slog.Logger
-}
-
-/*
-RoundTrip 在传输层拒绝已知未支持环境域名，避免旧配置绕过 profile 校验。
-入参 request（*http.Request）为请求；返回 HTTP 响应和 error。
-*/
-func (transport productionGuardTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	host := strings.ToLower(strings.TrimSuffix(request.URL.Hostname(), "."))
-	transport.logger.Debug("production network request", "method", request.Method, "host", host)
-	if _, blocked := blockedProductionBuildHosts[host]; blocked {
-		transport.logger.Error("production build blocked non-production network request", "method", request.Method, "host", host)
-		return nil, fmt.Errorf("production build blocks non-production host %q", host)
-	}
-	return transport.next.RoundTrip(request)
 }
 
 /*
@@ -206,8 +185,8 @@ func (a *App) loadProductionDeviceCredential(profile config.Profile, store crede
 	if err != nil {
 		return credential.DeviceCredential{}, err
 	}
-	if err := validateProductionDeviceCredential(profile.Name, stored, profile.Environment); err != nil {
-		a.logger.Error("reject non-production Device credential", "profile", profile.Name, "error", err.Error())
+	if err := validateProductionDeviceCredential(profile, stored); err != nil {
+		a.logger.Error("reject mismatched Device credential", "profile", profile.Name, "error", err.Error())
 		return credential.DeviceCredential{}, err
 	}
 	return stored, nil
@@ -229,8 +208,8 @@ func (a *App) validateProductionDeviceCredentialIfAvailable(profile config.Profi
 	if err != nil {
 		return err
 	}
-	if err := validateProductionDeviceCredential(profile.Name, stored, profile.Environment); err != nil {
-		a.logger.Error("reject non-production Device credential", "profile", profile.Name, "error", err.Error())
+	if err := validateProductionDeviceCredential(profile, stored); err != nil {
+		a.logger.Error("reject mismatched Device credential", "profile", profile.Name, "error", err.Error())
 		return err
 	}
 	return nil
@@ -246,6 +225,13 @@ func (a *App) deviceCredentialStoreIfAvailable() (credential.Store, bool, error)
 			return store, err == nil, err
 		}
 	}
+	// Native desktop clients can use the user keyring without session variables.
+	// Unknown runtimes still support config commands without a Device store.
+	runtimeContext, err := a.resolveDeviceRuntime()
+	if err == nil && runtimeContext.Kind == credential.DeviceRuntimeLocalUser {
+		store, err := a.deviceCredentials()
+		return store, err == nil, err
+	}
 	return nil, false, nil
 }
 
@@ -254,7 +240,7 @@ productionProfileRequiresReset 判断配置或凭据环境不合法时是否需�
 入参 profile（config.Profile）为旧配置；返回是否重置（bool）和 error。
 */
 func (a *App) productionProfileRequiresReset(profile config.Profile) (bool, error) {
-	if validateProductionProfile(profile) != nil {
+	if validateProductionProfile(profile) != nil || config.ValidateCredentialBinding(profile) != nil {
 		return true, nil
 	}
 	store, available, err := a.deviceCredentialStoreIfAvailable()
@@ -268,13 +254,22 @@ func (a *App) productionProfileRequiresReset(profile config.Profile) (bool, erro
 	if err != nil {
 		return false, err
 	}
-	return validateProductionDeviceCredential(profile.Name, stored, profile.Environment) != nil, nil
+	return validateProductionDeviceCredential(profile, stored) != nil, nil
 }
 
-func (a *App) clearProfileAuthenticationState(profileName string) error {
-	a.logger.Info("clear non-production profile authentication state", "profile", profileName)
+func (a *App) clearProfileAuthenticationState(ctx context.Context, profileName string) (err error) {
+	var outcome *localCommandOutcome
+	defer func() { err = withCompletedLocalCommand(ctx, err, outcome) }()
+	a.logger.Info("clear changed profile authentication state", "profile", profileName)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := a.secrets.Delete(config.AppSecretKey(profileName)); err != nil {
 		a.logger.Error("clear app secret failed", "profile", profileName, "error", err.Error())
+		return err
+	}
+	outcome = &localCommandOutcome{Operation: "config add", Result: map[string]any{"profile": profileName, "app_secret_cleared": true, "profile_saved": false}}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	store, available, err := a.deviceCredentialStoreIfAvailable()
@@ -283,10 +278,14 @@ func (a *App) clearProfileAuthenticationState(profileName string) error {
 		return err
 	}
 	if available {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := store.Delete(profileName); err != nil {
 			a.logger.Error("clear Device credential failed", "profile", profileName, "error", err.Error())
 			return err
 		}
+		outcome = &localCommandOutcome{Operation: "config add", Result: map[string]any{"profile": profileName, "app_secret_cleared": true, "device_credentials_cleared": true, "profile_saved": false}}
 	}
-	return nil
+	return ctx.Err()
 }

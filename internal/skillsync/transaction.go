@@ -2,6 +2,7 @@ package skillsync
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -47,6 +48,10 @@ func (e *TransactionFailure) Unwrap() []error {
 }
 
 func RecoveryStatus(err error) string {
+	var committed *CommittedCancellationError
+	if errors.As(err, &committed) {
+		return "committed"
+	}
 	var failure *TransactionFailure
 	if errors.As(err, &failure) {
 		if failure.RollbackErr != nil {
@@ -90,12 +95,21 @@ func RewriteVersion(content []byte, version string) []byte {
 	return content
 }
 
-func (s *Service) prepare(stage string, names []string) error {
+func (s *Service) prepare(ctx context.Context, stage string, names []string) error {
 	for _, name := range names {
+		if e := ctx.Err(); e != nil {
+			return e
+		}
 		if _, e := fs.ReadFile(s.Source, path.Join(name, "SKILL.md")); e != nil {
 			return fmt.Errorf("missing official Skill %s: %w", name, e)
 		}
+		if e := ctx.Err(); e != nil {
+			return e
+		}
 		if e := fs.WalkDir(s.Source, name, func(current string, d fs.DirEntry, walkErr error) error {
+			if e := ctx.Err(); e != nil {
+				return errors.Join(walkErr, e)
+			}
 			if walkErr != nil {
 				return walkErr
 			}
@@ -113,10 +127,19 @@ func (s *Service) prepare(stage string, names []string) error {
 			if e != nil {
 				return e
 			}
+			if e := ctx.Err(); e != nil {
+				return e
+			}
 			if path.Base(current) == "SKILL.md" {
 				b = RewriteVersion(b, s.Version)
 			}
+			if e := ctx.Err(); e != nil {
+				return e
+			}
 			if e = os.WriteFile(dest, b, 0644); e != nil {
+				return e
+			}
+			if e := ctx.Err(); e != nil {
 				return e
 			}
 			actual, e := os.ReadFile(dest)
@@ -126,7 +149,7 @@ func (s *Service) prepare(stage string, names []string) error {
 			if !bytes.Equal(b, actual) {
 				return errors.New("staged Skill checksum mismatch")
 			}
-			return nil
+			return ctx.Err()
 		}); e != nil {
 			return e
 		}
@@ -198,6 +221,13 @@ func (s *Service) recover(target string, r Registry) error {
 }
 
 func (s *Service) replace(target string, names, remove []string, location *Location, commit func(string) error) error {
+	return s.replaceContext(context.Background(), target, names, remove, location, commit)
+}
+
+func (s *Service) replaceContext(ctx context.Context, target string, names, remove []string, location *Location, commit func(string) error) error {
+	if e := ctx.Err(); e != nil {
+		return e
+	}
 	dir := transactionDir(target)
 	if e := os.Mkdir(dir, 0700); e != nil {
 		return e
@@ -213,7 +243,7 @@ func (s *Service) replace(target string, names, remove []string, location *Locat
 		e = os.MkdirAll(backup, 0700)
 	}
 	if e == nil {
-		e = s.prepare(stage, names)
+		e = s.prepare(ctx, stage, names)
 	}
 	if e != nil {
 		_ = os.RemoveAll(dir)
@@ -236,6 +266,10 @@ func (s *Service) replace(target string, names, remove []string, location *Locat
 	// Skill leaf links are moved as links, never modified through their destination.
 	// A management marker must remain a real file.
 	for _, item := range j.Entries {
+		if e = ctx.Err(); e != nil {
+			_ = os.RemoveAll(dir)
+			return e
+		}
 		info, statErr := os.Lstat(filepath.Join(target, item.Name))
 		if statErr != nil && !os.IsNotExist(statErr) {
 			_ = os.RemoveAll(dir)
@@ -255,9 +289,13 @@ func (s *Service) replace(target string, names, remove []string, location *Locat
 		rename = os.Rename
 	}
 	for _, item := range j.Entries {
+		e = ctx.Err()
 		dest := filepath.Join(target, item.Name)
-		if item.Existed {
+		if e == nil && item.Existed {
 			e = rename(dest, filepath.Join(backup, item.Name))
+		}
+		if e == nil {
+			e = ctx.Err()
 		}
 		if e == nil && item.Install {
 			e = rename(filepath.Join(stage, item.Name), dest)
@@ -267,7 +305,10 @@ func (s *Service) replace(target string, names, remove []string, location *Locat
 		}
 	}
 	if e == nil {
-		e = s.verify(target, names)
+		e = s.verify(ctx, target, names)
+	}
+	if e == nil {
+		e = ctx.Err()
 	}
 	if e == nil && commit != nil {
 		e = commit(id)
@@ -277,15 +318,23 @@ func (s *Service) replace(target string, names, remove []string, location *Locat
 		rollbackErr := s.rollback(j, dir)
 		return &TransactionFailure{Cause: e, RollbackErr: rollbackErr}
 	}
+	// A successful commit is the completion boundary. A later cancellation must
+	// not roll files back underneath the registry's committed transaction ID.
 	if cleanupErr := os.RemoveAll(dir); cleanupErr != nil {
 		s.log().Warn("Skill committed; cleanup deferred", "location", targetKey(target))
 	}
 	return nil
 }
 
-func (s *Service) verify(target string, names []string) error {
+func (s *Service) verify(ctx context.Context, target string, names []string) error {
 	for _, name := range names {
+		if e := ctx.Err(); e != nil {
+			return e
+		}
 		if e := fs.WalkDir(s.Source, name, func(current string, d fs.DirEntry, walkErr error) error {
+			if e := ctx.Err(); e != nil {
+				return errors.Join(walkErr, e)
+			}
 			if walkErr != nil {
 				return walkErr
 			}
@@ -294,6 +343,9 @@ func (s *Service) verify(target string, names []string) error {
 			}
 			want, e := fs.ReadFile(s.Source, current)
 			if e != nil {
+				return e
+			}
+			if e := ctx.Err(); e != nil {
 				return e
 			}
 			if path.Base(current) == "SKILL.md" {
@@ -306,7 +358,7 @@ func (s *Service) verify(target string, names []string) error {
 			if !bytes.Equal(want, actual) {
 				return errors.New("installed Skill checksum mismatch")
 			}
-			return nil
+			return ctx.Err()
 		}); e != nil {
 			return e
 		}
