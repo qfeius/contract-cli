@@ -145,7 +145,6 @@ func completeReviewReferenceHelp(registry map[string]helpTopic) {
 func completeReviewHelp(registry map[string]helpTopic, input, dry []helpFlag) {
 	const identityNote = "仅支持 --as user；不传时自动使用 user。"
 	examples := map[string][]string{
-		"review file upload":     {"contract-cli review file upload --profile contract --file contract.pdf --name 合同.pdf", "contract-cli review file upload --stdin --name 合同.pdf < contract.pdf"},
 		"review subject extract": {"contract-cli review subject extract --profile contract --business-id biz-001 --file-id 123", "contract-cli review subject extract --business-id biz-001 --file-id 123 --dry-run"},
 		"review task start":      {"contract-cli review task start --profile contract --input-file review-start.json", "contract-cli review task start --input-file review-start.json --dry-run"},
 		"review task status":     {"contract-cli review task status --profile contract --task-id 123 --business-id biz-001"},

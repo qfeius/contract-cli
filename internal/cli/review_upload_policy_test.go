@@ -323,6 +323,29 @@ func TestReviewReferenceOnlyHelpAndGuidance(t *testing.T) {
 		if regexp.MustCompile(`(?m)^\s+--(file(?:\s|$)|stdin)`).MatchString(out.String()) {
 			t.Error("reference-only help advertises binary input flags")
 		}
+		if regexp.MustCompile(`(?m)^\s+contract-cli review file upload\b[^\n]*\s--(?:file|stdin)(?:[\s=]|$)`).MatchString(out.String()) {
+			t.Error("upload help still contains a direct binary upload command")
+		}
+		_, examples, found := strings.Cut(out.String(), "\nExamples:\n")
+		if !found {
+			t.Fatal("upload help has no reference upload example")
+		}
+		examples, _, _ = strings.Cut(examples, "\nNotes:")
+		exampleCount := 0
+		for _, line := range strings.Split(examples, "\n") {
+			if !strings.HasPrefix(strings.TrimSpace(line), "contract-cli review file upload ") {
+				continue
+			}
+			exampleCount++
+			for _, flag := range []string{"--business-id", "--business-file-id", "--business-file-version", "--source-locator", "--name"} {
+				if !strings.Contains(line, flag+" ") {
+					t.Errorf("upload example missing %s: %s", flag, strings.TrimSpace(line))
+				}
+			}
+		}
+		if exampleCount == 0 {
+			t.Error("upload help has no reference upload example")
+		}
 	})
 	for _, name := range []string{"skills/contract-cli-review/SKILL.md", "README.md", "docs/cli-command-reference.md"} {
 		t.Run(name, func(t *testing.T) {
