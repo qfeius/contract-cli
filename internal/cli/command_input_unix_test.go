@@ -113,7 +113,7 @@ func TestCommandInputCancelsConnectedPipeWithoutWaitingForEOF(t *testing.T) {
 			wrote <- err
 			return
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		_, err = io.WriteString(file, `{"partial":`)
 		wrote <- err
 		<-release
@@ -145,8 +145,8 @@ func TestCommandInputInheritedPipeCancelsAfterPartialBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reader.Close()
-	defer writer.Close()
+	defer func() { _ = reader.Close() }()
+	defer func() { _ = writer.Close() }()
 	// Fd exposes a blocking descriptor, as inherited terminal/stdin pipes are.
 	fd := reader.Fd()
 	path := fmt.Sprintf("/dev/fd/%d", fd)
@@ -199,7 +199,7 @@ func TestCommandInputNamedPipeReturnsEOFWhenIdleWriterCloses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 	const body = `{"complete":true}`
 	if _, err := io.WriteString(writer, body); err != nil {
 		t.Fatal(err)

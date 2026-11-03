@@ -97,7 +97,9 @@ func TestCompletedLocalCommandWithoutCancellationKeepsOriginalError(t *testing.T
 	if got := withCompletedLocalCommand(context.Background(), original, &localCommandOutcome{}); got != original {
 		t.Fatalf("active command error changed: %v", got)
 	}
-	if got := withCompletedLocalCommand(nil, original, nil); got != original {
-		t.Fatalf("nil command context changed error: %v", got)
+	for _, ctx := range []context.Context{nil, context.Background()} {
+		if got := withCompletedLocalCommand(ctx, original, nil); got != original {
+			t.Fatalf("command context changed error: %v", got)
+		}
 	}
 }
