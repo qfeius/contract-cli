@@ -325,15 +325,35 @@ func TestReviewAlignmentBoundaries(t *testing.T) {
 		}
 	})
 	t.Run("query context and positive numeric ID", func(t *testing.T) {
-		app, _ := alignmentApp(t, func(r *http.Request) string {
-			q := r.URL.Query()
-			if q.Get("businessId") != "biz" || q.Get("visibilityScope") != "contractResult" || q.Get("taskId") != "1175703921365090648" || q.Has("appType") {
-				t.Fatal(q)
-			}
-			return `{"code":200,"data":{"status":"success"}}`
-		})
-		if err := app.Run(context.Background(), []string{"review", "task", "status", "--task-id", "1175703921365090648", "--business-id", "biz", "--visibility-scope", "contractResult"}); err != nil {
-			t.Fatal(err)
+		for _, command := range []string{"status", "info", "result"} {
+			t.Run(command, func(t *testing.T) {
+				var paths []string
+				app, _ := alignmentApp(t, func(r *http.Request) string {
+					paths = append(paths, r.URL.Path)
+					q := r.URL.Query()
+					if r.Method != http.MethodGet || q.Get("businessId") != "biz" || q.Get("visibilityScope") != "contractResult" || q.Get("taskId") != "1175703921365090648" || q.Has("appType") {
+						t.Fatal(r.Method, r.URL)
+					}
+					if r.URL.Path == "/open-apis/contract/v3/review/info" {
+						if !reflect.DeepEqual(q["simplifyReviewResult"], []string{"true"}) {
+							t.Fatalf("review info must request simplified results: %v", q)
+						}
+					} else if r.URL.Path != "/open-apis/contract/v3/review/status" || q.Has("simplifyReviewResult") {
+						t.Fatalf("status must keep its existing query: %s", r.URL)
+					}
+					return `{"code":200,"data":{"status":"success"}}`
+				})
+				if err := app.Run(context.Background(), []string{"review", "task", command, "--task-id", "1175703921365090648", "--business-id", "biz", "--visibility-scope", "contractResult"}); err != nil {
+					t.Fatal(err)
+				}
+				want := []string{"/open-apis/contract/v3/review/" + command}
+				if command == "result" {
+					want = []string{"/open-apis/contract/v3/review/status", "/open-apis/contract/v3/review/info"}
+				}
+				if !reflect.DeepEqual(paths, want) {
+					t.Fatalf("request sequence: got %v, want %v", paths, want)
+				}
+			})
 		}
 	})
 	t.Run("strict config and aliases", func(t *testing.T) {

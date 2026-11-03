@@ -195,6 +195,9 @@ func TestPreAuditKnownTaskResumesPollingWithoutNewWrites(t *testing.T) {
 			}
 			return jsonResponse(`{"code":200,"data":{"status":"` + status + `"}}`), nil
 		case "/open-apis/contract/v3/review/info":
+			if r.URL.Query().Get("simplifyReviewResult") != "true" {
+				t.Fatal("resumed preaudit info must request simplified results", r.URL)
+			}
 			return jsonResponse(`{"code":200,"data":{"ruleResult":[]}}`), nil
 		default:
 			if resume {

@@ -361,7 +361,7 @@ func TestPreAuditStartWaitsAndReturnsOnlyCLMPage(t *testing.T) {
 			return jsonResponse(`{"code":200,"data":{"taskId":"` + preAuditTaskID + `"}}`), nil
 		case "/open-apis/contract/v3/review/status":
 			statusCalls++
-			if !started || r.URL.Query().Get("taskId") != preAuditTaskID || r.URL.Query().Get("businessId") != preAuditID {
+			if !started || r.URL.Query().Get("taskId") != preAuditTaskID || r.URL.Query().Get("businessId") != preAuditID || r.URL.Query().Has("simplifyReviewResult") {
 				t.Fatal("poll must bind the original task/business", r.URL)
 			}
 			if statusCalls == 1 {
@@ -369,6 +369,9 @@ func TestPreAuditStartWaitsAndReturnsOnlyCLMPage(t *testing.T) {
 			}
 			return jsonResponse(`{"code":200,"data":{"status":"success"}}`), nil
 		case "/open-apis/contract/v3/review/info":
+			if r.URL.Query().Get("simplifyReviewResult") != "true" {
+				t.Fatal("preaudit info must request simplified results", r.URL)
+			}
 			return jsonResponse(`{"code":200,"data":{"status":"success","ruleResult":[{"id":"risk1","description":"风险明细，临时附件：https://files.example.cn/a?Signature=secret，后续说明仍需保留"}],"url":"https://ai.example.cn/intelligent-review/wrong","reportUrl":"https://files.example.cn/a?X-Amz-Signature=secret","attachments":[["HTTPS://files.example.cn/a?Signature=secret"]]}}`), nil
 		default:
 			return preAuditPreparationRequest(t, r)

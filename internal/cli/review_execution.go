@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -261,6 +262,10 @@ func (a *App) runReviewTask(ctx context.Context, args []string) error {
 }
 
 func reviewQueryRequest(path string, query url.Values) openplatform.Request {
+	if path == "/info" {
+		query = maps.Clone(query)
+		query.Set("simplifyReviewResult", "true")
+	}
 	return openplatform.Request{Method: http.MethodGet, Path: reviewPathPrefix + path, Query: query, IdentityPolicy: openplatform.IdentityPolicyUserOnly, OperationKind: openplatform.OperationRead}
 }
 
