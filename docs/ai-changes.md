@@ -1,3 +1,19 @@
+## 2026-11-04 — 协商群查询 Skill 提交 GitHub release
+- 摘要：将产品已确认验证通过的协商群查询 Skill 从 GitLab 开发分支提交到 GitHub。
+- 来源：基于 github/release@ae39acb 建集成分支，merge origin/contract-cooperation-chat-group@933dbcd，保留原提交历史。
+- 范围：新增 3 个 Skill 运行文件及配套测试、变更记录；不修改 CLI 运行代码、版本文件、发布流程或后端。
+- 回归：先复现新增 Skill 后 19/20 数量断言失败，再覆盖安装与增量升级；修正 GitHub 基线已有测试静态检查问题。
+- 一致性：运行代码、全部 Skill 与测试逐文件匹配产品验证包 blue@87484fa 的源码，仅变更记录不同。
+- 验证：完整 Go race/coverage 通过（CLI 83.0%），exhaustive lint 0 issues；Node 安装升级回归 24 通过、2 项既有跳过。
+- 交付：向个人 GitHub fork 推送独立分支并创建 release PR，不包含 delivery 测试安装包，不执行 Release/npm 发布。
+
+## 2026-10-22 — 同步 GitHub 1.9.9 到 GitLab master
+- 摘要：同步正式 release 的协商查询、交接 Skill、Open Web 调用及 Skill 元数据版本修正。
+- 来源：从 upstream/master@ef9c980 建集成分支，merge github/release@238ab3e（v1.9.9），保留双方提交历史。
+- 范围：93 个上游变更文件；除本条记录外，合并树与 GitHub 发布源码一致。
+- 决策：master 无文件冲突；当前用户工作区保持原状，目标为独立分支 MR。
+- 验证：全量 Go 测试通过，exhaustive lint 0 issues；Node 安装与升级回归 24 通过、2 项既有跳过。
+
 ## 2026-10-22 — blue 分支按 profile 地址选择服务
 - 摘要：基于 upstream/blue@bbacad3 取消 prod 固定域名绑定，保留 HTTPS、资源及授权端点同源校验。
 - 实现：复用 config add、OAuth/Device 授权与查询；增加 test 预设及业务/授权地址覆盖，关键地址变化清理旧身份。
