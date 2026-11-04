@@ -119,12 +119,12 @@ func verifyInterruptedProcess(t *testing.T, ctx context.Context, binary, input, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stdout.Close()
+	defer func() { _ = stdout.Close() }()
 	stderr, err := os.Create(stderrPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stderr.Close()
+	defer func() { _ = stderr.Close() }()
 	command.Stdout, command.Stderr = stdout, stderr
 	var inputWriter io.WriteCloser
 	if strings.HasPrefix(input, "stdin-") {
@@ -132,7 +132,7 @@ func verifyInterruptedProcess(t *testing.T, ctx context.Context, binary, input, 
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer inputWriter.Close() // Keep the writer open until the child exits.
+		defer func() { _ = inputWriter.Close() }() // Keep the writer open until the child exits.
 	}
 	if err := command.Start(); err != nil {
 		t.Fatal(err)
@@ -306,11 +306,15 @@ func TestSecondInterruptRestoresDefaultTermination(t *testing.T) {
 	if os.Getenv("QFEI_SECOND_INTERRUPT_HELPER") == "1" {
 		ctx, stop := newInterruptContext(context.Background())
 		defer stop()
-		fmt.Fprintln(os.Stdout, "ready")
+		if _, err := fmt.Fprintln(os.Stdout, "ready"); err != nil {
+			t.Fatal(err)
+		}
 		<-ctx.Done()
 		// Simulate cleanup work while the asynchronous signal reset completes.
 		time.Sleep(50 * time.Millisecond)
-		fmt.Fprintln(os.Stdout, "cancelled")
+		if _, err := fmt.Fprintln(os.Stdout, "cancelled"); err != nil {
+			t.Fatal(err)
+		}
 		for {
 			time.Sleep(time.Second)
 		}
@@ -326,7 +330,7 @@ func TestSecondInterruptRestoresDefaultTermination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer markers.Close()
+	defer func() { _ = markers.Close() }()
 	command.Stdout, command.Stderr = markers, markers
 	if err := command.Start(); err != nil {
 		t.Fatal(err)
