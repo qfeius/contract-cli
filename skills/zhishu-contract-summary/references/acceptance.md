@@ -8,5 +8,5 @@
 6. 上传单个 doc/docx/pdf：generate 只发送一个 multipart `file` 字段。
 7. 上传空文件、不支持后缀或超过 200MB：在本地拒绝，不发 HTTP。
 8. 使用 app 身份：在本地拒绝，并引导 user OAuth。
-9. 用户要求 test：核对 profile 的业务与授权地址均为目标测试服务，沿用同一个 profile；授权或查询失败时不改用 prod。
+9. 用户要求非生产环境：说明当前正式版仅支持 prod，停止授权和业务调用；不自动改用 prod，也不复用旧非生产 profile 或 Device 快照。
 10. 用户要求发送协商群：先交付摘要，再说明当前 CLI 没有群卡片发送能力，不伪造发送结果。

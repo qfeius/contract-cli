@@ -10,9 +10,10 @@ description: "contract-cli 登录与身份切换技能：初始化 profile、通
 
 ## 环境与构建能力
 
-- `prod` 和 `test` 是地址预设，首次默认 prod，默认 profile 名为 `contract`；实际访问目标由 profile 中的业务与授权地址决定，不由 profile 名或环境标签决定。先运行 `contract-cli version` 和 `contract-cli config add --help` 核对实际可执行程序。
-- 服务地址必须使用 HTTPS；Resource 与业务基址匹配，授权端点与授权元数据同源。不同目标地址的 Token 或 App Secret 不迁移、不复用；同名 profile 的关键地址变化后必须重新授权，不直接改配置保留旧凭证。
-- 未指定环境时沿用当前已确认的配置；后续命令保持同一配置目录和 profile，不自动切换目标地址。所有示例中的 `<profile>` 都替换为本任务选定的名称，例如 `contract` 或 `contract-test`。
+- 正式源码及其构建仅内置 `prod`，默认 profile 名为 `contract`；业务与 Resource 固定为 `https://open.qfei.cn`，账号服务固定为 `https://myaccount.qfei.cn`。先运行 `contract-cli version` 和 `contract-cli config add --help` 核对实际可执行程序，不能仅凭 profile 名或环境标签判断目标。
+- 服务地址必须使用 HTTPS；Resource 与生产业务根地址匹配，授权端点与生产账号服务同源。不同目标地址的 Token 或 App Secret 不迁移、不复用；同名 profile 的关键地址变化后必须重新授权，不直接改配置保留旧凭证。
+- 旧非生产 profile、Device 快照及手动配置的非生产地址均不支持。用户要求非生产环境时说明当前正式版不支持，不自动改用 prod，不擅自改写旧配置或复用旧凭据。
+- 生产任务后续命令保持同一配置目录、profile 和身份，不自动切换目标。所有示例中的 `<profile>` 都替换为本任务选定的生产 profile 名称，例如 `contract`。
 - Skill 更新后必须完全退出并新建任务。已有任务不会热加载新 Skill，因此不能用旧任务验证升级后的规则。
 
 ## 适用范围
@@ -42,29 +43,15 @@ description: "contract-cli 登录与身份切换技能：初始化 profile、通
 
 ## 配置初始化
 
-首次使用前，按已确认目标初始化 profile。生产预设：
+首次使用前，确认用户目标是生产环境，再初始化 profile：
 
 ```bash
 contract-cli config add --env prod --name contract
 ```
 
-测试预设使用独立名称：
+显式地址参数仅用于兼容已有生产配置：`--open-platform-base-url` 只接受生产业务根地址 `https://open.qfei.cn`；`--authorization-server-metadata-url` 只接受生产账号服务 `https://myaccount.qfei.cn` 同源的 HTTPS 元数据地址；`--resource-metadata-url` 也必须与生产业务服务同源。不能通过这些参数、旧配置或构建标签启用非生产环境。
 
-```bash
-contract-cli config add --env test --name contract-test
-```
-
-test 预设的业务与 Resource 地址为 `https://test-open.qtech.cn`，授权元数据来自 `https://test-myaccount.qtech.cn`；prod 预设分别为 `https://open.qfei.cn` 与 `https://myaccount.qfei.cn`。使用显式地址配置时先核对实际地址与用户目标一致，不能只检查 `environment` 字段。
-
-也可保留 `--env prod`，显式指定测试服务地址；这是上方 test 预设的另一种配置方式：
-
-```bash
-contract-cli config add --env prod --name contract-test \
-  --open-platform-base-url https://test-open.qtech.cn \
-  --authorization-server-metadata-url https://test-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract
-```
-
-业务基址会同时设置 Resource 与 app token 地址；授权元数据地址用于发现并校验同源授权端点。profile 名可自定，示例使用 `contract-test` 以保留已有生产配置；更改同名 profile 的关键地址会清理旧认证。
+profile 名可自定，授权和业务调用始终显式使用选定的同一生产 profile。用户明确要求修复旧配置并使用生产环境时，重新初始化选定 profile，再完成生产授权；不能迁移或复用原非生产凭据，也不处理其他 profile。
 
 user 身份支持 Device Grant 与浏览器 OAuth 授权码登录；app 身份按本地安全配置方式登录。WorkBuddy 执行时须保持同一 CODEBUDDY_SESSION_ID 和选定配置目录；Device 授权的展示、等待确认及错误处理规则不变。安装包不自动创建 profile，也不携带其他机器的登录态。
 
