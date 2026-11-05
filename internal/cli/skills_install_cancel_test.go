@@ -50,9 +50,10 @@ func TestSkillsInstallCancellationStopsWritesAndSuccessOutput(t *testing.T) {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 				triggerPath := "z-new/SKILL.md"
-				if phase == "during-staging" {
+				switch phase {
+				case "during-staging":
 					triggerPath = "auth/references/guide.md"
-				} else if phase == "before-next-metadata" {
+				case "before-next-metadata":
 					triggerPath = "auth/SKILL.md"
 				}
 				source := &skillInstallCancelFS{FS: fstest.MapFS{

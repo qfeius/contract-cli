@@ -23,8 +23,8 @@ func TestReviewInterruptPartialInputCancelsWithoutClosingBorrowedPipe(t *testing
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer reader.Close()
-			defer writer.Close()
+			defer func() { _ = reader.Close() }()
+			defer func() { _ = writer.Close() }()
 			fd := reader.Fd() // Match inherited blocking stdin in the real entrypoint.
 			before, err := unix.FcntlInt(fd, unix.F_GETFL, 0)
 			if err != nil {
