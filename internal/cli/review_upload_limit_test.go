@@ -1,20 +1,15 @@
 package cli_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"cn.qfei/contract-cli/internal/cli"
-	"cn.qfei/contract-cli/internal/config"
 )
 
+// 本地文件的大小与格式限制由 CLM 预审准备入口继续验证。
 func TestReviewUpload50MiB(t *testing.T) {
 	const limit = 50 << 20
 	path := filepath.Join(t.TempDir(), "contract.pdf")
@@ -28,7 +23,7 @@ func TestReviewUpload50MiB(t *testing.T) {
 			t.Fatal(err)
 		}
 		spec, _ := json.Marshal(map[string]any{"source": map[string]any{"type": "file", "path": path, "name": "contract.pdf"}, "config": json.RawMessage(alignmentConfig)})
-		for _, args := range [][]string{{"review", "file", "upload", "--file", path, "--name", "contract.pdf", "--dry-run"}, {"review", "run", "--data", string(spec), "--dry-run"}} {
+		for _, args := range [][]string{{"review", "pre-audit", "prepare", "--file", path, "--name", "contract.pdf", "--dry-run"}, {"review", "run", "--data", string(spec), "--dry-run"}} {
 			app, _ := alignmentApp(t, nil)
 			err := app.Run(context.Background(), args)
 			if size <= limit && err != nil {
@@ -39,41 +34,13 @@ func TestReviewUpload50MiB(t *testing.T) {
 			}
 		}
 	}
-	for _, size := range []int{limit, limit + 1} {
-		t.Run("stdin "+string(rune(size-limit+'0')), func(t *testing.T) {
-			store := config.NewStore(t.TempDir())
-			if err := store.UpsertProfile(uploadProfile(config.IdentityApp), true); err != nil {
-				t.Fatal(err)
-			}
-			calls := 0
-			app := cli.New(cli.Options{Store: store, Stdin: bytes.NewReader(make([]byte, size)), Stdout: io.Discard, Stderr: io.Discard, HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-				calls++
-				reader, err := r.MultipartReader()
-				if err != nil {
-					t.Fatal(err)
-				}
-				part, err := reader.NextPart()
-				if err != nil {
-					t.Fatal(err)
-				}
-				n, err := io.Copy(io.Discard, part)
-				if err != nil || n != limit {
-					t.Fatalf("wrong upload length %d: %v", n, err)
-				}
-				return jsonResponse(`{"code":200,"data":{}}`), nil
-			})}})
-			err := app.Run(context.Background(), []string{"review", "file", "upload", "--stdin", "--name", "contract.docx"})
-			if size == limit && (err != nil || calls != 1) {
-				t.Fatalf("50MiB stdin rejected: %v calls=%d", err, calls)
-			}
-			if size > limit && (err == nil || calls != 0 || !strings.Contains(err.Error(), "50 MiB")) {
-				t.Fatalf("oversized stdin not rejected: %v calls=%d", err, calls)
-			}
-		})
-	}
 	for _, ext := range []string{"doc", "docx", "pdf", "txt"} {
+		filePath := filepath.Join(t.TempDir(), "contract."+ext)
+		if err := os.WriteFile(filePath, []byte("contract"), 0600); err != nil {
+			t.Fatal(err)
+		}
 		app, _ := alignmentApp(t, nil)
-		err := app.Run(context.Background(), []string{"review", "file", "upload", "--stdin", "--name", "contract." + ext, "--dry-run"})
+		err := app.Run(context.Background(), []string{"review", "pre-audit", "prepare", "--file", filePath, "--name", "contract." + ext, "--dry-run"})
 		if (err == nil) != (ext != "txt") {
 			t.Fatalf("extension %s: %v", ext, err)
 		}
@@ -84,10 +51,10 @@ func TestReviewUpload50MiB(t *testing.T) {
 		t.Fatalf("JSON limit changed: %v", err)
 	}
 	app, out := alignmentApp(t, nil)
-	if err := app.Run(context.Background(), []string{"review", "file", "upload", "--help"}); err != nil {
+	if err := app.Run(context.Background(), []string{"review", "pre-audit", "prepare", "--help"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "50 MiB") || strings.Contains(out.String(), "2 MiB") {
-		t.Fatal("upload help limit stale")
+		t.Fatal("pre-audit upload help limit stale")
 	}
 }

@@ -95,7 +95,7 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 ## 共享约束
 
 - `review` 下远端命令仅支持 user。两个审查 Skill 复用已建立的个人上下文，不在业务步骤内编排安装授权或自行切换身份/环境；缺口交回公共能力，历史非审查 app 能力保持不变。
-- 审查覆盖外部独立预审、协商和任务中心的业务意图；系统当前正文映射、可信场景未闭合时按审查 Skill 报告缺口，不借用 app-only 入口或裸请求替代。系统合同审查链接由合同 `multi_url.pc_url` 设置 `targetType=ai-review` 生成，不依赖审查详情的 URL 字段；仅合同地址缺失/无效时按审查 Skill 处理链接缺口。外部独立预审不返回详情链接，不将未验证的网页展示声称为已验收。
+- 审查覆盖外部文件预审、协商和任务中心的业务意图；系统当前正文映射、可信场景未闭合时按审查 Skill 报告缺口，不借用 app-only 入口或裸请求替代。系统合同审查链接由合同 `multi_url.pc_url` 设置 `targetType=ai-review` 生成，不依赖审查详情的 URL 字段；仅合同地址缺失/无效时按审查 Skill 处理链接缺口。外部本地文件先上传 CLM、选择合同分类并创建预审，等待审查完成后展示 CLI 实际返回的 `final.reviewDetailUrl`；链接获取失败时保留审查明细、说明失败并按原 run 恢复，不自行拼接地址，不将未验证的网页展示声称为已验收。
 - Skill 更新后必须完全退出并新建任务。已有任务不会热加载新 Skill，不得用旧任务判断当前正式包的环境行为。
 - Device 模式按 [../auth/SKILL.md](../auth/SKILL.md) 判断凭证范围：确认本地桌面执行时跨任务复用当前系统用户 + profile 的安全存储凭证；云端、沙箱或识别不明确时保持任务隔离，不因使用本地操作系统或存在任务 ID 就推断可以共享。
 - Device 模式业务命令提示未授权时，按授权 Skill 执行 `auth init`；返回 `status=authorized` 时直接继续原业务请求，不展示缺失的授权链接或二维码，不执行 `auth complete`。返回 `status=pending` 后，用户明确完成授权时只执行一次 `auth complete`。
