@@ -1,3 +1,29 @@
+## 2026-11-06 — 同步 GitHub release 到 blue 并保留多环境
+- 来源：基于 upstream/blue@87484fa，merge 冻结的 GitHub release@b9dc391，保留双方提交历史。
+- 决策：按用户确认保留 blue 当前 prod/test 预设、显式服务地址、自定义 profile 与凭据隔离；不带入 release 的严格 prod 限制。
+- 范围：逐项核对并保留 21 个环境相关运行、测试、Skill 和文档文件；除本变更记录外，最终文件内容与原 blue 完全一致。
+- 冲突：仅合并 docs/ai-changes.md，按时间保留 release 与 blue 双方历史记录；协商群查询能力原已在 blue。
+- 回归：先以 blue 多环境用例复现自动合并后被严格 prod 拒绝，再恢复 blue 环境实现并验证通过。
+- 验证：全量 Go race/coverage 通过（CLI 83.0%），exhaustive lint 0 issues；Node 24 通过、2 项既有跳过，构建参数检查通过。
+- 交付：仅生成同步分支与 MR，不直接合并目标分支，不发布安装包、不部署，也不执行真实合同业务操作。
+
+## 2026-11-05 — release 恢复仅生产环境
+- 摘要：基于 GitHub release@ff4fdc6 创建 codex/release-prod-only-20261105，移除内置 test 预设并恢复严格 prod 限制。
+- 实现：app.go、prod_environment.go、help.go 固定生产业务/账号信任根，显式地址参数仅接受生产地址，发现请求前拒绝非生产目标。
+- 边界：拒绝旧 test/dev/blue/custom profile 及 Device 快照；恢复已知非生产主机首次请求拦截，保留同源重定向、凭证目标绑定和取消处理。
+- 回归：保留生产授权/查询、旧非生产配置修复到 prod、仅清理选定 profile 凭据与独立 profile 状态不变的覆盖。
+- 资料：同步 README、命令参考、auth/shared/摘要 Skill 及打包说明；历史变更记录保持原样。
+- 验证：TDD 先红后绿，全量 Go race/coverage 通过（CLI 83.1%），exhaustive lint 0 issues；Node 24 通过、2 项既有跳过，构建参数检查通过。
+
+## 2026-11-04 — 协商群查询 Skill 提交 GitHub release
+- 摘要：将产品已确认验证通过的协商群查询 Skill 从 GitLab 开发分支提交到 GitHub。
+- 来源：基于 github/release@ae39acb 建集成分支，merge origin/contract-cooperation-chat-group@933dbcd，保留原提交历史。
+- 范围：新增 3 个 Skill 运行文件及配套测试、变更记录；不修改 CLI 运行代码、版本文件、发布流程或后端。
+- 回归：先复现新增 Skill 后 19/20 数量断言失败，再覆盖安装与增量升级；修正 GitHub 基线已有测试静态检查问题。
+- 一致性：运行代码、全部 Skill 与测试逐文件匹配产品验证包 blue@87484fa 的源码，仅变更记录不同。
+- 验证：完整 Go race/coverage 通过（CLI 83.0%），exhaustive lint 0 issues；Node 安装升级回归 24 通过、2 项既有跳过。
+- 交付：向个人 GitHub fork 推送独立分支并创建 release PR，不包含 delivery 测试安装包，不执行 Release/npm 发布。
+
 ## 2026-11-03 — 协商群查询 Skill 上蓝集成
 - 摘要：基于 upstream/blue@cdb50da 创建独立集成分支，merge 开发分支 contract-cooperation-chat-group@933dbcd，保留提交历史。
 - 范围：原样引入 contract-cooperation-chat-group 的 3 个运行文件；固定交付分支仅额外包含测试包与说明，未合入交付二进制。
