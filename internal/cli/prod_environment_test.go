@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -14,15 +15,15 @@ import (
 	"cn.qfei/contract-cli/internal/openplatform"
 )
 
-func TestLoadDeviceAwareProfileAcceptsTestProfile(t *testing.T) {
+func TestLoadDeviceAwareProfileRejectsTestProfile(t *testing.T) {
 	store := config.NewStore(t.TempDir())
 	if err := store.UpsertProfile(validTestProfile(), true); err != nil {
 		t.Fatal(err)
 	}
 	app := New(Options{Store: store})
 
-	profile, err := app.loadDeviceAwareProfile("contract")
-	if err != nil || profile.Environment != "test" {
+	_, err := app.loadDeviceAwareProfile("contract")
+	if err == nil || err.Error() != productionProfileErrorMessage("contract") {
 		t.Fatalf("load profile error = %v", err)
 	}
 }
@@ -75,7 +76,7 @@ func TestLoadDeviceAwareProfileRejectsUnsupportedProfileAndMismatchedEndpoints(t
 	}
 }
 
-func TestOpenPlatformContextAcceptsTestProfile(t *testing.T) {
+func TestOpenPlatformContextRejectsTestProfile(t *testing.T) {
 	store := config.NewStore(t.TempDir())
 	profile := validTestProfile()
 	profile.DefaultIdentity = config.IdentityApp
@@ -91,12 +92,12 @@ func TestOpenPlatformContextAcceptsTestProfile(t *testing.T) {
 		"/open-apis/contract/v1/mcp/contracts/search",
 		openplatform.IdentityPolicyAny,
 	)
-	if err != nil {
+	if err == nil || err.Error() != productionProfileErrorMessage("contract") {
 		t.Fatalf("open platform context error = %v", err)
 	}
 }
 
-func TestDeviceProfileRecoveryAcceptsTestSnapshot(t *testing.T) {
+func TestDeviceProfileRecoveryRejectsTestSnapshot(t *testing.T) {
 	credentials := &deviceMemoryCredentialStore{values: map[string]credential.DeviceCredential{
 		"contract": {DeviceProfile: snapshotDeviceProfile(validTestProfile())},
 	}}
@@ -112,11 +113,11 @@ func TestDeviceProfileRecoveryAcceptsTestSnapshot(t *testing.T) {
 	})
 
 	_, err := app.loadDeviceAwareProfile("contract")
-	if err != nil {
+	if err == nil || err.Error() != productionProfileErrorMessage("contract") {
 		t.Fatalf("profile recovery error = %v", err)
 	}
-	if profile, found, lookupErr := store.LookupProfile("contract"); lookupErr != nil || !found || profile.Environment != "test" {
-		t.Fatalf("test snapshot was not restored, found=%v err=%v", found, lookupErr)
+	if _, found, lookupErr := store.LookupProfile("contract"); lookupErr != nil || found {
+		t.Fatalf("rejected test snapshot was restored, found=%v err=%v", found, lookupErr)
 	}
 }
 
@@ -321,7 +322,7 @@ func TestConfigAddRejectsNonProductionMetadataOverrideBeforeNetworkRequest(t *te
 	}
 }
 
-func TestHTTPClientAllowsExplicitServiceAddresses(t *testing.T) {
+func TestHTTPClientRejectsKnownNonProductionServiceAddresses(t *testing.T) {
 	requestCount := 0
 	app := New(Options{
 		Store: config.NewStore(t.TempDir()),
@@ -331,7 +332,12 @@ func TestHTTPClientAllowsExplicitServiceAddresses(t *testing.T) {
 		})},
 	})
 
-	for _, rawURL := range []string{"https://dev-open.qtech.cn/open-apis/test", "https://test-myaccount.qtech.cn/device"} {
+	for _, rawURL := range []string{
+		"https://test-open.qtech.cn/api", "https://test-myaccount.qtech.cn/device",
+		"https://dev-open.qtech.cn/api", "https://dev-myaccount.qtech.cn/device",
+		"https://open-b.qfei.cn/api", "https://myaccount-b.qfei.cn/device",
+		"https://TEST-OPEN.QTECH.CN:443/api", "https://test-open.qtech.cn./api",
+	} {
 		request, err := http.NewRequest(http.MethodGet, rawURL, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -340,12 +346,12 @@ func TestHTTPClientAllowsExplicitServiceAddresses(t *testing.T) {
 		if response != nil {
 			_ = response.Body.Close()
 		}
-		if err != nil {
+		if err == nil {
 			t.Fatalf("request %s error = %v", rawURL, err)
 		}
 	}
-	if requestCount != 2 {
-		t.Fatalf("request count = %d, want 2", requestCount)
+	if requestCount != 0 {
+		t.Fatalf("request count = %d, want 0", requestCount)
 	}
 }
 
@@ -396,8 +402,7 @@ productionProfileErrorMessage 返回测试断言用的环境端点错误文本�
 入参 profileName（string）为配置名；返回 string 错误文本。
 */
 func productionProfileErrorMessage(profileName string) string {
-	return `profile "` + profileName + `" has unsupported or mismatched environment endpoints; re-run ` +
-		"`contract-cli config add` with the intended addresses and authorize again"
+	return fmt.Sprintf("profile %q has unsupported or mismatched environment endpoints; re-run `contract-cli config add --env prod --name %q` and authorize again", profileName, profileName)
 }
 
 type productionRoundTripFunc func(*http.Request) (*http.Response, error)
