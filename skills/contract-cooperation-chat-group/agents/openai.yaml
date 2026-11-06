@@ -1,0 +1,6 @@
+interface:
+  display_name: "查询合同协商群 ID"
+  short_description: "按合同 ID 查询当前协商轮次的飞书群 ID，包含审批中合同"
+  default_prompt: "使用 $contract-cooperation-chat-group 查询这份合同关联协商当前轮次的飞书群 ID 和群状态。"
+policy:
+  allow_implicit_invocation: true
