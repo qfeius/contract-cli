@@ -1,3 +1,10 @@
+## 2026-11-09 — master 合入 blue
+- 摘要：基于 upstream/blue@9bfd2eb 创建中间分支，merge upstream/master@5a8ef80，保留双方提交历史。
+- 范围：master 的功能改动已包含在 blue，本次仅合并 docs/ai-changes.md 双方记录。
+- 决策：保留 blue 当前多环境能力；合并结果除变更记录外与 blue 基线一致。
+- 校验：核对合并父提交、完整文件树差异与文档空白；不涉及新增或修改 Go 代码。
+- 交付：创建目标为 blue 的 MR，供评审合入。
+
 ## 2026-11-06 — 同步 GitHub release 到 blue 并保留多环境
 - 来源：基于 upstream/blue@87484fa，merge 冻结的 GitHub release@b9dc391，保留双方提交历史。
 - 决策：按用户确认保留 blue 当前 prod/test 预设、显式服务地址、自定义 profile 与凭据隔离；不带入 release 的严格 prod 限制。
@@ -6,6 +13,14 @@
 - 回归：先以 blue 多环境用例复现自动合并后被严格 prod 拒绝，再恢复 blue 环境实现并验证通过。
 - 验证：全量 Go race/coverage 通过（CLI 83.0%），exhaustive lint 0 issues；Node 24 通过、2 项既有跳过，构建参数检查通过。
 - 交付：仅生成同步分支与 MR，不直接合并目标分支，不发布安装包、不部署，也不执行真实合同业务操作。
+
+## 2026-11-06 — GitHub release 同步到 GitLab master
+- 摘要：同步最新 release 的协商群查询 Skill 与正式版仅 prod 环境限制。
+- 来源：基于 upstream/master@cdb50da 建独立同步分支，merge 冻结的 GitHub release@b9dc391，保留双方提交历史。
+- 一致性：除本条同步记录外，完整文件树与 GitHub release@b9dc391 逐文件一致；master 按用户要求仅支持 prod。
+- 边界：blue 的多环境支持由另一条同步分支保留，不带入 master。
+- 验证：全量 Go race/coverage 通过（CLI 83.1%），exhaustive lint 0 issues；Node 24 通过、2 项既有跳过，构建参数检查通过。
+- 交付：创建面向 GitLab master 的 MR，不直接合并、不发布安装包。
 
 ## 2026-11-05 — release 恢复仅生产环境
 - 摘要：基于 GitHub release@ff4fdc6 创建 codex/release-prod-only-20261105，移除内置 test 预设并恢复严格 prod 限制。
