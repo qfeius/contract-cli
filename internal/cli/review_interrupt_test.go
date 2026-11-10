@@ -43,7 +43,7 @@ func TestReviewInterruptJSONInputBudget(t *testing.T) {
 	}
 }
 
-func TestReviewInterruptStdinUploadBudget(t *testing.T) {
+func TestReviewInterruptRemovedStdinUploadNeverReads(t *testing.T) {
 	const limit = 50 << 20
 	for _, size := range []int64{limit, limit + 4096} {
 		t.Run(strconv.FormatInt(size, 10), func(t *testing.T) {
@@ -51,44 +51,27 @@ func TestReviewInterruptStdinUploadBudget(t *testing.T) {
 			calls := 0
 			app := newReviewInterruptApp(t, reader, func(request *http.Request) (*http.Response, error) {
 				calls++
-				parts, err := request.MultipartReader()
-				if err != nil {
-					t.Fatal(err)
-				}
-				part, err := parts.NextPart()
-				if err != nil {
-					t.Fatal(err)
-				}
-				n, err := io.Copy(io.Discard, part)
-				if err != nil || n != limit {
-					t.Fatalf("uploaded %d bytes, error=%v", n, err)
-				}
 				return jsonResponse(`{"code":200,"data":{}}`), nil
 			})
 			err := app.Run(context.Background(), []string{"review", "file", "upload", "--stdin", "--name", "contract.pdf"})
-			if size == limit && (err != nil || calls != 1 || reader.read != limit) {
-				t.Fatalf("exact 50 MiB injected reader changed: calls=%d read=%d err=%v", calls, reader.read, err)
-			}
-			if size > limit && (err == nil || !strings.Contains(err.Error(), "文件大小不能超过 50 MiB") || calls != 0) {
-				t.Fatalf("oversized upload not rejected before HTTP: calls=%d err=%v", calls, err)
-			}
-			if reader.read > limit+1 {
-				t.Fatalf("upload read beyond its bounded budget: %d", reader.read)
+			if err == nil || !strings.Contains(err.Error(), "仅支持 CLM 文件引用") || calls != 0 || reader.read != 0 {
+				t.Fatalf("removed stdin upload performed I/O: calls=%d read=%d err=%v", calls, reader.read, err)
 			}
 		})
 	}
 }
 
-func TestReviewInterruptInjectedReaderStopsAfterCancellation(t *testing.T) {
+func TestReviewInterruptCancelledCommandDoesNotReadRemovedStdin(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	cancel()
 	reader := &reviewInterruptBudgetReader{remaining: 1 << 20, cancel: cancel}
 	app := newReviewInterruptApp(t, reader, nil)
 	err := app.Run(ctx, []string{"review", "file", "upload", "--stdin", "--name", "contract.pdf"})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("injected reader lost cancellation: %v", err)
 	}
-	if reader.read > 512 {
+	if reader.read != 0 {
 		t.Fatalf("injected reader kept reading after context cancellation: bytes=%d, err=%v", reader.read, err)
 	}
 }

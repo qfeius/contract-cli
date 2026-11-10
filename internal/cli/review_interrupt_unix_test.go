@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 )
 
 func TestReviewInterruptPartialInputCancelsWithoutClosingBorrowedPipe(t *testing.T) {
-	for _, source := range []string{"json-file", "upload-stdin"} {
+	for _, source := range []string{"json-file", "pre-audit-config"} {
 		t.Run(source, func(t *testing.T) {
 			reader, writer, err := os.Pipe()
 			if err != nil {
@@ -32,7 +33,7 @@ func TestReviewInterruptPartialInputCancelsWithoutClosingBorrowedPipe(t *testing
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			app := newReviewInterruptApp(t, reader, nil)
-			args := []string{"review", "file", "upload", "--stdin", "--name", "contract.pdf"}
+			args := []string{"review", "pre-audit", "start", "--run-id", strings.Repeat("a", 32), "--input-file", fmt.Sprintf("/dev/fd/%d", fd), "--dry-run"}
 			if source == "json-file" {
 				args = []string{"review", "task", "start", "--input-file", fmt.Sprintf("/dev/fd/%d", fd), "--dry-run"}
 			}

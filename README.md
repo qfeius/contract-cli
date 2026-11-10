@@ -467,11 +467,15 @@ Agent 使用个人身份查询部门候选，保留真实部门标识，供后�
 
 **授权支持：**个人
 
-Agent 告知文件将提交至智书合同审查服务，再按分类、主体、强度和清单推进。当前支持单份 DOC、DOCX、PDF，本地文件或原始文件流最大 50 MiB；主体来自同一文件的提取结果。外部预审无须创建合同或协商，结果在 Agent 中展示，不提供系统合同详情链接。
+Agent 告知文件将先上传至 CLM，再由用户选择合同分类并创建预审。CLI 随后通过 CLM 文件引用准备 AI 审查输入，等待立场、强度和清单确认后发起审查，成功后展示明细及预审页面链接。当前支持单份 DOC、DOCX、PDF，本地文件最大 50 MiB；主体来自同一文件的提取结果。外部文件会创建预审记录，无须创建合同或协商。
+
+`review file upload` 仅用于引用 CLM 已有文件，所需业务对象、文件、版本和来源定位必须真实存在。该命令不接受本地文件或 stdin；本地文件从 `review pre-audit prepare` 开始。
+
+当前不支持通过文件地址上传，`review run` 的 `source.type=url` 在执行和预览模式均会报错。外部文件预审统一先上传 CLM，再以文件引用上传 AI，不自动下载文件地址。
 
 | 用户输入提示词 | Agent 会使用的命令 |
 | --- | --- |
-| 请审查我提供的《采购协议.docx》。<br>上传后先让我选择合同分类，再从文件提取的主体中确认保护立场。<br>审查强度用中立，清单从我有权限使用的清单中选择，最后展示风险和建议。 | 上传文件：<br>`contract-cli review file upload --profile contract --as user --file ./采购协议.docx --name 采购协议.docx`<br><br>提取同一文件的主体：<br>`contract-cli review subject extract --profile contract --as user --business-id <business-id> --file-id <file-id>`<br><br>分类、立场、强度和清单确定后：<br>`contract-cli review task start --profile contract --as user --input-file review-start.json` |
+| 请审查我提供的《采购协议.docx》。<br>上传后先让我选择合同分类，再从文件提取的主体中确认保护立场。<br>审查强度用中立，清单从我有权限使用的清单中选择，最后展示风险、建议和预审链接。 | 上传至 CLM，保存返回的 runId：<br>`contract-cli review pre-audit prepare --profile contract --as user --file ./采购协议.docx --name 采购协议.docx`<br><br>用户选择分类后创建预审并准备 AI 引用：<br>`contract-cli review pre-audit create --profile contract --as user --run-id <run-id> --category-id <category-id>`<br><br>从同一 AI 文件提取主体：<br>`contract-cli review subject extract --profile contract --as user --business-id <pre-audit-id> --file-id <ai-file-id> --file-hash <file-hash>`<br><br>配置确定后发起并等待结果及链接，输入 JSON 仅含 config：<br>`contract-cli review pre-audit start --profile contract --as user --run-id <run-id> --input-file pre-audit-config.json` |
 
 #### 场景 6.2：审查系统合同，或继续已有任务
 
