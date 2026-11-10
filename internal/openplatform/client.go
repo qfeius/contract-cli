@@ -209,7 +209,7 @@ func (c *Client) Do(ctx context.Context, requestContext RequestContext, request 
 	if operation != OperationRead && operation != OperationWrite {
 		return Response{}, fmt.Errorf("unsupported open platform operation kind %q", operation)
 	}
-	requestTrace, err := tracecontext.NewRequestTrace()
+	requestTrace, err := tracecontext.ForRequest(ctx)
 	if err != nil {
 		return Response{}, fmt.Errorf("create open platform request trace: %w", err)
 	}
@@ -368,7 +368,7 @@ func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, re
 		headers.Set("Content-Type", "application/json")
 	}
 
-	requestTrace, err := tracecontext.NewRequestTrace()
+	requestTrace, err := tracecontext.ForRequest(ctx)
 	if err != nil {
 		return Response{}, fmt.Errorf("create open platform request trace: %w", err)
 	}

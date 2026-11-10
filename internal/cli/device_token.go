@@ -108,12 +108,20 @@ func (a *App) deviceAuthStatus(profile config.Profile) (authStatusView, error) {
 	return view, nil
 }
 
-func (a *App) deviceAuthLogout(ctx context.Context, profile config.Profile) (string, error) {
+func (a *App) deviceAuthLogout(ctx context.Context, profile config.Profile) (message string, err error) {
+	var outcome *localCommandOutcome
+	defer func() { err = withCompletedLocalCommand(ctx, err, outcome) }()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	store, err := a.deviceCredentials()
 	if err != nil {
 		return "", err
 	}
 	a.logger.Info("Device logout started", "profile", profile.Name)
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	release, acquired, err := a.tryDeviceAuthorizationOperation(profile.Name)
 	if err != nil {
 		return "", err
@@ -122,27 +130,55 @@ func (a *App) deviceAuthLogout(ctx context.Context, profile config.Profile) (str
 		return "", errors.New("device credential operation is busy; retry logout after the active operation completes")
 	}
 	defer release()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	stored, err := a.loadProductionDeviceCredential(profile, store)
 	if errors.Is(err, credential.ErrCredentialNotFound) {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		return fmt.Sprintf("Device authorization is already cleared for profile %q.", profile.Name), nil
 	}
 	if err != nil {
 		return "", err
 	}
+	revoked := false
 	if stored.Token != nil && strings.TrimSpace(stored.Token.RefreshToken) != "" {
 		user := profile.Identities.User
 		if strings.TrimSpace(user.RevocationEndpoint) == "" || strings.TrimSpace(user.DeviceClientID) == "" {
 			return "", errors.New("device revocation endpoint or client id is not configured")
 		}
 		a.logger.Info("device authorization revoke started", "profile", profile.Name)
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		if err := oauth.RevokeDeviceToken(ctx, a.httpClient, oauth.DeviceRevokeRequest{
 			Endpoint: user.RevocationEndpoint, ClientID: user.DeviceClientID, RefreshToken: stored.Token.RefreshToken,
 		}); err != nil {
 			a.logger.Error("device authorization revoke failed", "profile", profile.Name, "error", err.Error())
 			return "", err
 		}
+		revoked = true
+		outcome = &localCommandOutcome{Operation: "auth logout", Result: map[string]any{
+			"profile": profile.Name, "device_token_revoked": true, "device_credentials_cleared": false,
+		}}
 	}
+	if !revoked {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+	}
+	// A confirmed remote revocation invalidates the stored token. Finish local
+	// cleanup under the existing operation lock even if cancellation arrived late.
 	if err := store.Delete(profile.Name); err != nil {
+		a.logger.Error("clear Device logout credential failed", "profile", profile.Name, "error", err.Error())
+		return "", err
+	}
+	outcome = &localCommandOutcome{Operation: "auth logout", Result: map[string]any{
+		"profile": profile.Name, "device_token_revoked": revoked, "device_credentials_cleared": true,
+	}}
+	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("Logged out device user identity for profile %q.", profile.Name), nil

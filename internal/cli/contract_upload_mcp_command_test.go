@@ -124,9 +124,11 @@ func runAttachmentUploadScenario(t *testing.T, fileType, identity, output, failP
 	u, _ := url.Parse(uploadSessionURL)
 	jar.SetCookies(u, []*http.Cookie{{Name: "session", Value: "cookie-secret"}})
 	var phases []string
+	var requestHeaders []http.Header
 	transport := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		phase := filepath.Base(req.URL.Path)
 		phases = append(phases, phase)
+		requestHeaders = append(requestHeaders, req.Header.Clone())
 		if req.Method != http.MethodPost {
 			t.Fatalf("method = %s", req.Method)
 		}
@@ -238,6 +240,25 @@ func runAttachmentUploadScenario(t *testing.T, fileType, identity, output, failP
 		}
 		if !strings.Contains(stdout.String(), "9223372036854775806") {
 			t.Fatalf("missing file_id: %s", stdout)
+		}
+		traceID := requestHeaders[0].Get("X-Log-Id")
+		parents := make(map[string]bool)
+		for i, headers := range requestHeaders {
+			parts := strings.Split(headers.Get("traceparent"), "-")
+			if len(traceID) != 32 || len(parts) != 4 || parts[1] != traceID || headers.Get("X-Log-Id") != traceID {
+				t.Fatalf("phase %s did not share the command trace: %v", phases[i], headers)
+			}
+			if len(parts[2]) != 16 || parents[parts[2]] {
+				t.Fatalf("phase %s reused an HTTP attempt parent-id", phases[i])
+			}
+			parents[parts[2]] = true
+		}
+		if identity != "app" {
+			for _, line := range strings.Split(stderr.String(), "\n") {
+				if strings.Contains(line, "msg=\"user attachment") && strings.Count(line, "trace_id="+traceID) != 1 {
+					t.Fatalf("attachment log must have one command trace field: %s", line)
+				}
+			}
 		}
 	} else {
 		if err == nil || !strings.Contains(err.Error(), wantError) {

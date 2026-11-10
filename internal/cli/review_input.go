@@ -2,11 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -59,7 +59,7 @@ type reviewRunInput struct {
 }
 
 // review JSON decoding is deliberately local: legacy commands keep their input rules.
-func readReviewJSON(parsed parsedArgs, target any) error {
+func readReviewJSON(ctx context.Context, parsed parsedArgs, target any) error {
 	count := 0
 	for _, flag := range []string{"--input", "--input-file", "--data"} {
 		if parsed.String(flag) != "" {
@@ -70,16 +70,13 @@ func readReviewJSON(parsed parsedArgs, target any) error {
 		return fmt.Errorf("必须且只能提供 --input（兼容 --input-file）或 --data 之一")
 	}
 	options := parseReviewOptions(parsed)
-	var reader io.Reader = strings.NewReader(options.data)
+	var body []byte
+	var err error
 	if options.inputFile != "" {
-		file, err := os.Open(options.inputFile)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = file.Close() }()
-		reader = file
+		body, err = readCommandInputLimited(ctx, options.inputFile, reviewMaxJSONBytes+1)
+	} else {
+		body, err = readCommandReader(ctx, strings.NewReader(options.data), reviewMaxJSONBytes+1)
 	}
-	body, err := io.ReadAll(io.LimitReader(reader, reviewMaxJSONBytes+1))
 	if err != nil {
 		return err
 	}

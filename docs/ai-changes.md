@@ -1,9 +1,58 @@
+## 2026-11-06 — GitHub release 同步到 GitLab master
+- 摘要：同步最新 release 的协商群查询 Skill 与正式版仅 prod 环境限制。
+- 来源：基于 upstream/master@cdb50da 建独立同步分支，merge 冻结的 GitHub release@b9dc391，保留双方提交历史。
+- 一致性：除本条同步记录外，完整文件树与 GitHub release@b9dc391 逐文件一致；master 按用户要求仅支持 prod。
+- 边界：blue 的多环境支持由另一条同步分支保留，不带入 master。
+- 验证：全量 Go race/coverage 通过（CLI 83.1%），exhaustive lint 0 issues；Node 24 通过、2 项既有跳过，构建参数检查通过。
+- 交付：创建面向 GitLab master 的 MR，不直接合并、不发布安装包。
+
+## 2026-11-05 — release 恢复仅生产环境
+- 摘要：基于 GitHub release@ff4fdc6 创建 codex/release-prod-only-20261105，移除内置 test 预设并恢复严格 prod 限制。
+- 实现：app.go、prod_environment.go、help.go 固定生产业务/账号信任根，显式地址参数仅接受生产地址，发现请求前拒绝非生产目标。
+- 边界：拒绝旧 test/dev/blue/custom profile 及 Device 快照；恢复已知非生产主机首次请求拦截，保留同源重定向、凭证目标绑定和取消处理。
+- 回归：保留生产授权/查询、旧非生产配置修复到 prod、仅清理选定 profile 凭据与独立 profile 状态不变的覆盖。
+- 资料：同步 README、命令参考、auth/shared/摘要 Skill 及打包说明；历史变更记录保持原样。
+- 验证：TDD 先红后绿，全量 Go race/coverage 通过（CLI 83.1%），exhaustive lint 0 issues；Node 24 通过、2 项既有跳过，构建参数检查通过。
+
+## 2026-11-04 — 协商群查询 Skill 提交 GitHub release
+- 摘要：将产品已确认验证通过的协商群查询 Skill 从 GitLab 开发分支提交到 GitHub。
+- 来源：基于 github/release@ae39acb 建集成分支，merge origin/contract-cooperation-chat-group@933dbcd，保留原提交历史。
+- 范围：新增 3 个 Skill 运行文件及配套测试、变更记录；不修改 CLI 运行代码、版本文件、发布流程或后端。
+- 回归：先复现新增 Skill 后 19/20 数量断言失败，再覆盖安装与增量升级；修正 GitHub 基线已有测试静态检查问题。
+- 一致性：运行代码、全部 Skill 与测试逐文件匹配产品验证包 blue@87484fa 的源码，仅变更记录不同。
+- 验证：完整 Go race/coverage 通过（CLI 83.0%），exhaustive lint 0 issues；Node 安装升级回归 24 通过、2 项既有跳过。
+- 交付：向个人 GitHub fork 推送独立分支并创建 release PR，不包含 delivery 测试安装包，不执行 Release/npm 发布。
+
 ## 2026-10-22 — 同步 GitHub 1.9.9 到 GitLab master
 - 摘要：同步正式 release 的协商查询、交接 Skill、Open Web 调用及 Skill 元数据版本修正。
 - 来源：从 upstream/master@ef9c980 建集成分支，merge github/release@238ab3e（v1.9.9），保留双方提交历史。
 - 范围：93 个上游变更文件；除本条记录外，合并树与 GitHub 发布源码一致。
 - 决策：master 无文件冲突；当前用户工作区保持原状，目标为独立分支 MR。
 - 验证：全量 Go 测试通过，exhaustive lint 0 issues；Node 安装与升级回归 24 通过、2 项既有跳过。
+
+## 2026-10-22 — blue 分支按 profile 地址选择服务
+- 摘要：基于 upstream/blue@bbacad3 取消 prod 固定域名绑定，保留 HTTPS、资源及授权端点同源校验。
+- 实现：复用 config add、OAuth/Device 授权与查询；增加 test 预设及业务/授权地址覆盖，关键地址变化清理旧身份。
+- 隔离：普通凭证记录目标指纹；Device 复用地址快照，无来源绑定的旧凭证要求重新授权；原生 Mac Keychain 按 profile 清理。
+- 网络：业务与授权限制同源重定向，资源发现提前核对账号地址，签名下载继续复用独立的现有安全策略。
+- 资料：同步帮助、auth/shared/summary Skills 与简短使用说明；不改 Harness、不发布安装包。
+- 验证：TDD 用例及全部 Go 测试通过；安装器/Skill/打包测试通过，exhaustive lint 为 0；按用户要求不继续本机真实授权和查询。
+
+## 2026-10-22 — 同步 GitHub 1.9.9 到 GitLab blue
+- 摘要：同步正式 release 的协商历史文件语义、交接编号定位与帮助文案修正。
+- 来源：从 upstream/blue@e226709 建集成分支，merge github/release@238ab3e（v1.9.9），保留双方提交历史。
+- 决策：按用户确认，交接 Skill 与配套测试采用 GitHub 1.9.9；保留 blue 研发归档及九端点白名单，更新旧规则说明。
+- 范围：运行代码、全部 Skill 与 GitHub 发布源码一致；双方历史变更记录均保留。
+- 验证：全量 Go 测试通过，exhaustive lint 0 issues；Node 安装与升级回归 24 通过、2 项既有跳过。
+
+## 2026-10-21 — 协商查询集成至 blue
+- 摘要：从最新 blue 建隔离集成分支，合入已测试的个人协商查询及 Skill 元数据版本修复。
+- 来源：blue@9a5a235，merge codex/contract-negotiation-skill@8f74a9e；保留两侧提交历史。
+- 文件：协商 user MCP 命令、contract-cooperation Skill、skillsync 顶层版本识别及对应测试/文档。
+- 决策：仅变更记录重叠且自动合并，blue 原合同交接父合同解析修复及测试完整保留。
+- 验证：TMPDIR=/private/tmp go test ./... 通过，exhaustive lint 为 0 issues。
+- 回归：Node 安装/升级/Skill 结构测试 17 项通过、1 项既有跳过；独立代码检查无阻断项。
+- 说明：macOS 默认临时目录别名会导致既有路径断言误报，最小复现确认后使用真实临时目录验证。
 
 ## 2026-10-21 — 准备 GitHub 合同组编号定位 PR
 - 摘要：将交接 Skill 按编号自动定位父组及完整成员核对提交到 GitHub release。
@@ -130,6 +179,12 @@
 - 验证：全量 Go 测试、16 项 Node 测试、Skill 校验通过；golangci-lint exhaustive 为 0 issues。
 
 # AI 变更记录
+
+- 2026-10-21
+  变更摘要：补齐搜索复用后的父组定位，组成员不再强制先走普通合同详情。
+  涉及文件/模块：contract-handover 运行参考、接口白名单、Go 分发与查询示例回归、父组定位验证记录。
+  关键逻辑/决策：优先保留已有父组映射；缺失时仅按已选对象补充只读页面查询，再用父组与完整成员核实；冲突停止，不扩大选择或写入授权。
+  验证：新增回归先红后绿；规范临时目录下 go test ./... 通过，exhaustive lint 0 issues，Node 17 通过/1 跳过，Skill 格式通过；独立离线四场景符合预期，无真实交接。
 
 - 2026-10-20
   变更摘要：MR !19 同步最新 blue，保留客户 README 与 release 功能，并合入合同交接 Skill 优化。

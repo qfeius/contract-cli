@@ -246,7 +246,7 @@ func (a *App) runReviewRulesBatchDelete(ctx context.Context, args []string, base
 			return err
 		}
 	} else {
-		if err := readReviewJSON(parsed, &ids); err != nil {
+		if err := readReviewJSON(ctx, parsed, &ids); err != nil {
 			return fmt.Errorf("batch-delete input must be a JSON string array: %w", err)
 		}
 	}
@@ -280,7 +280,7 @@ func (a *App) runReviewRulesBatchDelete(ctx context.Context, args []string, base
 	return a.executeReviewResponse(ctx, options, openplatform.Request{Method: http.MethodDelete, Path: base + "/batch", Body: body, IdentityPolicy: openplatform.IdentityPolicyUserOnly})
 }
 
-func reviewWriteBody(parsed parsedArgs, array bool, pathID string) ([]byte, error) {
+func reviewWriteBody(ctx context.Context, parsed parsedArgs, array bool, pathID string) ([]byte, error) {
 	if len(parsed.positionals) != 0 {
 		return nil, fmt.Errorf("unexpected positional arguments")
 	}
@@ -294,7 +294,7 @@ func reviewWriteBody(parsed parsedArgs, array bool, pathID string) ([]byte, erro
 		return nil, fmt.Errorf("必须且只能提供 --input、--input-file、--data 之一")
 	}
 	options := parseReviewOptions(parsed)
-	body, err := resolveRequiredRawBody(options)
+	body, err := resolveRequiredRawBody(ctx, options)
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +324,7 @@ func (a *App) executeJSONBody(ctx context.Context, parsed parsedArgs, method, pa
 	if len(pathIDs) > 0 {
 		pathID = pathIDs[0]
 	}
-	body, err := reviewWriteBody(parsed, array, pathID)
+	body, err := reviewWriteBody(ctx, parsed, array, pathID)
 	if err != nil {
 		return err
 	}

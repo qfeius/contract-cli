@@ -153,7 +153,7 @@ func (a *App) runApprovalMatrixImportPlan(ctx context.Context, args []string) er
 	if options.raw {
 		return fmt.Errorf("rule table import plan does not support --raw because it returns structured state")
 	}
-	body, err := resolveRequiredRawBody(options)
+	body, err := resolveRequiredRawBody(ctx, options)
 	if err != nil {
 		return err
 	}
@@ -465,6 +465,7 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 	}
 	plan.Reason = ""
 	executed := 0
+	var cancellationErr error
 	for index := range plan.Operations {
 		operation := &plan.Operations[index]
 		if len(selected) > 0 && !selected[operation.Index] {
@@ -525,6 +526,7 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 			path += "/" + escapePathSegment(operation.RowID)
 		}
 		if ctx.Err() != nil {
+			cancellationErr = ctx.Err()
 			break
 		}
 		// 暂停和启动下一条写入共用短锁，明确并发请求的先后顺序。
@@ -543,6 +545,9 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 			Body:           requestBody,
 			IdentityPolicy: openplatform.IdentityPolicyAny,
 		})
+		if ctx.Err() != nil {
+			cancellationErr = withCommandCancellation(ctx, requestErr)
+		}
 		executed++
 		operation.Response = nil
 		operation.Error = ""
@@ -591,6 +596,9 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 					return err
 				}
 				observedDigest, verifyErr := verifyApprovalMatrixImportOperation(ctx, client, requestContext, basePath, *operation)
+				if ctx.Err() != nil {
+					cancellationErr = withCommandCancellation(ctx, verifyErr)
+				}
 				if verifyErr != nil {
 					operation.Error = verifyErr.Error()
 					plan.Status = "needs_verification"
@@ -603,7 +611,7 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 		}
 		plan.UpdatedAt = a.now().UTC()
 		if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
-			return err
+			return errors.Join(cancellationErr, err)
 		}
 		if operation.Status == "uncertain" || operation.Status == "unverified" || plan.Status == "invalidated" {
 			break
@@ -642,9 +650,13 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 	}
 	plan.UpdatedAt = a.now().UTC()
 	if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
-		return err
+		return errors.Join(cancellationErr, err)
 	}
-	return a.renderApprovalMatrixImportApplyResult(options, plan)
+	outputErr := a.renderApprovalMatrixImportApplyResult(options, plan)
+	if cancellationErr != nil {
+		return errors.Join(cancellationErr, outputErr)
+	}
+	return outputErr
 }
 
 /*

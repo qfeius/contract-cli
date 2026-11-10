@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -32,9 +33,9 @@ func TestLoadDeviceAwareProfileRejectsUnsupportedProfileAndMismatchedEndpoints(t
 		name    string
 		profile config.Profile
 	}{
-		{name: "dev environment", profile: func() config.Profile {
+		{name: "missing environment label", profile: func() config.Profile {
 			profile := validProductionProfile()
-			profile.Environment = "dev"
+			profile.Environment = ""
 			return profile
 		}()},
 		{name: "prod profile with test open platform", profile: func() config.Profile {
@@ -116,7 +117,7 @@ func TestDeviceProfileRecoveryRejectsTestSnapshot(t *testing.T) {
 		t.Fatalf("profile recovery error = %v", err)
 	}
 	if _, found, lookupErr := store.LookupProfile("contract"); lookupErr != nil || found {
-		t.Fatalf("test snapshot was restored, found=%v err=%v", found, lookupErr)
+		t.Fatalf("rejected test snapshot was restored, found=%v err=%v", found, lookupErr)
 	}
 }
 
@@ -321,7 +322,7 @@ func TestConfigAddRejectsNonProductionMetadataOverrideBeforeNetworkRequest(t *te
 	}
 }
 
-func TestHTTPClientRejectsKnownTestHosts(t *testing.T) {
+func TestHTTPClientRejectsKnownNonProductionServiceAddresses(t *testing.T) {
 	requestCount := 0
 	app := New(Options{
 		Store: config.NewStore(t.TempDir()),
@@ -331,7 +332,12 @@ func TestHTTPClientRejectsKnownTestHosts(t *testing.T) {
 		})},
 	})
 
-	for _, rawURL := range []string{"https://test-open.qtech.cn/open-apis/test", "https://test-myaccount.qtech.cn./device"} {
+	for _, rawURL := range []string{
+		"https://test-open.qtech.cn/api", "https://test-myaccount.qtech.cn/device",
+		"https://dev-open.qtech.cn/api", "https://dev-myaccount.qtech.cn/device",
+		"https://open-b.qfei.cn/api", "https://myaccount-b.qfei.cn/device",
+		"https://TEST-OPEN.QTECH.CN:443/api", "https://test-open.qtech.cn./api",
+	} {
 		request, err := http.NewRequest(http.MethodGet, rawURL, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -340,7 +346,7 @@ func TestHTTPClientRejectsKnownTestHosts(t *testing.T) {
 		if response != nil {
 			_ = response.Body.Close()
 		}
-		if err == nil || !strings.Contains(err.Error(), "blocks non-production host") {
+		if err == nil {
 			t.Fatalf("request %s error = %v", rawURL, err)
 		}
 	}
@@ -396,8 +402,7 @@ productionProfileErrorMessage 返回测试断言用的环境端点错误文本�
 入参 profileName（string）为配置名；返回 string 错误文本。
 */
 func productionProfileErrorMessage(profileName string) string {
-	return `profile "` + profileName + `" has unsupported or mismatched environment endpoints; run ` +
-		"`contract-cli config add --env prod --name contract` and authorize again"
+	return fmt.Sprintf("profile %q has unsupported or mismatched environment endpoints; re-run `contract-cli config add --env prod --name %q` and authorize again", profileName, profileName)
 }
 
 type productionRoundTripFunc func(*http.Request) (*http.Response, error)

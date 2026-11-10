@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"cn.qfei/contract-cli/internal/cli"
 	"cn.qfei/contract-cli/internal/config"
+	"cn.qfei/contract-cli/internal/openplatform"
 )
 
 func TestContractDownloadFileAsUserWritesOnlyAfterValidation(t *testing.T) {
@@ -26,15 +28,18 @@ func TestContractDownloadFileAsUserWritesOnlyAfterValidation(t *testing.T) {
 	}
 
 	requests := 0
-	stdout := &bytes.Buffer{}
+	stdout, logs := &bytes.Buffer{}, &bytes.Buffer{}
+	var traceID string
 	app := cli.New(cli.Options{
 		Stdout: stdout,
-		Stderr: &bytes.Buffer{},
+		Stderr: logs,
+		Logger: slog.New(slog.NewTextHandler(logs, nil)),
 		Store:  store,
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			requests++
 			switch requests {
 			case 1:
+				traceID = req.Header.Get("X-Log-Id")
 				if req.URL.Path != "/open-apis/contract/v1/mcp/contracts/contract-1/files/file-1/download" {
 					t.Fatalf("metadata path = %q", req.URL.Path)
 				}
@@ -49,8 +54,10 @@ func TestContractDownloadFileAsUserWritesOnlyAfterValidation(t *testing.T) {
 				if req.URL.String() != "https://files.example.test/tenant/contract%20copy.pdf?X-Tos-Expires=300&X-Tos-Credential=test%2Fscope&X-Tos-Signature=secret&response-content-disposition=attachment%3B%20filename%3Da%2Bb.pdf" {
 					t.Fatalf("signed URL = %q", req.URL.String())
 				}
-				if req.Header.Get("Authorization") != "" {
-					t.Fatalf("signed download leaked authorization = %q", req.Header.Get("Authorization"))
+				for _, name := range []string{"Authorization", "Cookie", "traceparent", "X-Log-Id"} {
+					if req.Header.Get(name) != "" {
+						t.Fatalf("signed download forwarded %s", name)
+					}
 				}
 				return &http.Response{
 					StatusCode:    http.StatusOK,
@@ -87,6 +94,14 @@ func TestContractDownloadFileAsUserWritesOnlyAfterValidation(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Downloaded file to "+outputPath) {
 		t.Fatalf("missing download message: %s", stdout.String())
+	}
+	if len(traceID) != 32 {
+		t.Fatalf("metadata request trace ID = %q", traceID)
+	}
+	for _, line := range strings.Split(logs.String(), "\n") {
+		if strings.Contains(line, "msg=\"signed contract file download") && strings.Count(line, "trace_id="+traceID) != 1 {
+			t.Fatalf("signed download log must have one command trace field: %s", line)
+		}
 	}
 }
 
@@ -280,6 +295,7 @@ func TestContractDownloadFileAsUserDoesNotExposeSignedURLOnTransportFailure(t *t
 	}
 
 	requests := 0
+	var traceID string
 	stderr := &bytes.Buffer{}
 	app := cli.New(cli.Options{
 		Stdout: io.Discard,
@@ -288,6 +304,7 @@ func TestContractDownloadFileAsUserDoesNotExposeSignedURLOnTransportFailure(t *t
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			requests++
 			if requests == 1 {
+				traceID = req.Header.Get("X-Log-Id")
 				return jsonResponse(`{"code":0,"success":true,"data":{"file_id":"file-1","file_size":14,"download_url":"https://files.example.test/object?signature=do-not-log"}}`), nil
 			}
 			return nil, errors.New(`Get "https://files.example.test/object?signature=do-not-log": connection failed`)
@@ -306,6 +323,15 @@ func TestContractDownloadFileAsUserDoesNotExposeSignedURLOnTransportFailure(t *t
 	}
 	if strings.Contains(err.Error(), "do-not-log") || strings.Contains(stderr.String(), "do-not-log") {
 		t.Fatalf("signed URL leaked; error = %v, logs = %s", err, stderr.String())
+	}
+	var traced *openplatform.TraceError
+	if !errors.As(err, &traced) || traced.TraceID != traceID {
+		t.Fatalf("safe download failure lost command trace: %v", err)
+	}
+	for cause := err; cause != nil; cause = errors.Unwrap(cause) {
+		if strings.Contains(cause.Error(), "do-not-log") {
+			t.Fatalf("raw signed URL error reattached to error chain: %T", cause)
+		}
 	}
 }
 
@@ -374,6 +400,11 @@ func TestContractDownloadFileAsUserDoesNotForwardSignedURLAsRedirectReferer(t *t
 			case 1:
 				return jsonResponse(`{"code":0,"success":true,"data":{"file_id":"file-1","file_size":14,"download_url":"https://files.example.test/object?signature=do-not-forward"}}`), nil
 			case 2:
+				for _, name := range []string{"Authorization", "Cookie", "traceparent", "X-Log-Id"} {
+					if req.Header.Get(name) != "" {
+						t.Fatalf("signed download forwarded %s", name)
+					}
+				}
 				return &http.Response{
 					StatusCode: http.StatusFound,
 					Header:     http.Header{"Location": {"https://cdn.example.test/object"}},
@@ -383,8 +414,10 @@ func TestContractDownloadFileAsUserDoesNotForwardSignedURLAsRedirectReferer(t *t
 				if referer := req.Header.Get("Referer"); referer != "" {
 					t.Fatalf("redirect referer = %q, want empty", referer)
 				}
-				if req.Header.Get("Authorization") != "" || req.Header.Get("Cookie") != "" {
-					t.Fatalf("redirect forwarded credentials: %v", req.Header)
+				for _, name := range []string{"Authorization", "Cookie", "traceparent", "X-Log-Id"} {
+					if req.Header.Get(name) != "" {
+						t.Fatalf("signed download redirect forwarded %s", name)
+					}
 				}
 				return &http.Response{
 					StatusCode:    http.StatusOK,
@@ -410,5 +443,59 @@ func TestContractDownloadFileAsUserDoesNotForwardSignedURLAsRedirectReferer(t *t
 	}
 	if requests != 3 {
 		t.Fatalf("requests = %d, want 3", requests)
+	}
+}
+
+func TestContractDownloadFileAsUserPreservesCancellationAfterSanitizing(t *testing.T) {
+	t.Parallel()
+
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(uploadProfile(config.IdentityUser), true); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var traceID string
+	logs := &bytes.Buffer{}
+	app := cli.New(cli.Options{
+		Stdout: io.Discard, Stderr: logs, Store: store,
+		Logger: slog.New(slog.NewTextHandler(logs, nil)),
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Host != "files.example.test" {
+				traceID = req.Header.Get("X-Log-Id")
+				return jsonResponse(`{"code":0,"data":{"file_id":"file-1","download_url":"https://files.example.test/object?signature=private-signature"}}`), nil
+			}
+			cancel()
+			return nil, req.Context().Err()
+		})},
+	})
+
+	err := app.Run(ctx, []string{"contract", "download-file", "file-1", "--contract", "contract-1", "--as", "user", "--raw"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("download lost cancellation: %v", err)
+	}
+	var traced *openplatform.TraceError
+	if !errors.As(err, &traced) || traced.TraceID != traceID {
+		t.Fatalf("canceled download lost command trace: %v", err)
+	}
+	for cause := err; cause != nil; cause = errors.Unwrap(cause) {
+		if strings.Contains(cause.Error(), "private-signature") {
+			t.Fatalf("signed URL leaked through %T", cause)
+		}
+	}
+	if strings.Contains(logs.String(), "private-signature") {
+		t.Fatal("signed URL leaked through logs")
+	}
+	failureLogged := false
+	for _, line := range strings.Split(logs.String(), "\n") {
+		if strings.Contains(line, "msg=\"signed contract file download failed\"") {
+			failureLogged = true
+			if len(traceID) != 32 || strings.Count(line, "trace_id="+traceID) != 1 {
+				t.Fatalf("signed failure log lost command trace: %s", line)
+			}
+		}
+	}
+	if !failureLogged {
+		t.Fatal("signed download cancellation was not logged")
 	}
 }

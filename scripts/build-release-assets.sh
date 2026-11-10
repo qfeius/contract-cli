@@ -9,9 +9,9 @@ OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/release-assets}"
 GO_CACHE="${GOCACHE:-/tmp/contract-cli-go-build-cache}"
 COMMIT="${COMMIT:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 DATE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
-# 历史联调开关不再开放；所有版本（包括预发布包）只构建 prod 能力。
+# 环境由 profile 配置；不再使用历史联调构建开关。
 if [[ "${ENABLE_TEST:-false}" != "false" ]]; then
-  echo "ENABLE_TEST is no longer supported; builds only support prod" >&2
+  echo "ENABLE_TEST is no longer supported; configure the target through a profile" >&2
   exit 1
 fi
 

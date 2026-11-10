@@ -14,6 +14,7 @@ import (
 
 	"cn.qfei/contract-cli/internal/openplatform"
 	contractsvc "cn.qfei/contract-cli/internal/openplatform/contract"
+	"cn.qfei/contract-cli/internal/tracecontext"
 )
 
 // Content upload returns only a boolean envelope, never a file or a large resource list.
@@ -30,10 +31,11 @@ type contractFileUploadSession struct {
 
 func (a *App) runContractUploadAttachmentAsUser(ctx context.Context, service *contractsvc.Service, requestContext openplatform.RequestContext, options commandOptions, input contractsvc.UploadFileInput, fileSize int64) (resultErr error) {
 	phase := "prepare"
-	a.logger.Info("user attachment upload started", "profile", requestContext.Profile.Name, "file_type", input.FileType, "size_bytes", fileSize)
+	logger := a.commandTraceLogger(ctx)
+	logger.Info("user attachment upload started", "profile", requestContext.Profile.Name, "file_type", input.FileType, "size_bytes", fileSize)
 	defer func() {
 		if resultErr != nil {
-			a.logger.Error("user attachment upload failed", "profile", requestContext.Profile.Name, "phase", phase, "error", resultErr.Error())
+			logger.Error("user attachment upload failed", "profile", requestContext.Profile.Name, "phase", phase, "error", resultErr.Error())
 		}
 	}()
 	if fileSize <= 0 {
@@ -61,7 +63,7 @@ func (a *App) runContractUploadAttachmentAsUser(ctx context.Context, service *co
 	}
 
 	phase = "commit"
-	a.logger.Info("user attachment upload committing", "profile", requestContext.Profile.Name)
+	logger.Info("user attachment upload committing", "profile", requestContext.Profile.Name)
 	body, err = marshalJSONObject(map[string]any{"upload_id": session.UploadID})
 	if err != nil {
 		return err
@@ -85,7 +87,7 @@ func (a *App) runContractUploadAttachmentAsUser(ctx context.Context, service *co
 	if err != nil || fileID <= 0 {
 		return fmt.Errorf("upload commit returned an invalid file_id: %w", &openplatform.UncertainWriteError{})
 	}
-	a.logger.Info("user attachment upload completed", "profile", requestContext.Profile.Name, "file_id", committed.Data.FileID)
+	logger.Info("user attachment upload completed", "profile", requestContext.Profile.Name, "file_id", committed.Data.FileID)
 	return a.renderOpenPlatformResponse(options, response)
 }
 
@@ -116,7 +118,8 @@ func decodeContractFileUploadSession(body []byte, fileSize int64, now time.Time)
 }
 
 func (a *App) uploadContractAttachmentContent(ctx context.Context, session contractFileUploadSession, input contractsvc.UploadFileInput) error {
-	a.logger.Info("user attachment content upload started")
+	logger := a.commandTraceLogger(ctx)
+	logger.Info("user attachment content upload started")
 	body, contentType := contractsvc.UploadSessionContentBody(input.FileName, input.File)
 	defer func() { _ = body.Close() }() // Closing the input stream only releases multipart resources.
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, session.UploadURL, body)
@@ -124,6 +127,13 @@ func (a *App) uploadContractAttachmentContent(ctx context.Context, session contr
 		return errors.New("build attachment content upload request failed")
 	}
 	request.Header.Set("Content-Type", contentType)
+	requestTrace, err := tracecontext.ForRequest(ctx)
+	if err != nil {
+		return fmt.Errorf("prepare attachment content trace: %w", err)
+	}
+	if err := requestTrace.Apply(request.Header); err != nil {
+		return fmt.Errorf("apply attachment content trace: %w", err)
+	}
 	// The session URL is a capability. Do not add user credentials or replay the file on redirects.
 	client := *a.httpClient
 	client.Jar = nil
@@ -153,7 +163,7 @@ func (a *App) uploadContractAttachmentContent(ctx context.Context, session contr
 	if err := json.Unmarshal(responseBody, &envelope); err != nil || !envelope.Data {
 		return fmt.Errorf("upload content was not confirmed: %w", &openplatform.UncertainWriteError{})
 	}
-	a.logger.Info("user attachment content upload completed")
+	logger.Info("user attachment content upload completed")
 	return nil
 }
 

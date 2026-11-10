@@ -62,7 +62,7 @@ func (a *App) runAPICall(ctx context.Context, args []string) error {
 		return err
 	}
 
-	body, err := resolveRawBody(options.commandOptions)
+	body, err := resolveRawBody(ctx, options.commandOptions)
 	if err != nil {
 		a.logger.Error("resolve api call body failed", "channel", options.channel, "method", method, "path", path, "error", err.Error())
 		return err

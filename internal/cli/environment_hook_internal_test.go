@@ -99,9 +99,10 @@ func TestOpenPlatformClientWiresFreshEnvironmentHookIntoEveryAttempt(t *testing.
 	detectorCalls := 0
 	receivedChannels := make([]string, 0, len(channels))
 	app := New(Options{
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-		Store:  store,
+		Stdout:          io.Discard,
+		Stderr:          io.Discard,
+		Store:           store,
+		CredentialStore: &deviceMemoryCredentialStore{},
 		HTTPClient: &http.Client{Transport: roundTripFuncInternal(func(request *http.Request) (*http.Response, error) {
 			if got := request.Header.Get(invocation.HeaderChannelType); got != "cli" {
 				t.Fatalf("channel = %q, want cli", got)
