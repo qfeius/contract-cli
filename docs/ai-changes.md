@@ -1,3 +1,11 @@
+## 2026-11-10 — 审批效率与审批操作统一上蓝
+- 摘要：基于 blue@a3d2138 创建上线分支，merge 已验收的 contract-approval-efficiency@bd74a29 与 contract-cli-approval-actions@d9bd52a。
+- 范围：引入两个 Skill 共 15 个运行文件，保留原业务说明；为效率 Skill 补齐统一的 Agent policy 元数据。
+- 回归：先复现安装数量及元数据检查失败，更新 22 项安装断言，并覆盖两个 Skill 的增量安装和第三方内容保留。
+- 验证：TMPDIR=/private/tmp 全量 Go race 测试通过，exhaustive lint 0 issues；Node 24 通过、2 项跳过；npm 清单包含全部 15 个文件。
+- 配套：提取 19 个 Open Web 接口，蓝环境配置另发 MR 补齐其中缺失的 17 条精确 URL。
+- 交付：统一上线分支提交到主空间 blue MR，不直接合并、部署或执行真实业务写入。
+
 ## 2026-11-09 — master 合入 blue
 - 摘要：基于 upstream/blue@9bfd2eb 创建中间分支，merge upstream/master@5a8ef80，保留双方提交历史。
 - 范围：master 的功能改动已包含在 blue，本次仅合并 docs/ai-changes.md 双方记录。

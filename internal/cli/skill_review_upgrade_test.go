@@ -15,7 +15,7 @@ import (
 	contractskills "cn.qfei/contract-cli/skills"
 )
 
-// 本回归验证真实官方 Skill 的增量安装，包含审查与协商群查询能力。
+// 本回归验证真实官方 Skill 的增量安装，包含审查、协商群及审批业务能力。
 func TestSkillSyncUpgradeAddsBundledReviewSkills(t *testing.T) {
 	entries, err := fs.ReadDir(contractskills.FS, ".")
 	if err != nil {
@@ -27,8 +27,8 @@ func TestSkillSyncUpgradeAddsBundledReviewSkills(t *testing.T) {
 			count++
 		}
 	}
-	if count != 20 {
-		t.Fatalf("integrated distributable Skill count = %d, want 20", count)
+	if count != 22 {
+		t.Fatalf("integrated distributable Skill count = %d, want 22", count)
 	}
 	previous := fstest.MapFS{}
 	err = fs.WalkDir(contractskills.FS, ".", func(path string, entry fs.DirEntry, walkErr error) error {
@@ -36,7 +36,8 @@ func TestSkillSyncUpgradeAddsBundledReviewSkills(t *testing.T) {
 			return walkErr
 		}
 		if entry.IsDir() {
-			if path == "contract-cli-review" || path == "contract-cli-review-rule" || path == "contract-cooperation-chat-group" {
+			if path == "contract-cli-review" || path == "contract-cli-review-rule" || path == "contract-cooperation-chat-group" ||
+				path == "contract-approval-efficiency" || path == "contract-cli-approval-actions" {
 				return fs.SkipDir
 			}
 			return nil
@@ -66,15 +67,15 @@ func TestSkillSyncUpgradeAddsBundledReviewSkills(t *testing.T) {
 	if err := makeApp(contractskills.FS, &output).Run(context.Background(), []string{"__internal", "skill-sync-on-install"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"contract-cli-review", "contract-cli-review-rule", "contract-cooperation-chat-group"} {
+	for _, name := range []string{"contract-cli-review", "contract-cli-review-rule", "contract-cooperation-chat-group", "contract-approval-efficiency", "contract-cli-approval-actions"} {
 		body, err := os.ReadFile(filepath.Join(target, name, "SKILL.md"))
 		if err != nil || !strings.Contains(string(body), "name: "+name) {
 			t.Fatalf("new official Skill %s missing or invalid: %v", name, err)
 		}
 	}
 	registry := readSkillSyncRegistry(t, filepath.Join(state, "skill-locations.json"))
-	if len(registry.Locations) != 1 || len(registry.Locations[0].Managed) != 20 || registry.Locations[0].Status != "success" {
-		t.Fatalf("registry did not synchronize all 20 Skills: %+v; output=%s", registry, output.String())
+	if len(registry.Locations) != 1 || len(registry.Locations[0].Managed) != 22 || registry.Locations[0].Status != "success" {
+		t.Fatalf("registry did not synchronize all 22 Skills: %+v; output=%s", registry, output.String())
 	}
 	content, err := os.ReadFile(thirdParty)
 	if err != nil || string(content) != "keep unrelated skill" {
