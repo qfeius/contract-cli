@@ -18,20 +18,20 @@ import (
 	"cn.qfei/contract-cli/internal/invocation"
 )
 
-func TestProductionTraceJSONConfiguration(t *testing.T) {
+func TestBlueTraceJSONCustomHTTPSConfiguration(t *testing.T) {
 	t.Parallel()
 	target := blueTraceJSONCustomTarget(t)
 	app, output, _, calls := blueTraceJSONApp(t, target, nil)
 	if err := app.Run(context.Background(), blueTraceJSONConfigArgs(target, true)); err != nil {
-		t.Fatalf("production configuration must support explicit JSON: %v", err)
+		t.Fatalf("custom HTTPS configuration must support explicit JSON: %v", err)
 	}
 	data := blueTraceJSONResult(t, output.Bytes())
 	if *calls != 1 || data["profile"] != target.Name || data["environment"] != "prod" || data["resource"] != target.Resource || data["default_identity"] != "user" || data["authentication_reset"] != false {
-		t.Fatalf("production JSON configuration lost its endpoint or safe result: calls=%d data=%#v", *calls, data)
+		t.Fatalf("custom JSON configuration lost its endpoint or safe result: calls=%d data=%#v", *calls, data)
 	}
 	saved, err := app.store.GetProfile(target.Name)
 	if err != nil || saved.OpenPlatformBaseURL != target.OpenPlatformBaseURL || saved.AuthorizationServerMetadataURL != target.AuthorizationServerMetadataURL || saved.Resource != target.Resource || validateProductionProfile(saved) != nil {
-		t.Fatalf("production configuration has invalid endpoints: %v", err)
+		t.Fatalf("custom HTTPS addresses were replaced by preset addresses: %v", err)
 	}
 }
 
@@ -100,7 +100,8 @@ func TestBlueTraceJSONCancelledDiscoveryPreservesBoundState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Cancellation after production discovery must preserve the historical state.
+	// Run and the default format exist on original blue, so this also exposes
+	// cancellation after discovery instead of failing merely on a new symbol.
 	err = app.Run(ctx, blueTraceJSONConfigArgs(target, false))
 	if !errors.Is(ctx.Err(), context.Canceled) || !errors.Is(err, context.Canceled) || *calls != 1 || output.Len() != 0 {
 		t.Errorf("cancelled custom discovery continued configuration: err=%v calls=%d stdout=%s", err, *calls, output)
@@ -125,7 +126,9 @@ func TestBlueTraceJSONCancelledDiscoveryPreservesBoundState(t *testing.T) {
 
 func blueTraceJSONCustomTarget(t *testing.T) config.Profile {
 	t.Helper()
-	return validProductionProfile()
+	profile := legacyNonProductionProfile(t, "prod", "https://api.blue-json.example", "https://accounts.blue-json.example")
+	profile.Name = "contract"
+	return profile
 }
 
 func blueTraceJSONConfigArgs(target config.Profile, jsonOutput bool) []string {
@@ -155,7 +158,7 @@ func blueTraceJSONApp(t *testing.T, target config.Profile, cancel context.Cancel
 		HTTPClient: &http.Client{Transport: productionRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			calls++
 			if request.Method != http.MethodGet || request.URL.String() != target.AuthorizationServerMetadataURL {
-				t.Errorf("request escaped the production metadata endpoint: %s", request.URL)
+				t.Errorf("request escaped the explicit custom metadata endpoint: %s", request.URL)
 			}
 			body, err := json.Marshal(map[string]string{
 				"authorization_endpoint":        target.Identities.User.AuthorizationEndpoint,
@@ -186,10 +189,6 @@ func blueTraceJSONSeedCredentials(t *testing.T, app *App) (credential.Store, con
 	var profiles []config.Profile
 	for _, name := range []string{"contract", "independent"} {
 		profile := validProductionProfile()
-		if name == "contract" {
-			profile = validTestProfile()
-			profile.Environment = "prod"
-		}
 		profile.Name = name
 		profile.DefaultIdentity = config.IdentityApp
 		profile.Identities.User.Token = &config.Token{AccessToken: name + "-fixture-user-token"}

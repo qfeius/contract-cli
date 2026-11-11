@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-- 正式源码及其构建仅支持 `prod`，业务与账号服务固定为 `https://open.qfei.cn`、`https://myaccount.qfei.cn`；旧非生产 profile、Device 快照及非生产地址均被拒绝。关键地址变化后重新授权，不迁移旧凭据；用户要求非生产环境时说明当前正式版不支持，不自动改用 prod。首次生产配置：`contract-cli config add --env prod --name contract`
+- 内置 `prod/test` 地址预设，实际目标以 profile 的业务和授权地址为准；关键地址变化后重新授权，不迁移旧凭据。首次生产配置：`contract-cli config add --env prod --name contract`
 - `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是当前同时支持 `user` 与 `app` 的结构化业务命令
 - `rule *`（包括 `approval-matrix` 别名）支持 `--as user` / `--as app`；user 当前限 contract 产品且需要合同规则管理权限。
 - `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 当前仅支持 `--as app`
@@ -18,6 +18,19 @@
 - `environment inspect` 可以在本地查看当前父进程链对应的客户端来源；所有实际业务 HTTP 请求都会在发送前重新探测并覆盖来源 Header
 - 当前全部已支持命令都可以通过 `--help` 查看本地帮助，例如 `contract-cli --help`、`contract-cli contract search --help`、`contract-cli help contract upload-file`
 - `app` 业务接口后续继续新增时，优先在本文件补充命令矩阵
+
+## 审查文件准备
+
+- 本地文件从 `contract-cli review pre-audit prepare --file <path> --name <name>` 开始，上传到 CLM 后选择分类，再由 `review pre-audit create` 创建预审并自动准备 AI 文件引用；`review pre-audit start` 等待审查完成后返回预审链接。
+- `review file upload` 仅引用 CLM 已有文件，必填 `--name`、`--business-id`、`--business-file-id`、`--business-file-version` 和 `--source-locator`。来源支持 `sourceFileType=0/1/2`；业务、文件、版本和协商关联 ID 均取真实接口结果。
+- 该命令显式拒绝本地文件与 stdin 参数，包括预览；旧脚本会收到 `review pre-audit prepare` 的迁移提示。引用请求不携带 file 二进制字段，由 AI 服务读取 CLM 文件。
+
+```text
+contract-cli review pre-audit prepare --profile contract --as user --file ./合同.pdf --name 合同.pdf
+contract-cli review file upload --profile contract --as user --business-id <business-id> --business-file-id <file-id> --business-file-version <version> --source-locator '{"provider":"clm","sourceFileType":0}' --name 合同.pdf
+```
+
+CLM 本地上传支持 DOC、DOCX、PDF，最大 50 MiB。当前不支持通过文件地址上传；`review run` 的 `source.type=url` 在执行和预览模式均会报错。外部文件预审必须先上传 CLM，再以文件引用上传 AI；不自动下载文件地址。
 
 ## 顶层人员与部门查询
 
@@ -184,11 +197,11 @@ contract-cli config add --env prod --name contract
 
 支持参数：
 
-- `--env`：环境预设，仅支持 `prod`，默认 `prod`
+- `--env`：地址预设，支持 `prod/test`，默认 `prod`；实际目标由 profile 地址决定
 - `--name`：profile 名称，默认 `contract`
-- `--open-platform-base-url`：显式设置业务基址，仅接受生产根地址 `https://open.qfei.cn`，同时设置 Resource 与 app token 地址
-- `--authorization-server-metadata-url`：显式设置授权元数据地址，仅接受 `https://myaccount.qfei.cn` 同源的 HTTPS 地址，发现的授权端点也必须与其同源
-- `--resource-metadata-url`：覆盖 protected resource metadata 地址，仅接受生产业务服务同源的 HTTPS 地址
+- `--open-platform-base-url`：覆盖业务基址，同时设置 Resource 与 app token 地址
+- `--authorization-server-metadata-url`：指定可信授权元数据地址，发现的授权端点必须与其同源
+- `--resource-metadata-url`：覆盖 protected resource metadata 地址
 - `--redirect-url`：覆盖 OAuth callback 地址
 - `--scope`：覆盖默认 scope 列表
 - `--output json`：返回安全配置摘要 `profile/environment/default_identity/resource/authentication_reset`，不包含凭据

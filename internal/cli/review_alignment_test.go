@@ -41,10 +41,10 @@ func TestReviewAlignmentRejectIrrelevantFlags(t *testing.T) {
 	}
 }
 
-func TestReviewAlignmentRunPreviewNormalization(t *testing.T) {
+func TestReviewAlignmentTaskPreviewNormalization(t *testing.T) {
 	app, out := alignmentApp(t, nil)
-	spec := `{"source":{"type":"url","fileUrl":"https://example.com/a","name":"a.pdf"},"config":{"selectedPosition":" 甲公司 ","selectedAuditRole":" 甲方 ","reviewStrength":" 中立 ","selectedCheckListIds":[" 2001 "]}}`
-	if err := app.Run(context.Background(), []string{"review", "run", "--data", spec, "--dry-run"}); err != nil {
+	spec := strings.Replace(alignmentStart(), alignmentConfig, `{"selectedPosition":" 甲公司 ","selectedAuditRole":" 甲方 ","reviewStrength":" 中立 ","selectedCheckListIds":[" 2001 "]}`, 1)
+	if err := app.Run(context.Background(), []string{"review", "task", "start", "--data", spec, "--dry-run"}); err != nil {
 		t.Fatal(err)
 	}
 	var value struct {
@@ -53,7 +53,7 @@ func TestReviewAlignmentRunPreviewNormalization(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &value); err != nil {
 		t.Fatal(err)
 	}
-	if value.Config["selectedPosition"] != "甲公司" || value.Config["reviewStrength"] != "中立" {
+	if value.Config["selectedPosition"] != "甲公司" || value.Config["reviewStrength"] != float64(1) {
 		t.Fatal(value.Config)
 	}
 }
@@ -111,30 +111,13 @@ func TestReviewAlignmentUpload(t *testing.T) {
 		os.Stdin = file
 		defer func() { os.Stdin = old }()
 		called := false
-		app, _ := alignmentApp(t, func(r *http.Request) string {
+		app, _ := alignmentApp(t, func(*http.Request) string {
 			called = true
-			if r.Method != "POST" || r.URL.Path != "/open-apis/contract/v3/review/file/upload" {
-				t.Fatal(r.URL)
-			}
-			if err := r.ParseMultipartForm(1 << 20); err != nil {
-				t.Fatal(err)
-			}
-			f, h, err := r.FormFile("file")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _ = f.Close() }()
-			b, _ := io.ReadAll(f)
-			if string(b) != "contract bytes" || h.Filename != "contract.pdf" || r.FormValue("name") != "contract.pdf" {
-				t.Fatal("multipart mismatch")
-			}
 			return `{"code":200,"data":{"fileId":"123"}}`
 		})
-		if err := app.Run(context.Background(), []string{"review", "file", "upload", "--stdin", "--name", "contract.pdf"}); err != nil {
-			t.Fatal(err)
-		}
-		if !called {
-			t.Fatal("upload not called")
+		err = app.Run(context.Background(), []string{"review", "file", "upload", "--stdin", "--name", "contract.pdf"})
+		if err == nil || !strings.Contains(err.Error(), "review pre-audit prepare") || called {
+			t.Fatalf("stdin must stop before upload: err=%v called=%t", err, called)
 		}
 	})
 	t.Run("url extension validation", func(t *testing.T) {
@@ -143,21 +126,14 @@ func TestReviewAlignmentUpload(t *testing.T) {
 			t.Fatal("unsupported extension accepted")
 		}
 	})
-	t.Run("url request", func(t *testing.T) {
+	t.Run("url command removed", func(t *testing.T) {
 		called := false
 		app, _ := alignmentApp(t, func(r *http.Request) string {
 			called = true
-			b := alignmentBody(t, r)
-			if r.URL.Path != "/open-apis/contract/v3/review/file/uploadByUrl" || b["fileUrl"] != "https://example.com/a" || b["name"] != "合同.pdf" {
-				t.Fatal(b)
-			}
 			return `{"code":200,"data":{}}`
 		})
-		if err := app.Run(context.Background(), []string{"review", "file", "upload-url", "--file-url", "https://example.com/a", "--name", "合同.pdf"}); err != nil {
-			t.Fatal(err)
-		}
-		if !called {
-			t.Fatal("not called")
+		if err := app.Run(context.Background(), []string{"review", "file", "upload-url", "--file-url", "https://example.com/a", "--name", "合同.pdf"}); err == nil || !strings.Contains(err.Error(), `unknown review file subcommand "upload-url"`) || called {
+			t.Fatalf("URL must stop before upload: err=%v called=%t", err, called)
 		}
 	})
 }
@@ -212,59 +188,16 @@ func TestReviewAlignmentStart(t *testing.T) {
 	}
 }
 
-func TestReviewAlignmentRun(t *testing.T) {
-	var paths []string
-	statuses := 0
-	app, out := alignmentApp(t, func(r *http.Request) string {
-		paths = append(paths, r.URL.Path)
-		switch r.URL.Path {
-		case "/open-apis/contract/v3/review/file/uploadByUrl":
-			return `{"code":200,"data":{"fileId":"1175703921365090648","businessId":"uploaded","fileHash":"` + strings.Repeat("a", 64) + `"}}`
-		case "/open-apis/contract/v3/review/subjects":
-			b := alignmentBody(t, r)
-			if _, ok := b["usageReportContext"]; ok {
-				t.Fatal("subject extraction must not carry usage attribution")
-			}
-			if b["businessId"] != "uploaded" || b["fileId"] != "1175703921365090648" {
-				t.Fatal(b)
-			}
-			return `{"code":200,"data":{"subjects":[]}}`
-		case "/open-apis/contract/v3/review/startReview":
-			b := alignmentBody(t, r)
-			usage, ok := b["usageReportContext"].(map[string]any)
-			if !ok || usage["reportBusinessCode"] != "clm_100_openApi_cli" {
-				t.Fatal("workflow missing CLM attribution", b)
-			}
-			if b["businessId"] != "uploaded" {
-				t.Fatal(b)
-			}
-			return `{"code":200,"data":{"taskId":"99"}}`
-		case "/open-apis/contract/v3/review/status":
-			statuses++
-			if r.URL.Query().Get("taskId") != "99" {
-				t.Fatal(r.URL)
-			}
-			if statuses == 1 {
-				return `{"code":200,"data":{"status":"running"}}`
-			}
-			return `{"code":200,"data":{"status":"success"}}`
-		case "/open-apis/contract/v3/review/info":
-			return `{"code":200,"data":{"url":"https://example.com/review?a=1&token=signed","result":"ok"}}`
-		default:
-			t.Fatalf("unexpected path %s", r.URL.Path)
-			return ""
-		}
+func TestReviewAlignmentRunURLDisabled(t *testing.T) {
+	calls := 0
+	app, out := alignmentApp(t, func(*http.Request) string {
+		calls++
+		return `{"code":200,"data":{}}`
 	})
 	body := `{"source":{"type":"url","fileUrl":"https://example.com/a","name":"合同.pdf"},"config":` + alignmentConfig + `,"extractSubjects":true,"wait":true}`
-	if err := app.Run(context.Background(), []string{"review", "run", "--data", body, "--interval", "1ms", "--deadline", "1s"}); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"/open-apis/contract/v3/review/file/uploadByUrl", "/open-apis/contract/v3/review/subjects", "/open-apis/contract/v3/review/startReview", "/open-apis/contract/v3/review/status", "/open-apis/contract/v3/review/status", "/open-apis/contract/v3/review/info"}
-	if !reflect.DeepEqual(paths, want) {
-		t.Fatal(paths)
-	}
-	if !strings.Contains(out.String(), `"final"`) || !strings.Contains(out.String(), `"reviewDetailUrl"`) {
-		t.Fatal(out.String())
+	err := app.Run(context.Background(), []string{"review", "run", "--data", body, "--interval", "1ms", "--deadline", "1s"})
+	if err == nil || !strings.Contains(err.Error(), "review pre-audit prepare") || calls != 0 || out.Len() != 0 {
+		t.Fatalf("URL workflow must stop before upload: err=%v calls=%d output=%s", err, calls, out.String())
 	}
 }
 
@@ -276,14 +209,14 @@ func TestReviewAlignmentQuery(t *testing.T) {
 			}
 			return `{"code":200,"data":{"status":"fail","message":"failed"}}`
 		})
-		if err := app.Run(context.Background(), []string{"review", "task", "result", "--task-id", "99", "--interval", "1ms", "--deadline", "1s"}); err == nil {
+		if err := app.Run(context.Background(), []string{"review", "task", "result", "--task-id", "99", "--business-id", "biz", "--interval", "1ms", "--deadline", "1s"}); err == nil {
 			t.Fatal("failure must return error")
 		}
 		if !strings.Contains(out.String(), "fail") {
 			t.Fatal(out.String())
 		}
 	})
-	for _, args := range [][]string{{"status", "--task-id", "0"}, {"info", "--task-id", "1", "--visibility-scope", "other"}, {"info", "--task-id", "1", "--visibility-scope", "contractResult"}, {"status", "--task-id", "1", "--app-type", "CLM"}} {
+	for _, args := range [][]string{{"status", "--task-id", "0", "--business-id", "biz"}, {"info", "--task-id", "1", "--business-id", "biz", "--visibility-scope", "other"}, {"info", "--task-id", "1", "--visibility-scope", "contractResult"}, {"status", "--task-id", "1", "--app-type", "CLM"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			app, _ := alignmentApp(t, nil)
 			if err := app.Run(context.Background(), append([]string{"review", "task"}, args...)); err == nil {
@@ -334,7 +267,7 @@ func TestReviewAlignmentHelp(t *testing.T) {
 	}{
 		{[]string{"review", "run"}, []string{"--interval", "--deadline", "--input"}},
 		{[]string{"review", "subject", "extract"}, []string{"--business-id", "--file-id", "--file-hash"}},
-		{[]string{"review", "file", "upload"}, []string{"--stdin", "--as <user>"}},
+		{[]string{"review", "file", "upload"}, []string{"--business-file-id", "--as <user>"}},
 		{[]string{"review", "task", "result"}, []string{"--visibility-scope", "--interval", "--deadline"}},
 		{[]string{"review", "checklist", "list"}, []string{"--enabled", "--review-stage", "--page-size"}},
 		{[]string{"review", "rule", "list"}, []string{"--group-id", "--sort", "--page-size"}},
@@ -354,42 +287,23 @@ func TestReviewAlignmentHelp(t *testing.T) {
 }
 
 func TestReviewAlignmentBoundaries(t *testing.T) {
-	t.Run("file limit and local multipart", func(t *testing.T) {
+	t.Run("binary file upload disabled", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "contract.pdf")
 		if err := os.WriteFile(path, []byte("local contract"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		app, _ := alignmentApp(t, func(r *http.Request) string {
-			if err := r.ParseMultipartForm(1 << 20); err != nil {
-				t.Fatal(err)
-			}
-			f, _, err := r.FormFile("file")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _ = f.Close() }()
-			b, _ := io.ReadAll(f)
-			if string(b) != "local contract" {
-				t.Fatal("bad file")
-			}
+		called := false
+		app, _ := alignmentApp(t, func(*http.Request) string {
+			called = true
 			return `{"code":200,"data":{"fileId":"1"}}`
 		})
-		if err := app.Run(context.Background(), []string{"review", "file", "upload", "--file", path, "--name", "contract.PDF"}); err != nil {
-			t.Fatal(err)
-		}
-		app, _ = alignmentApp(t, nil)
-		if err := app.Run(context.Background(), []string{"review", "file", "upload", "--file", path, "--stdin", "--name", "contract.pdf", "--dry-run"}); err == nil {
-			t.Fatal("mutually exclusive input accepted")
-		}
-		if err := os.Truncate(path, (50<<20)+1); err != nil {
-			t.Fatal(err)
-		}
-		if err := app.Run(context.Background(), []string{"review", "file", "upload", "--file", path, "--name", "contract.pdf", "--dry-run"}); err == nil {
-			t.Fatal("oversized file accepted")
+		err := app.Run(context.Background(), []string{"review", "file", "upload", "--file", path, "--name", "contract.PDF"})
+		if err == nil || !strings.Contains(err.Error(), "review pre-audit prepare") || called {
+			t.Fatalf("file must stop before upload: err=%v called=%t", err, called)
 		}
 	})
 	t.Run("user only", func(t *testing.T) {
-		for _, args := range [][]string{{"task", "start", "--data", alignmentStart()}, {"task", "status", "--task-id", "1"}, {"checklist", "list"}, {"rule", "list", "--group-id", "g"}} {
+		for _, args := range [][]string{{"task", "start", "--data", alignmentStart()}, {"task", "status", "--task-id", "1", "--business-id", "biz"}, {"checklist", "list"}, {"rule", "list", "--group-id", "g"}} {
 			app, _ := alignmentApp(t, nil)
 			err := app.Run(context.Background(), append(append([]string{"review"}, args...), "--as", "app"))
 			if err == nil || !strings.Contains(err.Error(), "user") {
@@ -405,21 +319,41 @@ func TestReviewAlignmentBoundaries(t *testing.T) {
 			return `{"code":200,"data":{"status":"running","taskId":"99"}}`
 		})
 		start := time.Now()
-		err := app.Run(context.Background(), []string{"review", "task", "result", "--task-id", "99", "--interval", "1s", "--deadline", "20ms"})
+		err := app.Run(context.Background(), []string{"review", "task", "result", "--task-id", "99", "--business-id", "biz", "--interval", "1s", "--deadline", "20ms"})
 		if err == nil || time.Since(start) > time.Second || !strings.Contains(out.String(), "running") {
 			t.Fatalf("timeout %v, %s", err, out.String())
 		}
 	})
 	t.Run("query context and positive numeric ID", func(t *testing.T) {
-		app, _ := alignmentApp(t, func(r *http.Request) string {
-			q := r.URL.Query()
-			if q.Get("businessId") != "biz" || q.Get("visibilityScope") != "contractResult" || q.Get("taskId") != "1175703921365090648" || q.Has("appType") {
-				t.Fatal(q)
-			}
-			return `{"code":200,"data":{"status":"success"}}`
-		})
-		if err := app.Run(context.Background(), []string{"review", "task", "status", "--task-id", "1175703921365090648", "--business-id", "biz", "--visibility-scope", "contractResult"}); err != nil {
-			t.Fatal(err)
+		for _, command := range []string{"status", "info", "result"} {
+			t.Run(command, func(t *testing.T) {
+				var paths []string
+				app, _ := alignmentApp(t, func(r *http.Request) string {
+					paths = append(paths, r.URL.Path)
+					q := r.URL.Query()
+					if r.Method != http.MethodGet || q.Get("businessId") != "biz" || q.Get("visibilityScope") != "contractResult" || q.Get("taskId") != "1175703921365090648" || q.Has("appType") {
+						t.Fatal(r.Method, r.URL)
+					}
+					if r.URL.Path == "/open-apis/contract/v3/review/info" {
+						if !reflect.DeepEqual(q["simplifyReviewResult"], []string{"true"}) {
+							t.Fatalf("review info must request simplified results: %v", q)
+						}
+					} else if r.URL.Path != "/open-apis/contract/v3/review/status" || q.Has("simplifyReviewResult") {
+						t.Fatalf("status must keep its existing query: %s", r.URL)
+					}
+					return `{"code":200,"data":{"status":"success","ruleResult":[]}}`
+				})
+				if err := app.Run(context.Background(), []string{"review", "task", command, "--task-id", "1175703921365090648", "--business-id", "biz", "--visibility-scope", "contractResult"}); err != nil {
+					t.Fatal(err)
+				}
+				want := []string{"/open-apis/contract/v3/review/" + command}
+				if command == "result" || command == "info" {
+					want = []string{"/open-apis/contract/v3/review/status", "/open-apis/contract/v3/review/info"}
+				}
+				if !reflect.DeepEqual(paths, want) {
+					t.Fatalf("request sequence: got %v, want %v", paths, want)
+				}
+			})
 		}
 	})
 	t.Run("strict config and aliases", func(t *testing.T) {
@@ -444,40 +378,25 @@ func TestReviewAlignmentBoundaries(t *testing.T) {
 			}
 		}
 	})
-	t.Run("business error stops workflow", func(t *testing.T) {
+	t.Run("business error stops task start", func(t *testing.T) {
 		calls := 0
 		app, out := alignmentApp(t, func(r *http.Request) string { calls++; return `{"code":400,"message":"rejected"}` })
-		spec := `{"source":{"type":"url","fileUrl":"https://example.com/a","name":"a.pdf"},"config":` + alignmentConfig + `}`
-		err := app.Run(context.Background(), []string{"review", "run", "--data", spec})
+		err := app.Run(context.Background(), []string{"review", "task", "start", "--data", alignmentStart()})
 		if err == nil || calls != 1 {
 			t.Fatalf("err=%v calls=%d output=%s", err, calls, out.String())
 		}
 	})
-	t.Run("run without wait and local source", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "contract.pdf")
-		if err := os.WriteFile(path, []byte("contract"), 0600); err != nil {
-			t.Fatal(err)
-		}
+	t.Run("URL run without wait disabled", func(t *testing.T) {
 		calls := 0
 		app, out := alignmentApp(t, func(r *http.Request) string {
 			calls++
-			if calls == 1 {
-				if !strings.HasSuffix(r.URL.Path, "/file/upload") {
-					t.Fatal(r.URL)
-				}
-				return `{"code":200,"data":{"fileId":"1","businessId":"biz","fileHash":"` + strings.Repeat("a", 64) + `"}}`
-			}
-			if calls == 2 && strings.HasSuffix(r.URL.Path, "/startReview") {
-				return `{"code":200,"data":{"taskId":"99"}}`
-			}
-			t.Fatal("unexpected stage", r.URL)
-			return ""
+			return `{"code":200,"data":{}}`
 		})
-		spec := `{"source":{"type":"file","path":` + strconvQuote(path) + `,"name":"a.pdf"},"config":` + alignmentConfig + `,"wait":false}`
-		if err := app.Run(context.Background(), []string{"review", "run", "--data", spec}); err != nil {
-			t.Fatal(err)
+		spec := `{"source":{"type":"url","fileUrl":"https://example.com/a.pdf","name":"a.pdf"},"config":` + alignmentConfig + `,"wait":false}`
+		if err := app.Run(context.Background(), []string{"review", "run", "--data", spec}); err == nil || !strings.Contains(err.Error(), "review pre-audit prepare") {
+			t.Fatalf("expected URL-disabled guidance: %v", err)
 		}
-		if calls != 2 || strings.Contains(out.String(), `"final"`) {
+		if calls != 0 || out.Len() != 0 {
 			t.Fatal(out.String())
 		}
 	})

@@ -373,8 +373,7 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) (err error) {
 	}
 	openOrigin, accountOrigin, valid := profileOrigins(config.Profile{Environment: env,
 		OpenPlatformBaseURL: preset.OpenPlatformBaseURL, AuthorizationServerMetadataURL: preset.AuthorizationServerMetadataURL})
-	if !valid || !isExactEnvironmentResource(preset.OpenPlatformBaseURL, openOrigin) ||
-		!isProductionOriginURL(preset.AuthorizationServerMetadataURL, accountOrigin, true) {
+	if !valid || !isExactEnvironmentResource(preset.OpenPlatformBaseURL, openOrigin) {
 		a.logger.Error("config add rejected invalid target addresses", "profile", profileName)
 		return productionProfileError(profileName)
 	}
@@ -809,6 +808,17 @@ func (a *App) providerFor(identity config.IdentityKind) authProvider {
 }
 
 func resolveEnvironment(name string) (environmentPreset, error) {
+	if name == "test" {
+		preset, err := resolveEnvironment(productionEnvironment)
+		if err != nil {
+			return environmentPreset{}, err
+		}
+		preset.OpenPlatformBaseURL = "https://test-open.qtech.cn"
+		preset.Resource = preset.OpenPlatformBaseURL
+		preset.AppTokenEndpoint = preset.OpenPlatformBaseURL + "/open-apis/auth/v3/tenant_access_token/internal"
+		preset.AuthorizationServerMetadataURL = "https://test-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract"
+		return preset, nil
+	}
 	switch name {
 	case productionEnvironment:
 		return environmentPreset{
@@ -825,7 +835,7 @@ func resolveEnvironment(name string) (environmentPreset, error) {
 			DeviceScope:                    "contract:full contract-review:full",
 		}, nil
 	default:
-		return environmentPreset{}, fmt.Errorf("unsupported environment %q; supported environments: prod", name)
+		return environmentPreset{}, fmt.Errorf("unsupported environment %q; supported environments: prod, test", name)
 	}
 }
 

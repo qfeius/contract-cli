@@ -46,16 +46,21 @@ func TestDeviceCredentialStoreUnavailableWithoutSessionOrDesktopEvidence(t *test
 }
 
 func TestLocalConfigEndpointChangeResetsOnlySelectedProfile(t *testing.T) {
-	for _, sameName := range []bool{false, true} {
-		source, target := validTestProfile(), validProductionProfile()
-		source.Environment, target.Environment = "prod", "prod"
-		target.Name = "contract-other"
-		if sameName {
-			target.Name = source.Name
+	for _, reverse := range []bool{false, true} {
+		for _, sameName := range []bool{false, true} {
+			source, target := validProductionProfile(), validTestProfile()
+			if reverse {
+				source, target = target, source
+			}
+			source.Environment, target.Environment = "prod", "prod"
+			target.Name = "contract-other"
+			if sameName {
+				target.Name = source.Name
+			}
+			t.Run(source.OpenPlatformBaseURL+"/"+target.Name, func(t *testing.T) {
+				checkLocalConfigEndpointChange(t, source, target, sameName)
+			})
 		}
-		t.Run(source.OpenPlatformBaseURL+"/"+target.Name, func(t *testing.T) {
-			checkLocalConfigEndpointChange(t, source, target, sameName)
-		})
 	}
 }
 

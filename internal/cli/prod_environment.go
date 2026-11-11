@@ -20,16 +20,25 @@ const (
 	productionOpenPlatformOrigin = "https://open.qfei.cn"
 )
 
-// profileOrigins fixes the release trust anchors to production.
+// profileOrigins derives trust anchors from the explicitly configured addresses.
 func profileOrigins(profile config.Profile) (string, string, bool) {
-	if strings.TrimSpace(profile.Environment) != productionEnvironment {
+	open, err := parseProductionURL(profile.OpenPlatformBaseURL)
+	if err != nil || strings.TrimSpace(profile.Environment) == "" {
 		return "", "", false
 	}
-	return productionOpenPlatformOrigin, productionAccountOrigin, true
+	openOrigin := open.Scheme + "://" + open.Host
+	if profile.AuthorizationServerMetadataURL == "" {
+		return openOrigin, "", true
+	}
+	account, err := parseProductionURL(profile.AuthorizationServerMetadataURL)
+	if err != nil {
+		return "", "", false
+	}
+	return openOrigin, account.Scheme + "://" + account.Host, true
 }
 
 /*
-validateProductionProfile 校验资源及认证端点均属于固定生产环境。
+validateProductionProfile 校验资源及认证端点与 profile 声明的地址一致。
 入参 profile（config.Profile）为配置；返回 error 表示环境或端点不合法。
 */
 func validateProductionProfile(profile config.Profile) error {
@@ -140,21 +149,16 @@ productionProfileError 返回环境配置不合法的统一错误，提示重新
 */
 func productionProfileError(profileName string) error {
 	return fmt.Errorf(
-		"profile %q has unsupported or mismatched environment endpoints; re-run `contract-cli config add --env prod --name %q` and authorize again",
-		profileName, profileName,
+		"profile %q has unsupported or mismatched environment endpoints; re-run `contract-cli config add` with the intended addresses and authorize again",
+		profileName,
 	)
 }
 
-// withProductionNetworkGuard blocks known non-production hosts and cross-origin redirects.
+// withProductionNetworkGuard preserves the configured target across redirects.
 // Download/upload clients retain their existing, separate signed-URL policies.
 func withProductionNetworkGuard(client *http.Client, logger *slog.Logger) *http.Client {
 	guarded := *client
 	logger.Debug("configure same-origin network guard")
-	transport := client.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
-	guarded.Transport = productionGuardTransport{next: transport, logger: logger}
 	guarded.CheckRedirect = func(request *http.Request, via []*http.Request) error {
 		logger.Debug("check request redirect", "host", request.URL.Hostname())
 		if len(via) > 0 && (request.URL.Scheme != via[0].URL.Scheme || !strings.EqualFold(request.URL.Host, via[0].URL.Host)) {
@@ -170,26 +174,6 @@ func withProductionNetworkGuard(client *http.Client, logger *slog.Logger) *http.
 		return nil
 	}
 	return &guarded
-}
-
-type productionGuardTransport struct {
-	next   http.RoundTripper
-	logger *slog.Logger
-}
-
-func (transport productionGuardTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	host := strings.ToLower(strings.TrimSuffix(request.URL.Hostname(), "."))
-	transport.logger.Debug("production network request", "method", request.Method, "host", host)
-	switch host {
-	case "test-open.qtech.cn", "test-myaccount.qtech.cn", "dev-open.qtech.cn", "dev-myaccount.qtech.cn", "open-b.qfei.cn", "myaccount-b.qfei.cn":
-		transport.logger.Error("production build blocked non-production network request", "method", request.Method, "host", host)
-		return nil, fmt.Errorf("production build blocks non-production host %q", host)
-	}
-	response, err := transport.next.RoundTrip(request)
-	if err != nil {
-		transport.logger.Error("production network request failed", "method", request.Method, "host", host)
-	}
-	return response, err
 }
 
 /*

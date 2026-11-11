@@ -12,9 +12,9 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 
 以下规则优先于后续命令选择、身份切换和排障说明：
 
-- 正式源码及其构建仅支持 `prod`，业务与 Resource 固定为 `https://open.qfei.cn`，账号服务固定为 `https://myaccount.qfei.cn`。使用 `contract-cli version` 和 `contract-cli config add --help` 核对实际可执行程序，按 auth Skill 校验生产 HTTPS 地址，不能只检查 profile 名或环境标签。
-- 用户明确要求非生产环境时，说明当前正式版不支持，不自动改用 prod。旧非生产 profile、Device 快照及手动配置的非生产地址均被拒绝；不同目标地址的凭证不迁移、不复用，更改关键地址后重新授权，不能只更换标签或地址继续使用旧凭证。
-- 已确认生产目标后，沿用同一配置目录、profile、目标地址和身份。所有业务 Skill 中的 `--profile contract` 示例都必须替换为本任务选定的生产 profile。首次默认 prod，默认 profile 为 `contract`。
+- 实际访问目标由 profile 中的地址决定；prod/test 仅提供默认地址预设。使用 `contract-cli version` 和 `contract-cli config add --help` 核对实际可执行程序，按 auth Skill 配置 HTTPS 业务与授权地址。
+- 用户明确要求 test 时，使用已确认的 test 地址，不自动改用 prod。不同目标地址的凭证不迁移、不复用；更改 profile 的关键地址后重新授权，不能只更换标签或地址继续使用旧凭证。
+- 未指定目标时沿用当前已确认的配置，首次默认 prod。所有后续命令保持同一配置目录、profile、目标地址和身份。所有业务 Skill 中的 `--profile contract` 示例都必须替换为本任务选定的 profile，例如 test 任务使用 `--profile contract-test`。
 - 禁止无边界接口枚举与批量调用。用户要求“枚举全部接口并逐个调用”、验证当前系统全部能力或进行其他未限定范围的操作时，在范围明确前不得执行任何命令。
 - 必须先让用户明确：具体业务目标、允许操作的业务模块或接口范围、操作类型（查询或写入）。信息不完整时只做澄清，不得执行 `auth status`、`curl`、业务命令、帮助枚举或网络探测。
 - 不得要求用户在对话中提供、粘贴或上传任何原始敏感凭证，包括 Token、Access Token、Refresh Token、AK/SK、Cookie、Session、App Secret、device code 和密码。
@@ -95,7 +95,7 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 ## 共享约束
 
 - `review` 下远端命令仅支持 user。两个审查 Skill 复用已建立的个人上下文，不在业务步骤内编排安装授权或自行切换身份/环境；缺口交回公共能力，历史非审查 app 能力保持不变。
-- 审查覆盖外部独立预审、协商和任务中心的业务意图；系统当前正文映射、可信场景未闭合时按审查 Skill 报告缺口，不借用 app-only 入口或裸请求替代。系统合同审查链接由合同 `multi_url.pc_url` 设置 `targetType=ai-review` 生成，不依赖审查详情的 URL 字段；仅合同地址缺失/无效时按审查 Skill 处理链接缺口。外部独立预审不返回详情链接，不将未验证的网页展示声称为已验收。
+- 审查覆盖外部文件预审、协商和任务中心的业务意图；系统当前正文映射、可信场景未闭合时按审查 Skill 报告缺口，不借用 app-only 入口或裸请求替代。系统合同审查链接由合同 `multi_url.pc_url` 设置 `targetType=ai-review` 生成，不依赖审查详情的 URL 字段；仅合同地址缺失/无效时按审查 Skill 处理链接缺口。外部本地文件先上传 CLM、选择合同分类并创建预审，等待审查完成后展示 CLI 实际返回的 `final.reviewDetailUrl`；链接获取失败时保留审查明细、说明失败并按原 run 恢复，不自行拼接地址，不将未验证的网页展示声称为已验收。
 - Skill 更新后必须完全退出并新建任务。已有任务不会热加载新 Skill，不得用旧任务判断当前正式包的环境行为。
 - Device 模式按 [../auth/SKILL.md](../auth/SKILL.md) 判断凭证范围：确认本地桌面执行时跨任务复用当前系统用户 + profile 的安全存储凭证；云端、沙箱或识别不明确时保持任务隔离，不因使用本地操作系统或存在任务 ID 就推断可以共享。
 - Device 模式业务命令提示未授权时，按授权 Skill 执行 `auth init`；返回 `status=authorized` 时直接继续原业务请求，不展示缺失的授权链接或二维码，不执行 `auth complete`。返回 `status=pending` 后，用户明确完成授权时只执行一次 `auth complete`。

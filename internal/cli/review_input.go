@@ -273,15 +273,13 @@ func reviewTaskValues(parsed parsedArgs) (url.Values, error) {
 	query := url.Values{"taskId": {strconv.FormatInt(id, 10)}}
 	business := strings.TrimSpace(parsed.String("--business-id"))
 	scope := strings.TrimSpace(parsed.String("--visibility-scope"))
-	if business != "" {
-		query.Set("businessId", business)
+	if business == "" {
+		return nil, fmt.Errorf("business-id 不能为空；请提供发起该任务时的业务对象 ID")
 	}
+	query.Set("businessId", business)
 	if scope != "" {
 		if scope != "contractResult" {
 			return nil, fmt.Errorf("visibility-scope 必须是 contractResult")
-		}
-		if business == "" {
-			return nil, fmt.Errorf("visibility-scope=contractResult 必须提供 business-id")
 		}
 		query.Set("visibilityScope", scope)
 	}

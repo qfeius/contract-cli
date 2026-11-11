@@ -13,6 +13,7 @@ var sensitiveArgumentNames = map[string]struct{}{
 	"comment":       {},
 	"cookie":        {},
 	"data":          {},
+	"file-url":      {},
 	"name":          {},
 	"department-id": {},
 	"page-token":    {},

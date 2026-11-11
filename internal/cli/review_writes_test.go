@@ -55,7 +55,7 @@ func reviewWriteCases() [][]string {
 
 func TestReviewWritesRemoteBoundary(t *testing.T) {
 	commands := reviewWriteCases()
-	commands = append(commands, []string{"review", "checklist", "list"}, []string{"review", "rule", "group", "list"}, []string{"review", "rule", "list", "--group-id", "g"}, []string{"review", "task", "status", "--task-id", "1"})
+	commands = append(commands, []string{"review", "checklist", "list"}, []string{"review", "rule", "group", "list"}, []string{"review", "rule", "list", "--group-id", "g"}, []string{"review", "task", "status", "--task-id", "1", "--business-id", "biz"})
 	for _, original := range commands {
 		args := append([]string{}, original...)
 		if strings.Contains(strings.Join(args, " "), " delete ") {
