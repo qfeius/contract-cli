@@ -30,6 +30,8 @@ metadata:
 
 ## 必需能力与停止条件
 
+正式版仅支持生产环境，默认使用生产 `contract` profile；同一次统计保持相同的生产配置、租户和 USER 身份，不切换到测试或预发环境。
+
 页面合同、流程和目录接口复用当前宿主可发现的通用 Open Web USER 调用器。CLI 入口为 `contract-cli api call --channel web`；MCP 只有在 Tool schema 支持本次所需的 Open Web 方法、路径、参数和响应，且复用当前 USER 授权时才可使用。人员、部门、角色模式通过同一 USER 调用带部门权限校验的 `getVisibleTasks`。目录和角色接口按其自身的业务权限使用。
 
 开始业务请求前完成一次能力预检：

@@ -2,3 +2,6 @@ interface:
   display_name: "合同审批效率统计"
   short_description: "按人员、部门路径、系统角色、合同或流程统计审批、盖章和归档效率"
   default_prompt: "使用 $contract-approval-efficiency 统计指定人员、部门、角色、合同或流程的审批、盖章和归档效率，基于当前用户获准读取的数据输出表格及明细。"
+
+policy:
+  allow_implicit_invocation: true

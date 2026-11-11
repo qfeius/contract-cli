@@ -38,7 +38,7 @@ description: "查询当前用户的智书合同任务，并通过 contract-cli �
 
 ## 开始前检查
 
-默认使用生产 `contract` profile。只有用户明确处于测试或验收环境时才使用 `contract-test`；同一计划的查询、人员解析、预览、写入和回查必须保持同一 profile、租户和 User 身份。正常业务回复不主动展示环境或授权实现。
+正式版仅支持生产环境，默认使用生产 `contract` profile；同一计划的查询、人员解析、预览、写入和回查必须保持同一生产配置、租户和 User 身份。请求测试或预发环境时停止并说明当前正式版不支持，不自动切换或复用其他环境的登录态。正常业务回复不主动展示环境或授权实现。
 
 首次使用先确认 `contract-cli api call --help` 真实支持 `--channel web`、`--as user` 和相对 `/open-web/web/**` 路径。缺少该能力时停止，不改用脚本、curl、浏览器抓包或直接 HTTP。
 
