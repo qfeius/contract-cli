@@ -19,8 +19,9 @@ func TestContractSkillsEnforceCredentialAndInvocationBoundaries(t *testing.T) {
 	for _, required := range []string{
 		"禁止无边界接口枚举与批量调用",
 		"具体业务目标",
-		"实际访问目标由 profile 中的地址决定",
-		"用户明确要求 test 时",
+		"仅支持 `prod`",
+		"用户明确要求非生产环境时",
+		"不自动改用 prod",
 		"不同目标地址的凭证不迁移、不复用",
 		"允许操作的业务模块或接口范围",
 		"操作类型（查询或写入）",
@@ -52,7 +53,7 @@ func TestContractSkillsEnforceCredentialAndInvocationBoundaries(t *testing.T) {
 
 	for _, required := range []string{
 		"不得主动询问或接收原始凭证",
-		"`prod` 和 `test` 是地址预设",
+		"仅内置 `prod`",
 		"默认 profile 名为 `contract`",
 		"关键地址变化后必须重新授权",
 		"不同目标地址的 Token 或 App Secret 不迁移、不复用",
@@ -75,8 +76,9 @@ func TestContractSkillsEnforceCredentialAndInvocationBoundaries(t *testing.T) {
 		"contract-dev",
 		"--env dev",
 		"--env blue",
-		"当前 CLI 只支持 prod",
-		"当前构建只支持 `prod`",
+		"--env test",
+		"contract-test",
+		"prod/test",
 		"联调构建支持",
 	} {
 		if strings.Contains(shared, forbidden) || strings.Contains(auth, forbidden) {

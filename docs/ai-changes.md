@@ -1,3 +1,11 @@
+## 2026-11-05 — release 恢复仅生产环境
+- 摘要：基于 GitHub release@ff4fdc6 创建 codex/release-prod-only-20261105，移除内置 test 预设并恢复严格 prod 限制。
+- 实现：app.go、prod_environment.go、help.go 固定生产业务/账号信任根，显式地址参数仅接受生产地址，发现请求前拒绝非生产目标。
+- 边界：拒绝旧 test/dev/blue/custom profile 及 Device 快照；恢复已知非生产主机首次请求拦截，保留同源重定向、凭证目标绑定和取消处理。
+- 回归：保留生产授权/查询、旧非生产配置修复到 prod、仅清理选定 profile 凭据与独立 profile 状态不变的覆盖。
+- 资料：同步 README、命令参考、auth/shared/摘要 Skill 及打包说明；历史变更记录保持原样。
+- 验证：TDD 先红后绿，全量 Go race/coverage 通过（CLI 83.1%），exhaustive lint 0 issues；Node 24 通过、2 项既有跳过，构建参数检查通过。
+
 ## 2026-11-04 — 协商群查询 Skill 提交 GitHub release
 - 摘要：将产品已确认验证通过的协商群查询 Skill 从 GitLab 开发分支提交到 GitHub。
 - 来源：基于 github/release@ae39acb 建集成分支，merge origin/contract-cooperation-chat-group@933dbcd，保留原提交历史。
