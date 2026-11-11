@@ -8,9 +8,9 @@ import (
 	"unicode/utf8"
 )
 
-// Validate reference metadata before any file read or remote request. Values are
+// Validate reference metadata before authentication or remote requests. Values are
 // strings throughout: business IDs and content fingerprints are not JSON floats.
-func reviewUploadFields(parsed parsedArgs, stream bool) (map[string]string, error) {
+func reviewUploadFields(parsed parsedArgs) (map[string]string, error) {
 	fields := make(map[string]string)
 	for _, field := range []struct{ flag, wire string }{
 		{"--business-id", "businessId"}, {"--business-file-id", "businessFileId"},
@@ -23,17 +23,9 @@ func reviewUploadFields(parsed parsedArgs, stream bool) (map[string]string, erro
 			fields[field.wire] = value
 		}
 	}
-	if stream {
-		for _, field := range []string{"businessFileVersion", "sourceLocator", "sourceRevisionId", "sourceContentMd5"} {
-			if _, ok := fields[field]; ok {
-				return nil, fmt.Errorf("文件流不能混传引用参数 %s", field)
-			}
-		}
-		return fields, nil
-	}
 	for _, required := range []struct{ flag, wire string }{{"--business-id", "businessId"}, {"--business-file-id", "businessFileId"}, {"--business-file-version", "businessFileVersion"}, {"--source-locator", "sourceLocator"}} {
 		if strings.TrimSpace(fields[required.wire]) == "" {
-			return nil, fmt.Errorf("引用上传必须提供 %s（或使用 --file/--stdin 上传文件）", required.flag)
+			return nil, fmt.Errorf("引用上传必须提供 %s；本地文件请使用 contract-cli review pre-audit prepare", required.flag)
 		}
 	}
 	if utf8.RuneCountInString(fields["businessFileVersion"]) > 64 {

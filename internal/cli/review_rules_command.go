@@ -37,6 +37,8 @@ func (a *App) runReview(ctx context.Context, args []string) error {
 		return a.runReviewRule(ctx, args[1:])
 	case "run":
 		return a.runReviewWorkflow(ctx, args[1:])
+	case "pre-audit":
+		return a.runPreAudit(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown review subcommand %q", args[0])
 	}
@@ -49,8 +51,6 @@ func (a *App) runReviewFile(ctx context.Context, args []string) error {
 	switch args[0] {
 	case "upload":
 		return a.runReviewUpload(ctx, args[1:])
-	case "upload-url":
-		return a.runReviewUploadURL(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown review file subcommand %q", args[0])
 	}

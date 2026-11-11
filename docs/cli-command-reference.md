@@ -19,6 +19,19 @@
 - 当前全部已支持命令都可以通过 `--help` 查看本地帮助，例如 `contract-cli --help`、`contract-cli contract search --help`、`contract-cli help contract upload-file`
 - `app` 业务接口后续继续新增时，优先在本文件补充命令矩阵
 
+## 审查文件准备
+
+- 本地文件从 `contract-cli review pre-audit prepare --file <path> --name <name>` 开始，上传到 CLM 后选择分类，再由 `review pre-audit create` 创建预审并自动准备 AI 文件引用；`review pre-audit start` 等待审查完成后返回预审链接。
+- `review file upload` 仅引用 CLM 已有文件，必填 `--name`、`--business-id`、`--business-file-id`、`--business-file-version` 和 `--source-locator`。来源支持 `sourceFileType=0/1/2`；业务、文件、版本和协商关联 ID 均取真实接口结果。
+- 该命令显式拒绝本地文件与 stdin 参数，包括预览；旧脚本会收到 `review pre-audit prepare` 的迁移提示。引用请求不携带 file 二进制字段，由 AI 服务读取 CLM 文件。
+
+```text
+contract-cli review pre-audit prepare --profile contract --as user --file ./合同.pdf --name 合同.pdf
+contract-cli review file upload --profile contract --as user --business-id <business-id> --business-file-id <file-id> --business-file-version <version> --source-locator '{"provider":"clm","sourceFileType":0}' --name 合同.pdf
+```
+
+CLM 本地上传支持 DOC、DOCX、PDF，最大 50 MiB。当前不支持通过文件地址上传；`review run` 的 `source.type=url` 在执行和预览模式均会报错。外部文件预审必须先上传 CLM，再以文件引用上传 AI；不自动下载文件地址。
+
 ## 顶层人员与部门查询
 
 两个命令分别由 `contract-cli-employee`、`contract-cli-department` 独立 Skill 指导；只读、仅 user，省略 `--as` 也使用 user。
