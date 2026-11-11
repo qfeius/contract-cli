@@ -1,3 +1,11 @@
+## 2026-11-06 — GitHub release 同步到 GitLab master
+- 摘要：同步最新 release 的协商群查询 Skill 与正式版仅 prod 环境限制。
+- 来源：基于 upstream/master@cdb50da 建独立同步分支，merge 冻结的 GitHub release@b9dc391，保留双方提交历史。
+- 一致性：除本条同步记录外，完整文件树与 GitHub release@b9dc391 逐文件一致；master 按用户要求仅支持 prod。
+- 边界：blue 的多环境支持由另一条同步分支保留，不带入 master。
+- 验证：全量 Go race/coverage 通过（CLI 83.1%），exhaustive lint 0 issues；Node 24 通过、2 项既有跳过，构建参数检查通过。
+- 交付：创建面向 GitLab master 的 MR，不直接合并、不发布安装包。
+
 ## 2026-11-05 — release 恢复仅生产环境
 - 摘要：基于 GitHub release@ff4fdc6 创建 codex/release-prod-only-20261105，移除内置 test 预设并恢复严格 prod 限制。
 - 实现：app.go、prod_environment.go、help.go 固定生产业务/账号信任根，显式地址参数仅接受生产地址，发现请求前拒绝非生产目标。
