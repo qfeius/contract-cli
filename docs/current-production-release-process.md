@@ -12,7 +12,7 @@
 
 ## Actions 检查与发布
 
-- PR 和 release 分支推送运行 Linux/macOS 全量测试、安装/打包检查和固定版本 lint；Windows 运行无弹窗的安全回归。
+- PR 和 release 分支推送运行 Linux/macOS 全量测试、安装/打包检查和固定版本 lint；Windows 运行无弹窗安全回归及含特殊字符路径的原生解压、npm 安装检查。
 - 只有主仓库的标签推送可以进入发布任务，且必须等待所有检查成功。
 - 标签严格采用 `v` 前缀的语义版本；正式版本发布到 npm `latest`，所有合法预发布版本发布到 `beta`，GitHub Release 同时标记 prerelease。
 - 从标签推导版本号并更新暂存包元信息，不依赖源码 package.json 的开发版本号。

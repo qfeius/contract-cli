@@ -25,6 +25,7 @@ test("release workflow gates publication and reuses a single asset build", () =>
   assert.match(workflow, /macos-latest/);
   assert.match(workflow, /ubuntu-latest/);
   assert.match(workflow, /windows-latest/);
+  assert.match(workflow, /name: Windows npm installation regression\s+run: node --test scripts\/install.test.js/);
   assert.match(workflow, /make release-check/);
   assert.match(workflow, /golangci-lint run --enable=exhaustive/);
   assert.match(workflow, /needs: \[checks, windows-security\]/);

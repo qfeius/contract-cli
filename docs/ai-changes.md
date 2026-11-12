@@ -1,3 +1,14 @@
+## 2026-11-12 - 审查问题 4/6/9 及 Windows 安装传参修复
+- 范围：在 codex/fix-release-doc-issues-20261112@c83117b 继续修复；不处理其余问题，不改变安装下载协议、哈希或回退规则。
+- 预审：review_pre_audit.go 在预览及恢复输出前核对原身份；鉴权/刷新失败不输出旧结果，预览仍不刷新 Token、不写业务或恢复记录。
+- 下载：contract_command/openapi_gap_command 复用临时文件提交，失败保留原文件并清理临时文件，禁止无 force 覆盖并发文件；raw 保持直接输出。
+- 流式：openplatform 补齐 Token 预准备、可信过期刷新一次、Content-Length 校验（兼容 HEAD/未知长度），不重放已输出内容或不可重放请求体。
+- 查询：仅 app 合同搜索和付款计划搜索标记 OperationRead；通用 POST/写请求策略、api call 透传不变。
+- 安装与日志：install.js 仅 Windows 解压改为固定 PowerShell 脚本+子进程环境传路径；log_redaction.go 修正 flag 状态机并补齐敏感 ID/名称。
+- 回归：先红后绿覆盖跨账号/租户/登出/预览/刷新及 HTTP 401/403 拒绝、三类 app 下载失败/并发保全、流长度、POST 读写策略和参数脱敏；旧 HTTP 夹具补齐真实长度。
+- 验证：make release-check、全量 race/coverage、exhaustive lint（0 issues）、actionlint、六平台构建/校验及 Windows 测试交叉编译通过；Node 31 通过/3 跳过，两个 Windows 原生用例已接入 CI，本机未执行。
+- 交付：真实用户 Skill 登记及 auth Skill 哈希不变；本次仅提交并推送 GitLab 主仓库当前开发分支，不合并、不运行远端 Actions 或发布。
+
 ## 2026-11-12 - release 审查问题 1/2/3 修复
 - 范围：当前 codex/fix-release-doc-issues-20261112 分支，基于 GitHub release@2eabbbc；不处理报告其余业务问题。
 - 弹窗：save_dialog.go 使用固定脚本与 argv/子进程环境传名，清洗建议文件名，保留用户选择路径及取消语义。

@@ -49,12 +49,14 @@ func preAuditTokenIdentity(token string) (tenant, user string, err error) {
 	return string(claims.UserInfo.Tenant), string(claims.UserInfo.User), nil
 }
 
-func (a *App) newPreAuditSession(ctx context.Context, options commandOptions, run *preAuditRun) (*reviewRequestSession, error) {
+var errPreAuditIdentityRejected = errors.New("pre-audit request identity rejected")
+
+func (a *App) newPreAuditSession(ctx context.Context, options commandOptions, run *preAuditRun, prepareToken bool) (*reviewRequestSession, error) {
 	client, rc, err := a.openPlatformClientAndContextForOptions(options, preAuditPath, openplatform.IdentityPolicyUserOnly)
 	if err != nil {
 		return nil, err
 	}
-	if rc.PrepareAccessToken != nil {
+	if prepareToken && rc.PrepareAccessToken != nil {
 		rc.AccessToken, err = rc.PrepareAccessToken(ctx, rc.AccessToken)
 		if err != nil {
 			return nil, err
@@ -81,12 +83,12 @@ func (a *App) newPreAuditSession(ctx context.Context, options commandOptions, ru
 			if next != nil {
 				token, err = next(ctx, current)
 				if err != nil {
-					return "", err
+					return "", fmt.Errorf("%w: %w", errPreAuditIdentityRejected, err)
 				}
 			}
 			tenant, user, err := preAuditTokenIdentity(token)
 			if err != nil || tenant != run.TenantID || user != run.UserID {
-				return "", fmt.Errorf("实际发送的登录身份与原run不一致，已停止请求")
+				return "", fmt.Errorf("%w: 实际发送的登录身份与原run不一致，已停止请求", errPreAuditIdentityRejected)
 			}
 			return token, nil
 		}
@@ -180,7 +182,7 @@ func (a *App) preparePreAudit(ctx context.Context, options commandOptions, path,
 		return nil, err
 	}
 	run := &preAuditRun{SchemaVersion: 1, RunID: runID, Stage: "upload_unknown", Name: name}
-	session, err := a.newPreAuditSession(ctx, options, run)
+	session, err := a.newPreAuditSession(ctx, options, run, true)
 	if err != nil {
 		a.logger.Error("pre-audit account binding failed")
 		return nil, err
@@ -246,6 +248,10 @@ func (a *App) withPreAuditRun(ctx context.Context, options commandOptions, runID
 		if err != nil {
 			return err
 		}
+		if _, err := a.newPreAuditSession(ctx, options, run, false); err != nil {
+			a.logger.Error("pre-audit preview identity rejected", "run_id", runID)
+			return err
+		}
 		return a.finishReviewWorkflow(options, preAuditOutput(run), operation(run, options))
 	}
 	release, err := store.lock(runID)
@@ -257,14 +263,19 @@ func (a *App) withPreAuditRun(ctx context.Context, options commandOptions, runID
 	if err != nil {
 		return err
 	}
-	session, err := a.newPreAuditSession(ctx, options, run)
+	session, err := a.newPreAuditSession(ctx, options, run, true)
 	if err != nil {
 		a.logger.Error("pre-audit recovery identity rejected", "run_id", runID)
-		return a.finishReviewWorkflow(options, preAuditOutput(run), err)
+		return err
 	}
 	options.reviewSession = session
 	a.logger.Info("pre-audit stage started", "run_id", runID, "stage", run.Stage)
 	err = operation(run, options)
+	var statusErr *openplatform.HTTPStatusError
+	if errors.Is(err, errPreAuditIdentityRejected) || (errors.As(err, &statusErr) && (statusErr.StatusCode == http.StatusUnauthorized || statusErr.StatusCode == http.StatusForbidden)) {
+		a.logger.Error("pre-audit output suppressed after identity rejection", "run_id", runID)
+		return err
+	}
 	if err != nil {
 		a.logger.Error("pre-audit stage stopped", "run_id", runID, "stage", run.Stage)
 	} else {

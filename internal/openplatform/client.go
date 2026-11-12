@@ -344,6 +344,16 @@ func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, re
 		return Response{}, err
 	}
 	fullURL := target.String()
+	if requestContext.PrepareAccessToken != nil {
+		token, err := requestContext.PrepareAccessToken(ctx, requestContext.AccessToken)
+		if err != nil {
+			return Response{}, fmt.Errorf("prepare access token: %w", err)
+		}
+		if strings.TrimSpace(token) == "" {
+			return Response{}, fmt.Errorf("prepare access token returned an empty token")
+		}
+		requestContext.AccessToken = token
+	}
 
 	headers := cloneHeaders(request.Headers)
 	if strings.HasPrefix(target.Path, "/open-apis/rule_engine/v1/") {
@@ -366,9 +376,39 @@ func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, re
 	if err != nil {
 		return Response{}, fmt.Errorf("create open platform request trace: %w", err)
 	}
-	response := Response{TraceID: requestTrace.TraceID}
-
 	c.logger.Info("open platform stream request started", "method", method, "path", request.Path, "identity", requestContext.Identity, "trace_id", requestTrace.TraceID)
+	refreshed := false
+	for {
+		response, requestErr := c.doStreamOnce(ctx, method, fullURL, headers, request, writer, requestTrace)
+		if requestErr == nil {
+			c.logger.Info("open platform stream request completed", "method", method, "path", request.Path, "status_code", response.StatusCode, "trace_id", requestTrace.TraceID)
+			return response, nil
+		}
+		var statusErr *HTTPStatusError
+		if response.StatusCode == http.StatusUnauthorized && errors.As(requestErr, &statusErr) && isTrustedTokenExpired(response, statusErr) && !refreshed && requestContext.RefreshAccessToken != nil {
+			token, err := requestContext.RefreshAccessToken(ctx, requestContext.AccessToken)
+			if err != nil {
+				return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("refresh access token: %w", err))
+			}
+			if strings.TrimSpace(token) == "" {
+				return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("refresh access token returned an empty token"))
+			}
+			requestContext.AccessToken = token
+			headers.Set("Authorization", "Bearer "+token)
+			refreshed = true
+			if request.BodyReader != nil {
+				return response, wrapTraceError(requestTrace.TraceID, errors.New("access token refreshed, but streaming request body cannot be replayed; retry the command"))
+			}
+			c.logger.Info("retrying stream after trusted token expiry", "method", method, "trace_id", requestTrace.TraceID)
+			continue
+		}
+		c.logger.Error("open platform stream request stopped", "method", method, "status_code", response.StatusCode, "error_type", fmt.Sprintf("%T", requestErr), "trace_id", requestTrace.TraceID)
+		return response, wrapTraceError(requestTrace.TraceID, requestErr)
+	}
+}
+
+func (c *Client) doStreamOnce(ctx context.Context, method, fullURL string, headers http.Header, request Request, writer io.Writer, requestTrace tracecontext.RequestTrace) (Response, error) {
+	response := Response{TraceID: requestTrace.TraceID}
 
 	bodyReader := io.Reader(bytes.NewReader(request.Body))
 	if request.BodyReader != nil {
@@ -403,17 +443,18 @@ func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, re
 			return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("read open platform response: %w", readErr))
 		}
 		response.Body = body
-		err = fmt.Errorf("open platform request failed with status %d: %s", resp.StatusCode, responseSnippet(body))
-		c.logger.Error("open platform stream request failed", "method", method, "path", request.Path, "status_code", resp.StatusCode, "error", err.Error(), "trace_id", requestTrace.TraceID)
-		return response, wrapTraceError(requestTrace.TraceID, err)
+		return response, &HTTPStatusError{StatusCode: resp.StatusCode, ErrorType: responseErrorType(body), Body: body}
 	}
 
-	if _, err := io.Copy(writer, resp.Body); err != nil {
+	written, err := io.Copy(writer, resp.Body)
+	if err != nil {
 		c.logger.Error("copy open platform stream response failed", "method", method, "path", request.Path, "error", err.Error(), "trace_id", requestTrace.TraceID)
 		return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("copy open platform response: %w", err))
 	}
+	if method != http.MethodHead && resp.ContentLength >= 0 && written != resp.ContentLength {
+		return response, fmt.Errorf("open platform stream size mismatch: expected %d bytes, got %d", resp.ContentLength, written)
+	}
 
-	c.logger.Info("open platform stream request completed", "method", method, "path", request.Path, "status_code", resp.StatusCode, "trace_id", requestTrace.TraceID)
 	return response, nil
 }
 

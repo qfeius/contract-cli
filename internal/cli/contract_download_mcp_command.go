@@ -127,6 +127,32 @@ func (a *App) resolveContractDownloadPath(ctx context.Context, fileID string, ou
 }
 
 func (a *App) downloadSignedContractFileToPath(ctx context.Context, rawURL string, expectedSize *int64, outputPath string, force bool) error {
+	return a.downloadFileToPath(ctx, outputPath, force, func(writer io.Writer) error {
+		return a.downloadSignedContractFile(ctx, rawURL, expectedSize, writer)
+	})
+}
+
+func (a *App) writeContractDownload(ctx context.Context, fileID, outputFile string, raw, force bool, download func(io.Writer) error) (string, error) {
+	outputPath, err := a.resolveContractDownloadPath(ctx, fileID, outputFile, raw, force)
+	if err != nil {
+		return "", err
+	}
+	if raw {
+		return "", download(a.stdout)
+	}
+	return outputPath, a.downloadFileToPath(ctx, outputPath, force, download)
+}
+
+func (a *App) downloadFileToPath(ctx context.Context, outputPath string, force bool, download func(io.Writer) error) (err error) {
+	logger := a.commandTraceLogger(ctx)
+	logger.Info("download file staging started", "overwrite", force)
+	defer func() {
+		if err != nil {
+			logger.Error("download file staging failed", "error_type", fmt.Sprintf("%T", err))
+		} else {
+			logger.Info("download file committed")
+		}
+	}()
 	temporary, err := os.CreateTemp(filepath.Dir(outputPath), filepath.Base(outputPath)+".part-*")
 	if err != nil {
 		return fmt.Errorf("create temporary download file: %w", err)
@@ -134,13 +160,16 @@ func (a *App) downloadSignedContractFileToPath(ctx context.Context, rawURL strin
 	temporaryPath := temporary.Name()
 	defer func() { _ = os.Remove(temporaryPath) }() // Best-effort removal, including after rename.
 
-	downloadErr := a.downloadSignedContractFile(ctx, rawURL, expectedSize, temporary)
+	downloadErr := download(temporary)
 	closeErr := temporary.Close()
 	if downloadErr != nil {
 		return downloadErr
 	}
 	if closeErr != nil {
 		return fmt.Errorf("close temporary download file: %w", closeErr)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	return commitDownloadedFile(temporaryPath, outputPath, force)
 }

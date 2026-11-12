@@ -46,8 +46,13 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Windows npm installation regression
+        run: node --test scripts/install.test.js
       - name: Security regression tests without native dialogs
-        run: go test ./internal/cli ./internal/openplatform -run "TestSaveDialog|TestRuleRowDeleteRejectsDotID|TestAPIWebCall|TestClientRejectsUnsafePaths|TestClientCannotWeakenRouteIdentityPolicy|TestClientPreservesSafeEncodedIDs|TestClientUsesDecodedRuleRoute"
+        run: go test ./internal/cli ./internal/openplatform -run "TestSaveDialog|TestRuleRowDeleteRejectsDotID|TestAPIWebCall|TestClientRejectsUnsafePaths|TestClientCannotWeakenRouteIdentityPolicy|TestClientPreservesSafeEncodedIDs|TestClientUsesDecodedRuleRoute|TestPreAuditOutput|TestAppDownloadsPreserveFilesOnFailure|TestLogRedaction|TestStream|TestAppSearchPOSTs"
 
   publish:
     needs: [checks, windows-security]

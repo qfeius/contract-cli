@@ -2629,9 +2629,10 @@ func decodeJSONObject(t *testing.T, data []byte) map[string]any {
 
 func jsonResponse(payload string) *http.Response {
 	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     make(http.Header),
-		Body:       io.NopCloser(strings.NewReader(payload)),
+		ContentLength: int64(len(payload)),
+		StatusCode:    http.StatusOK,
+		Header:        make(http.Header),
+		Body:          io.NopCloser(strings.NewReader(payload)),
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -1095,31 +1096,14 @@ func (a *App) downloadAppOpenPlatformFile(ctx context.Context, options commandOp
 		return err
 	}
 
-	writer, outputPath, closeOutput, err := a.contractDownloadWriter(ctx, strings.TrimSpace(suggestedName), outputFile, options.raw, force)
+	outputPath, err := a.writeContractDownload(ctx, strings.TrimSpace(suggestedName), outputFile, options.raw, force, func(writer io.Writer) error {
+		_, err := client.DoStream(ctx, requestContext, openplatform.Request{
+			Method: http.MethodGet, Path: path, IdentityPolicy: openplatform.IdentityPolicyAppOnly,
+		}, writer)
+		return err
+	})
 	if err != nil {
 		return err
-	}
-	if closeOutput != nil {
-		defer func() {
-			if closeOutput != nil {
-				_ = closeOutput()
-			}
-		}()
-	}
-
-	if _, err := client.DoStream(ctx, requestContext, openplatform.Request{
-		Method:         http.MethodGet,
-		Path:           path,
-		IdentityPolicy: openplatform.IdentityPolicyAppOnly,
-	}, writer); err != nil {
-		return err
-	}
-	if closeOutput != nil {
-		closeErr := closeOutput()
-		closeOutput = nil
-		if closeErr != nil {
-			return fmt.Errorf("close download output file: %w", closeErr)
-		}
 	}
 	if !options.raw {
 		_, _ = fmt.Fprintf(a.stdout, "Downloaded file to %s\n", outputPath)

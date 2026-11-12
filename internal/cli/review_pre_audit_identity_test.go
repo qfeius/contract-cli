@@ -69,6 +69,14 @@ func TestPreAuditIdentityGuardCoversTokenPreparationAndRefresh(t *testing.T) {
 			if err := json.Unmarshal(out.Bytes(), &result); err != nil {
 				t.Fatal(err)
 			}
+			run, err := app.preAuditStore().load(result["runId"].(string))
+			if err != nil {
+				t.Fatal(err)
+			}
+			run.Subjects = map[string]any{"private": "PRIVATE_SUBJECT"}
+			if err := app.preAuditStore().save(run); err != nil {
+				t.Fatal(err)
+			}
 			if mode == "changed before request" || mode == "dry run never refreshes" {
 				stored := credentials.values["contract"]
 				stored.Token.Expiry = deviceTokenTestNow().Add(time.Minute)
@@ -78,7 +86,8 @@ func TestPreAuditIdentityGuardCoversTokenPreparationAndRefresh(t *testing.T) {
 			if mode == "dry run never refreshes" {
 				args = append(args, "--dry-run")
 			}
-			err := app.Run(context.Background(), args)
+			out.Reset()
+			err = app.Run(context.Background(), args)
 			switch mode {
 			case "same account":
 				if err != nil || creates != 2 || references != 1 || refreshes != 1 {
@@ -87,6 +96,9 @@ func TestPreAuditIdentityGuardCoversTokenPreparationAndRefresh(t *testing.T) {
 			case "changed during refresh":
 				if err == nil || creates != 1 || references != 0 || refreshes != 1 {
 					t.Fatal("changed account was retried", err, creates, references, refreshes)
+				}
+				if strings.Contains(out.String(), "PRIVATE_SUBJECT") || strings.Contains(out.String(), "sourceFileId") {
+					t.Fatal("refresh rejection leaked old account data", out.String())
 				}
 			case "changed before request":
 				if err == nil || creates != 0 || references != 0 || refreshes != 1 {
