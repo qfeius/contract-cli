@@ -1,59 +1,99 @@
 name: release
 
 on:
+  pull_request:
+    branches: [release]
   push:
-    tags:
-      - "*"
+    branches: [release]
+    tags: ["v*"]
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 env:
   NPM_REGISTRY_URL: https://registry.npmjs.org/
   NPM_ACCESS: public
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
-          registry-url: ${{ env.NPM_REGISTRY_URL }}
-          package-manager-cache: false
+      - name: Validate tag
+        if: github.ref_type == 'tag'
+        run: node scripts/release-metadata.js "$GITHUB_REF_NAME"
+      - name: Test and verify installation
+        run: make release-check
+      - name: Install pinned linter
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+      - name: Lint
+        run: golangci-lint run --enable=exhaustive ./...
 
-      - name: Publish GitHub Release
-        uses: goreleaser/goreleaser-action@v6
+  windows-security:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
-          version: latest
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+          go-version-file: go.mod
+      - name: Security regression tests without native dialogs
+        run: go test ./internal/cli ./internal/openplatform -run "TestSaveDialog|TestRuleRowDeleteRejectsDotID|TestAPIWebCall|TestClientRejectsUnsafePaths|TestClientCannotWeakenRouteIdentityPolicy|TestClientPreservesSafeEncodedIDs|TestClientUsesDecodedRuleRoute"
 
+  publish:
+    needs: [checks, windows-security]
+    if: github.event_name == 'push' && github.ref_type == 'tag' && github.repository == 'qfeius/contract-cli'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org/
+          package-manager-cache: false
+      - name: Validate release metadata
+        id: metadata
+        run: node scripts/release-metadata.js "$GITHUB_REF_NAME"
       - name: Prepare package
         env:
+          VERSION: ${{ steps.metadata.outputs.version }}
           PACKAGE_NAME: ${{ vars.NPM_PACKAGE_NAME }}
         run: |
           [ -z "${PACKAGE_NAME:-}" ] || npm pkg set "name=$PACKAGE_NAME"
-          npm pkg set "version=${GITHUB_REF_NAME#v}" "config.downloadBaseURLTemplate=https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
-
-      - name: Build npm release assets
-        run: make release-assets
-
-      - name: Publish npm package
-        if: ${{ github.repository == 'qfeius/contract-cli' }}
+          npm pkg set "version=$VERSION" "config.downloadBaseURLTemplate=https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+      - name: Build one asset set for GitHub and npm
         env:
-          NPM_TAG: ${{ contains(github.ref_name, 'beta') && 'beta' || 'latest' }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          make release-assets
+          (cd dist/release-assets && sha256sum -c checksums.txt)
+          npm pack --dry-run
+      - name: Publish GitHub Release without overwriting existing assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ steps.metadata.outputs.prerelease }}
+        run: |
+          args=(--verify-tag --title "$GITHUB_REF_NAME" --generate-notes)
+          if [ "$PRERELEASE" = true ]; then args+=(--prerelease --latest=false); else args+=(--latest); fi
+          gh release create "$GITHUB_REF_NAME" dist/release-assets/* "${args[@]}"
+      - name: Publish npm package
+        env:
+          NPM_TAG: ${{ steps.metadata.outputs.channel }}
         run: npm publish --provenance --registry "$NPM_REGISTRY_URL" --access "$NPM_ACCESS" --tag "$NPM_TAG"

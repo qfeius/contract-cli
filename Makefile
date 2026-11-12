@@ -9,7 +9,7 @@ LDFLAGS := -s -w -X cn.qfei/contract-cli/internal/build.Version=$(VERSION) -X cn
 
 test:
 	go test ./...
-	node --test scripts/install.test.js scripts/setup.test.js tests/release/test-package.test.js
+	node --test scripts/install.test.js scripts/setup.test.js scripts/skill-merge.test.js scripts/release-metadata.test.js tests/release/test-package.test.js tests/release/workflow.test.js
 
 build:
 	./build.sh
@@ -28,8 +28,7 @@ local-install-check:
 	tests/release/local-install.sh
 
 release-script-check:
-	tests/release/release-beta-script.sh
-	tests/release/release-script.sh
+	node --test scripts/release-metadata.test.js tests/release/workflow.test.js
 	tests/release/build-flags.sh
 	tests/release/feature-baseline.sh
 
@@ -37,7 +36,6 @@ release-check: test
 	tests/cli_e2e/smoke.sh
 	tests/release/package-dry-run.sh
 	tests/release/local-install.sh
-	tests/release/release-beta-script.sh
 	tests/release/build-flags.sh
 	tests/release/feature-baseline.sh
 

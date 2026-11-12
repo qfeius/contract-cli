@@ -91,8 +91,8 @@ func TestSyncDeletedRootDoesNotRecreateAndPartialDeletionRepairs(t *testing.T) {
 
 func TestRenameFailureRollsBackAndOtherTargetContinues(t *testing.T) {
 	s := fixture(t)
-	a := filepath.Join(t.TempDir(), "a")
-	b := filepath.Join(t.TempDir(), "b")
+	a := filepath.Join(canonicalSkillTempDir(t), "a")
+	b := filepath.Join(canonicalSkillTempDir(t), "b")
 	for _, p := range []string{a, b} {
 		if _, e := s.Install(p, s.Names, true, true); e != nil {
 			t.Fatal(e)
@@ -184,7 +184,7 @@ func TestHistoryOnlyUsesExplicitCandidatesAndNeverCreatesAbsentPaths(t *testing.
 
 func TestInterruptedReplacementRecoversBeforeRetry(t *testing.T) {
 	s := fixture(t)
-	target := filepath.Join(t.TempDir(), "skills")
+	target := filepath.Join(canonicalSkillTempDir(t), "skills")
 	if _, e := s.Install(target, s.Names, true, true); e != nil {
 		t.Fatal(e)
 	}
@@ -291,8 +291,8 @@ func TestUserSkillTargetMayBeCurrentWorkingDirectory(t *testing.T) {
 
 func TestInstallAdditionalLocationPreservesExistingRegistration(t *testing.T) {
 	state := t.TempDir()
-	oldTarget := filepath.Join(t.TempDir(), "old-skills")
-	newTarget := filepath.Join(t.TempDir(), "new-skills")
+	oldTarget := filepath.Join(canonicalSkillTempDir(t), "old-skills")
+	newTarget := filepath.Join(canonicalSkillTempDir(t), "new-skills")
 	s := fixture(t)
 	s.StateDir = state
 	if _, err := s.Install(oldTarget, s.Names, true, true); err != nil {

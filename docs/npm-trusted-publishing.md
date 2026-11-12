@@ -28,8 +28,9 @@ npm trust github @qfeius/contract-cli \
 ## 发布规则
 
 - 正式 Tag，例如 `v1.8.6`，发布到 npm `latest`。
-- 包含 `beta` 的 Tag，例如 `v1.8.6-beta.1`，发布到 npm `beta`。
+- 所有合法预发布 Tag，例如 `v1.8.6-beta.1`、`v1.8.6-rc.1`，发布到 npm `beta`，不修改 `latest`。
+- Tag 必须是 `v` 前缀的合法语义版本；发布前须通过 Linux/macOS 检查和 Windows 安全回归。
 - GitHub Release 和发布资产构建成功后，才会执行 npm 发布。
-- npm 发布步骤只允许在 `qfeius/contract-cli` 运行；fork 仓库打 Tag 时会跳过该步骤。
+- 发布任务只允许在 `qfeius/contract-cli` 运行；fork 仓库打 Tag 时会跳过发布。
 - `package.json` 中的 `repository.url` 必须保持为 `git+https://github.com/qfeius/contract-cli.git`，以通过 provenance 校验。
-- 本地 `scripts/release.sh` 和 `scripts/release-beta.sh` 的认证方式不受此 GitHub Actions 配置影响。
+- GitHub Actions 是唯一发布入口；本地只做验证和构建，具体步骤见[发布流程](current-production-release-process.md)。

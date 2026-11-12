@@ -87,6 +87,45 @@ func TestAPIWebCallUsesCLIUserAuthorizationAndExactRequest(t *testing.T) {
 	}
 }
 
+func TestAPIWebCallPreservesUnregisteredRoutesAndOpaqueData(t *testing.T) {
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(apiWebTestProfile(), true); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"arbitrary":{"id":"..","text":"合同 / %","url":"https://example.com/a%20b"}}`
+	calls := 0
+	app := cli.New(cli.Options{Store: store, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.URL.Path != "/open-web/web/new-product/unregistered/action" || r.URL.Query().Get("opaque") != "../研发/%" || string(data) != body || r.Header.Get("Authorization") != "Bearer user-token" {
+			t.Fatalf("generic request was restricted or changed: %s %s", r.URL, data)
+		}
+		return jsonResponse(`{"code":0}`), nil
+	})}})
+	if err := app.Run(context.Background(), []string{"api", "call", "--channel", "web", "POST", "/open-web/web/new-product/unregistered/action", "--query", "opaque=../研发/%", "--data", body}); err != nil || calls != 1 {
+		t.Fatalf("generic call failed: %v requests=%d", err, calls)
+	}
+}
+
+func TestRuleRowDeleteRejectsDotIDBeforeHTTP(t *testing.T) {
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(apiWebTestProfile(), true); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	app := cli.New(cli.Options{Store: store, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return jsonResponse(`{"code":0}`), nil
+	})}})
+	err := app.Run(context.Background(), []string{"rule", "table", "row", "delete", "..", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1", "--as", "user"})
+	if err == nil || calls != 0 {
+		t.Fatalf("dot row ID escaped its resource: %v requests=%d", err, calls)
+	}
+}
+
 func TestAPIWebCallDefaultsToUserIdentity(t *testing.T) {
 	t.Parallel()
 

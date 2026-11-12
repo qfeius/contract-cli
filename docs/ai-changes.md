@@ -1,3 +1,13 @@
+## 2026-11-12 - release 审查问题 1/2/3 修复
+- 范围：当前 codex/fix-release-doc-issues-20261112 分支，基于 GitHub release@2eabbbc；不处理报告其余业务问题。
+- 弹窗：save_dialog.go 使用固定脚本与 argv/子进程环境传名，清洗建议文件名，保留用户选择路径及取消语义。
+- 请求：openplatform 在凭据准备与 HTTP 前校验路径及实际路由身份；普通/流式共用防点段、编码分隔符与身份降级校验。
+- 兼容：保留通用 api call，不增加端点白名单，不扫描或改写 query/body；中文、空格和合法百分号 ID 仍可使用。
+- 发布：删除两个本地发布脚本及旧脚本测试；Actions 增加 Linux/macOS 全量检查、固定 lint、Windows 安全回归和严格标签分流，单批产物不覆盖发布。
+- 回归：新增命令注入、路径/身份、危险付款 ID、通用 API 透传和标签输出测试；修正 15 个 macOS 测试的临时目录路径夹具，隔离安装测试 HOME/配置。
+- 验证：make release-check 通过；Node 29 通过/1 既有跳过；全量 race/coverage 重跑通过（首跑预审 80ms 用例超时，独立连续 5 次通过，未改该业务逻辑）；lint 0 issues、actionlint 通过。
+- 构建：六平台验证构建及 SHA-256 校验通过，Windows 安全测试交叉编译通过；本次交付仅提交并推送 GitLab 主仓库同名开发分支，不合并、不运行远端 Actions 或真实发布。
+
 ## 2026-11-11 — 两个审批 Skill 提交 GitHub 生产 release
 - 来源：基于 github/release@75cad7b 建集成分支，merge 已验收的 contract-approval-efficiency@bd74a29、contract-cli-approval-actions@d9bd52a，保留历史。
 - 范围：引入两个 Skill 共 15 个运行文件；仅适配生产环境说明并补齐效率 Skill 的 Agent policy，不修改业务参考流程。

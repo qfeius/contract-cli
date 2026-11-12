@@ -74,7 +74,7 @@ func TestUnverifiedHistoricalCandidateIsNotRegisteredOrOverwritten(t *testing.T)
 
 func TestLegacyHistoricalFlagAloneDoesNotAuthorizeOverwrite(t *testing.T) {
 	s := fixture(t)
-	target := filepath.Join(t.TempDir(), "skills")
+	target := filepath.Join(canonicalSkillTempDir(t), "skills")
 	put(t, filepath.Join(target, "auth", "SKILL.md"), "unverified old migration")
 	if err := s.save(Registry{Schema: 1, Locations: []Location{{Target: target, ID: "legacy", Managed: s.Names, Historical: true}}}); err != nil {
 		t.Fatal(err)

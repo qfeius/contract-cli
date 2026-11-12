@@ -16,7 +16,7 @@ func TestRegisteredLocationsReadOnlyAndFailure(t *testing.T) {
 	if exists(filepath.Join(s.StateDir, "skill-locations.json")) {
 		t.Fatal("snapshot created state")
 	}
-	target := filepath.Join(t.TempDir(), "skills")
+	target := filepath.Join(canonicalSkillTempDir(t), "skills")
 	if _, err := s.Install(target, s.Names, true, true); err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestRegisteredLocationsReadOnlyAndFailure(t *testing.T) {
 
 func TestTransactionFailureReportsActualRestoration(t *testing.T) {
 	s := fixture(t)
-	target := filepath.Join(t.TempDir(), "skills")
+	target := filepath.Join(canonicalSkillTempDir(t), "skills")
 	if _, err := s.Install(target, s.Names, true, true); err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestRecoveryStatusNeverClaimsUnknownErrorRestored(t *testing.T) {
 
 func TestInstallResultReportsCanonicalTarget(t *testing.T) {
 	s := fixture(t)
-	target := filepath.Join(t.TempDir(), "skills")
+	target := filepath.Join(canonicalSkillTempDir(t), "skills")
 	result, err := s.Install(target+string(filepath.Separator)+".", s.Names, true, true)
 	if err != nil || result.Target != target {
 		t.Fatalf("actual target missing: %+v %v", result, err)
@@ -78,7 +78,7 @@ func TestInstallResultReportsCanonicalTarget(t *testing.T) {
 
 func TestActualRollbackFailureRetainsRecoveryMaterials(t *testing.T) {
 	s := fixture(t)
-	target := filepath.Join(t.TempDir(), "skills")
+	target := filepath.Join(canonicalSkillTempDir(t), "skills")
 	if _, err := s.Install(target, s.Names, true, true); err != nil {
 		t.Fatal(err)
 	}

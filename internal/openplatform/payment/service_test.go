@@ -161,7 +161,7 @@ func TestServicePaymentEndpointsEscapePathValues(t *testing.T) {
 	client := openplatform.New(openplatform.Options{
 		HTTPClient: &http.Client{
 			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				if req.URL.String() != "https://dev-open.qtech.cn/open-apis/contract/v1/contracts/contract%201/payments/payment%2F1/payment_records/record%201" {
+				if req.URL.String() != "https://dev-open.qtech.cn/open-apis/contract/v1/contracts/contract%201/payments/payment%251/payment_records/record%201" {
 					t.Fatalf("url = %q", req.URL.String())
 				}
 				return jsonResponse(`{"code":0}`), nil
@@ -174,8 +174,31 @@ func TestServicePaymentEndpointsEscapePathValues(t *testing.T) {
 		t.Fatalf("RequestContext() error = %v", err)
 	}
 
-	if _, err := payment.NewService(client).GetRecord(context.Background(), requestContext, "contract 1", "payment/1", "record 1"); err != nil {
+	if _, err := payment.NewService(client).GetRecord(context.Background(), requestContext, "contract 1", "payment%1", "record 1"); err != nil {
 		t.Fatalf("GetRecord() error = %v", err)
+	}
+}
+
+func TestServicePaymentEndpointsRejectUnsafePathIDs(t *testing.T) {
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Fatal("unsafe ID must not send HTTP")
+			return nil, nil
+		})},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	rc, err := client.RequestContext(profileWithAppToken(), config.IdentityApp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{".", "..", "a/b", `a\b`, "a\x00b", "%2e%2e"} {
+		for position := range 3 {
+			ids := []string{"contract-1", "payment-1", "record-1"}
+			ids[position] = id
+			if _, err := payment.NewService(client).GetRecord(context.Background(), rc, ids[0], ids[1], ids[2]); err == nil {
+				t.Fatalf("accepted unsafe ID %q at position %d", id, position)
+			}
+		}
 	}
 }
 

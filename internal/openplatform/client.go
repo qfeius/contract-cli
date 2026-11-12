@@ -158,18 +158,12 @@ func (c *Client) Do(ctx context.Context, requestContext RequestContext, request 
 	if method == "" {
 		return Response{}, fmt.Errorf("open platform request method is required")
 	}
-	policy := request.IdentityPolicy
-	if policy == "" {
-		policy = IdentityPolicyForPath(request.Path)
-	}
-	if err := validateIdentityPolicy(requestContext.Identity, policy, request.Path); err != nil {
-		c.logger.Error("open platform identity policy rejected", "method", method, "path", request.Path, "identity", requestContext.Identity, "error", err.Error())
-		return Response{}, err
-	}
-	fullURL, err := buildURL(requestContext.BaseURL, request.Path, mergeQuery(policy, request.Query, requestContext.CommonQuery))
+	target, err := prepareRequestTarget(requestContext, request)
 	if err != nil {
+		c.logger.Error("open platform request target rejected", "method", method, "identity", requestContext.Identity, "error", err.Error())
 		return Response{}, err
 	}
+	fullURL := target.String()
 	if requestContext.PrepareAccessToken != nil {
 		preparedToken, prepareErr := requestContext.PrepareAccessToken(ctx, requestContext.AccessToken)
 		if prepareErr != nil {
@@ -183,7 +177,7 @@ func (c *Client) Do(ctx context.Context, requestContext RequestContext, request 
 
 	headers := cloneHeaders(request.Headers)
 	// 审批矩阵 user 显式选择用户验签分支；此标记不授予权限，后端仍须验证 Bearer。
-	if strings.HasPrefix(request.Path, "/open-apis/rule_engine/v1/") {
+	if strings.HasPrefix(target.Path, "/open-apis/rule_engine/v1/") {
 		headers.Del("X-Qfei-Identity")
 		if requestContext.Identity == config.IdentityUser {
 			headers.Set("X-Qfei-Identity", "user")
@@ -344,20 +338,20 @@ func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, re
 	if method == "" {
 		return Response{}, fmt.Errorf("open platform request method is required")
 	}
-	policy := request.IdentityPolicy
-	if policy == "" {
-		policy = IdentityPolicyForPath(request.Path)
-	}
-	if err := validateIdentityPolicy(requestContext.Identity, policy, request.Path); err != nil {
-		c.logger.Error("open platform identity policy rejected", "method", method, "path", request.Path, "identity", requestContext.Identity, "error", err.Error())
-		return Response{}, err
-	}
-	fullURL, err := buildURL(requestContext.BaseURL, request.Path, mergeQuery(policy, request.Query, requestContext.CommonQuery))
+	target, err := prepareRequestTarget(requestContext, request)
 	if err != nil {
+		c.logger.Error("open platform stream target rejected", "method", method, "identity", requestContext.Identity, "error", err.Error())
 		return Response{}, err
 	}
+	fullURL := target.String()
 
 	headers := cloneHeaders(request.Headers)
+	if strings.HasPrefix(target.Path, "/open-apis/rule_engine/v1/") {
+		headers.Del("X-Qfei-Identity")
+		if requestContext.Identity == config.IdentityUser {
+			headers.Set("X-Qfei-Identity", "user")
+		}
+	}
 	if headers.Get("Authorization") == "" {
 		headers.Set("Authorization", "Bearer "+requestContext.AccessToken)
 	}
@@ -493,27 +487,19 @@ func tokenForIdentity(profile config.Profile, identity config.IdentityKind) (*co
 }
 
 func buildURL(baseURL, path string, query url.Values) (string, error) {
-	switch {
-	case strings.Contains(path, "://"):
-		return "", fmt.Errorf("open platform path must be relative")
-	case strings.HasPrefix(path, "/open-apis/"):
-	case strings.HasPrefix(path, OpenWebPathPrefix):
-		if err := ValidateOpenWebPath(path); err != nil {
-			return "", err
-		}
-	default:
-		return "", fmt.Errorf("open platform path must be a relative /open-apis/ or %s path", OpenWebPathPrefix)
+	parsedPath, err := validateRequestPath(path)
+	if err != nil {
+		return "", err
 	}
 
 	parsedBase, err := url.Parse(strings.TrimRight(baseURL, "/"))
 	if err != nil {
 		return "", fmt.Errorf("parse open platform base url: %w", err)
 	}
-	parsedPath, err := url.Parse(path)
-	if err != nil {
-		return "", fmt.Errorf("parse open platform path: %w", err)
-	}
 	parsedURL := parsedBase.ResolveReference(parsedPath)
+	if parsedURL.Scheme != parsedBase.Scheme || parsedURL.Host != parsedBase.Host || parsedURL.Path != parsedPath.Path {
+		return "", fmt.Errorf("open platform path changed its target during resolution")
+	}
 	parsedURL.RawQuery = query.Encode()
 	return parsedURL.String(), nil
 }
