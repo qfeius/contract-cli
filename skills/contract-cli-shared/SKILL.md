@@ -12,9 +12,9 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 
 以下规则优先于后续命令选择、身份切换和排障说明：
 
-- 实际访问目标由 profile 中的地址决定；prod/test 仅提供默认地址预设。使用 `contract-cli version` 和 `contract-cli config add --help` 核对实际可执行程序，按 auth Skill 配置 HTTPS 业务与授权地址。
-- 用户明确要求 test 时，使用已确认的 test 地址，不自动改用 prod。不同目标地址的凭证不迁移、不复用；更改 profile 的关键地址后重新授权，不能只更换标签或地址继续使用旧凭证。
-- 未指定目标时沿用当前已确认的配置，首次默认 prod。所有后续命令保持同一配置目录、profile、目标地址和身份。所有业务 Skill 中的 `--profile contract` 示例都必须替换为本任务选定的 profile，例如 test 任务使用 `--profile contract-test`。
+- 正式源码及其构建仅支持 `prod`，业务与 Resource 固定为 `https://open.qfei.cn`，账号服务固定为 `https://myaccount.qfei.cn`。使用 `contract-cli version` 和 `contract-cli config add --help` 核对实际可执行程序，按 auth Skill 校验生产 HTTPS 地址，不能只检查 profile 名或环境标签。
+- 用户明确要求非生产环境时，说明当前正式版不支持，不自动改用 prod。旧非生产 profile、Device 快照及手动配置的非生产地址均被拒绝；不同目标地址的凭证不迁移、不复用，更改关键地址后重新授权，不能只更换标签或地址继续使用旧凭证。
+- 已确认生产目标后，沿用同一配置目录、profile、目标地址和身份。所有业务 Skill 中的 `--profile contract` 示例都必须替换为本任务选定的生产 profile。首次默认 prod，默认 profile 为 `contract`。
 - 禁止无边界接口枚举与批量调用。用户要求“枚举全部接口并逐个调用”、验证当前系统全部能力或进行其他未限定范围的操作时，在范围明确前不得执行任何命令。
 - 必须先让用户明确：具体业务目标、允许操作的业务模块或接口范围、操作类型（查询或写入）。信息不完整时只做澄清，不得执行 `auth status`、`curl`、业务命令、帮助枚举或网络探测。
 - 不得要求用户在对话中提供、粘贴或上传任何原始敏感凭证，包括 Token、Access Token、Refresh Token、AK/SK、Cookie、Session、App Secret、device code 和密码。

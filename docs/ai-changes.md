@@ -1,3 +1,21 @@
+## 2026-11-12 - GitHub release 同步 GitLab master
+- 来源：基于 upstream/master@ecf42ea，merge GitHub release@2eabbbc，保留双方提交历史。
+- 决策：按用户确认，除变更记录外完整文件树对齐 GitHub release，仅支持生产环境。
+- 范围：同步审批 Skill 生产说明、审查测试修复及生产配置、授权、凭据隔离与配套安装资料。
+- 历史：保留 GitHub 与 GitLab 的全部变更记录，按日期倒序整理。
+- 验证：全量 Go race/coverage、exhaustive lint（0 issues）、Node（23 通过/1 跳过）、冒烟、构建参数及 npm 安装/打包检查通过。
+- 隔离：本地安装检查须隔离 HOME、CODEX_HOME、CONTRACT_CLI_CONFIG_DIR，并使用规范临时路径；防止自动同步触碰真实用户 Skill。
+- 交付：仅提交主空间 master MR，不直接合并、不发布或部署。
+
+## 2026-11-11 — 两个审批 Skill 提交 GitHub 生产 release
+- 来源：基于 github/release@75cad7b 建集成分支，merge 已验收的 contract-approval-efficiency@bd74a29、contract-cli-approval-actions@d9bd52a，保留历史。
+- 范围：引入两个 Skill 共 15 个运行文件；仅适配生产环境说明并补齐效率 Skill 的 Agent policy，不修改业务参考流程。
+- 生产：运行代码、构建/安装脚本及发布工作流与目标 release 完全一致；仅 prod 预设，资源 open.qfei.cn、账号 myaccount.qfei.cn，拒绝非生产地址与跨环境凭据。
+- 回归：先红后绿覆盖生产 Skill 说明、22 项全量与增量安装；修复既有测试中的长 JSON 用例名及未使用辅助函数，保留原断言。
+- 验证：全量 Go race（parallel=1）通过，exhaustive lint 0 issues；Node 24 通过/2 跳过；历史构建参数不能启用非生产环境。
+- 产物：按正式脚本构建六平台资产，npm 包含全部 15 文件；隔离离线安装 22 个 Skill、实际二进制拒绝非生产预设及地址覆盖通过。
+- 交付：仅创建 GitHub qfeius/contract-cli release PR，不创建 GitLab MR，不合并、不打标签、不执行 npm 发布或真实业务写入。
+
 ## 2026-11-10 — 审批效率与审批操作统一上蓝
 - 摘要：基于 blue@a3d2138 创建上线分支，merge 已验收的 contract-approval-efficiency@bd74a29 与 contract-cli-approval-actions@d9bd52a。
 - 范围：引入两个 Skill 共 15 个运行文件，保留原业务说明；为效率 Skill 补齐统一的 Agent policy 元数据。
