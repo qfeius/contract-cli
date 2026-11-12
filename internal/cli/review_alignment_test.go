@@ -402,8 +402,6 @@ func TestReviewAlignmentBoundaries(t *testing.T) {
 	})
 }
 
-func strconvQuote(s string) string { b, _ := json.Marshal(s); return string(b) }
-
 func TestReviewAlignmentUsageOverrideRejected(t *testing.T) {
 	app, _ := alignmentApp(t, nil)
 	payload := strings.Replace(alignmentStart(), `"businessId":"biz"`, `"usageReportContext":{"reportBusinessCode":"other"},"businessId":"biz"`, 1)

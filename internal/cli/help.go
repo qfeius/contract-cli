@@ -360,10 +360,10 @@ func addConfigHelp(registry map[string]helpTopic) {
 		Summary: "初始化或更新 profile，并写入开放平台、user OAuth 和 app token endpoint 配置。",
 		Usage:   []string{"contract-cli config add [flags]"},
 		Flags: []helpFlag{
-			{"--env <prod|test>", "地址预设；支持 prod/test，默认 prod，实际目标由 profile 地址决定"},
+			{"--env <prod>", "环境预设；仅支持 prod，默认 prod"},
 			{"--name <profile>", "profile 名称，默认 contract"},
-			{"--open-platform-base-url <url>", "覆盖业务基址，同时设置 Resource 和 app token 地址"},
-			{"--authorization-server-metadata-url <url>", "指定可信授权元数据地址；授权端点须与其同源"},
+			{"--open-platform-base-url <url>", "显式指定业务基址，仅接受生产根地址 https://open.qfei.cn"},
+			{"--authorization-server-metadata-url <url>", "显式指定授权元数据地址，仅接受 https://myaccount.qfei.cn 同源地址"},
 			{"--resource-metadata-url <url>", "覆盖 protected resource metadata 地址"},
 			{"--redirect-url <url>", "覆盖 OAuth callback 地址"},
 			{"--scope <scopes>", "覆盖默认 OAuth scopes，多个 scope 用空格分隔"},
@@ -371,7 +371,6 @@ func addConfigHelp(registry map[string]helpTopic) {
 		},
 		Examples: []string{
 			"contract-cli config add --env prod --name contract",
-			"contract-cli config add --env test --name contract-test",
 		},
 	}
 }

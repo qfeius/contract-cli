@@ -107,14 +107,13 @@ contract-cli --version
 
 ### 2. 初始化本地 profile
 
-当前源码构建提供 `prod` 和 `test` 地址预设，首次默认 prod，默认 profile 为 `contract`。实际访问目标由 profile 中的业务与授权地址决定；profile 名和 `environment` 标签不决定请求域名。服务地址须为 HTTPS，Resource 与业务基址匹配，授权端点与授权元数据同源；同名 profile 的关键地址变化会清理旧认证并要求重新授权。
+当前正式源码及其构建仅支持 `prod`，默认 profile 为 `contract`。业务与 Resource 固定为 `https://open.qfei.cn`，账号服务固定为 `https://myaccount.qfei.cn`；profile 名可自定，但不能改变环境限制。旧的非生产 profile、Device 快照及非生产地址都会被拒绝，不能通过手动改配置或构建标签启用其他环境。用户要求非生产环境时，应说明当前正式版不支持，不自动改用 prod。
 
 | 预设 | 业务与 Resource 地址 | 账号地址 |
 | --- | --- | --- |
 | prod | `https://open.qfei.cn` | `https://myaccount.qfei.cn` |
-| test | `https://test-open.qtech.cn` | `https://test-myaccount.qtech.cn` |
 
-若需验证 npm 包构建流程，可生成独立的本地预发布包；版本中的 `-test` 只是包标记，不决定目标环境，也不发布到 npm。将下方版本占位替换为本次预发布版本：
+若需验证 npm 包构建流程，可生成独立的本地预发布包；版本中的 `-test` 只是包标记，当前源码生成的包仍仅支持 prod，也不发布到 npm。将下方版本占位替换为本次预发布版本：
 
 ```bash
 VERSION='X.Y.Z-test.<修订号>' bash scripts/build-test-package.sh
@@ -122,35 +121,22 @@ VERSION='X.Y.Z-test.<修订号>' bash scripts/build-test-package.sh
 
 已安装版本的能力可能不同，请通过实际可执行程序的 `config add --help` 核对。审批矩阵的 user/app 双身份和规则 OpenAPI 命令保持不变；真实环境验证仍需对应后端及网关配置，见 [双身份接入说明](docs/approval-matrix-user-app-auth.md)。不要在对话中发送 Token 或 App Secret。
 
-首次使用前，需要在本机初始化一个 profile。本文多数命令使用 `contract` 作为生产预设示例；所有后续命令必须替换为本任务实际选定的 profile，不自动切换地址。
+首次使用前，需要在本机初始化一个生产 profile。本文多数命令使用 `contract` 作为示例；所有后续命令必须替换为本任务实际选定的生产 profile，并保持相同的配置目录和身份。
 
 ```text
 contract-cli config add --env prod --name contract
 contract-cli auth status --profile contract --as user
 ```
 
-测试预设使用独立 profile；后续授权和业务调用都显式传入 `--profile contract-test`：
-
-```text
-contract-cli config add --env test --name contract-test
-contract-cli auth status --profile contract-test --as user
-```
-
-也可保留 `--env prod`，显式指定测试地址，profile 名可自定；此处使用独立名称以保留生产配置：
-
-```text
-contract-cli config add --env prod --name contract-test \
-  --open-platform-base-url https://test-open.qtech.cn \
-  --authorization-server-metadata-url https://test-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract
-```
-
-`--open-platform-base-url` 同时设置 Resource 和 app token 地址；`--authorization-server-metadata-url` 是授权端点同源校验的依据。配置完成后，授权和查询都沿用选定的 profile。
+保留显式地址参数以兼容已有生产脚本：`--open-platform-base-url` 仅接受生产业务根地址，`--authorization-server-metadata-url` 仅接受生产账号服务同源的 HTTPS 元数据地址，不能用它们切换到其他环境。关键地址变化后必须重新授权，不迁移旧凭据；修复旧配置时只处理选定 profile，其他 profile 不受影响。
 
 | 参数 | 含义 | 示例值 |
 | --- | --- | --- |
-| `--env` | 默认地址预设 | `prod`、`test` |
+| `--env` | 环境预设，仅支持 `prod` | `prod` |
 | `--name` | 本机 profile 名称 | `contract` |
 | `--profile` | 后续命令指定使用的 profile | `contract` |
+| `--open-platform-base-url` | 显式业务地址，仅接受生产根地址 | `https://open.qfei.cn` |
+| `--authorization-server-metadata-url` | 显式授权元数据地址，仅接受生产账号服务同源 HTTPS 地址 | `https://myaccount.qfei.cn/.well-known/oauth-authorization-server/contract` |
 
 ### 3. 完成授权
 

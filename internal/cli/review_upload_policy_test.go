@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -82,7 +83,7 @@ func TestReviewURLCommandRemovedBeforeSideEffects(t *testing.T) {
 }
 
 func TestReviewRunURLDisabledBeforeSideEffects(t *testing.T) {
-	for _, body := range []string{
+	for i, body := range []string{
 		`{"source":{"type":"url","fileUrl":"https://example.com/a.pdf?signature=signed-private-value","name":"a.pdf"},"config":` + alignmentConfig + `,"wait":true,"extractSubjects":true}`,
 		`{"source":{"type":"url","fileUrl":"http://example.com/a.pdf","name":"a.pdf"},"config":` + alignmentConfig + `,"wait":false}`,
 		`{"source":{"type":"url","fileUrl":"https://example.com/a.pdf","name":"a.pdf"}}`,
@@ -90,7 +91,7 @@ func TestReviewRunURLDisabledBeforeSideEffects(t *testing.T) {
 	} {
 		for _, inputFlag := range []string{"--data", "--input", "--input-file"} {
 			for _, mode := range [][]string{nil, {"--dry-run"}, {"--print-input"}} {
-				t.Run(inputFlag+strings.Join(mode, "")+body, func(t *testing.T) {
+				t.Run("case"+strconv.Itoa(i+1)+"/"+inputFlag+strings.Join(mode, ""), func(t *testing.T) {
 					value := body
 					if inputFlag != "--data" {
 						value = filepath.Join(t.TempDir(), "run.json")

@@ -21,7 +21,7 @@ func TestConfigAddRejectsBluePresetBeforeNetworkRequest(t *testing.T) {
 	})
 
 	err := app.Run(context.Background(), []string{"config", "add", "--env", "blue"})
-	if err == nil || err.Error() != `unsupported environment "blue"; supported environments: prod, test` {
+	if err == nil || err.Error() != `unsupported environment "blue"; supported environments: prod` {
 		t.Fatalf("config add Blue error = %v", err)
 	}
 	if requestCount != 0 {
@@ -29,8 +29,8 @@ func TestConfigAddRejectsBluePresetBeforeNetworkRequest(t *testing.T) {
 	}
 }
 
-func TestSelfConsistentProfilesUseDeclaredAddressesRegardlessOfLabel(t *testing.T) {
-	for _, environment := range []string{"dev", "blue", "custom"} {
+func TestSelfConsistentNonProductionProfilesAreRejected(t *testing.T) {
+	for _, environment := range []string{"prod", "test", "dev", "blue", "custom"} {
 		t.Run(environment, func(t *testing.T) {
 			profile := legacyNonProductionProfile(t, environment, "https://configured-api.example", "https://configured-account.example")
 			store := config.NewStore(t.TempDir())
@@ -44,15 +44,14 @@ func TestSelfConsistentProfilesUseDeclaredAddressesRegardlessOfLabel(t *testing.
 					return nil, errors.New("unexpected request")
 				})},
 			})
-			loaded, err := app.loadDeviceAwareProfile(profile.Name)
-			if err != nil || loaded.Environment != environment || loaded.OpenPlatformBaseURL != profile.OpenPlatformBaseURL {
-				t.Fatalf("self-consistent profile rejected or rerouted: %v", err)
+			if _, err := app.loadDeviceAwareProfile(profile.Name); err == nil {
+				t.Fatal("accepted self-consistent non-production profile")
 			}
 		})
 	}
 }
 
-func TestSelfConsistentCustomDeviceSnapshotCanBeRecovered(t *testing.T) {
+func TestSelfConsistentCustomDeviceSnapshotCannotBeRecovered(t *testing.T) {
 	profile := legacyNonProductionProfile(t, "blue", "https://open-b.qfei.cn", "https://myaccount-b.qfei.cn")
 	store := config.NewStore(t.TempDir())
 	workspace := t.TempDir()
@@ -66,12 +65,10 @@ func TestSelfConsistentCustomDeviceSnapshotCanBeRecovered(t *testing.T) {
 			return nil, errors.New("unexpected request")
 		})},
 	})
-	loaded, err := app.loadDeviceAwareProfile(profile.Name)
-	if err != nil || loaded.Environment != profile.Environment || loaded.Resource != profile.Resource ||
-		loaded.Identities.User.TokenEndpoint != profile.Identities.User.TokenEndpoint {
-		t.Fatalf("self-consistent snapshot rejected or rerouted: %v", err)
+	if _, err := app.loadDeviceAwareProfile(profile.Name); err == nil {
+		t.Fatal("accepted non-production snapshot")
 	}
-	if _, found, err := store.LookupProfile(profile.Name); err != nil || !found {
-		t.Fatalf("recovered profile not persisted: found=%v error=%v", found, err)
+	if _, found, err := store.LookupProfile(profile.Name); err != nil || found {
+		t.Fatalf("rejected snapshot was persisted: found=%v error=%v", found, err)
 	}
 }

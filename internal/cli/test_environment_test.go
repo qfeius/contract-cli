@@ -44,7 +44,7 @@ TestConfigAddRejectsNonProductionBeforeHTTPRequest 验证非生产预设在配�
 入参 t（*testing.T）为测试上下文；返回值为空，失败时报告测试错误。
 */
 func TestConfigAddRejectsNonProductionBeforeHTTPRequest(t *testing.T) {
-	for _, environment := range []string{"dev", "blue"} {
+	for _, environment := range []string{"test", "dev", "blue"} {
 		t.Run(environment, func(t *testing.T) {
 			store := config.NewStore(t.TempDir())
 			requests := 0
@@ -130,16 +130,16 @@ func TestMismatchedConfiguredProfilesRejectedBeforeHTTPRequest(t *testing.T) {
 }
 
 /*
-TestConfiguredHTTPSHostsDoNotDependOnStaticEnvironmentBlacklist 验证 HTTPS 目标不被环境域名黑名单代替配置校验。
+TestProductionAndUpdateHostsRemainAvailable 验证生产与更新地址未被非生产保护误拦截。
 入参 t（*testing.T）为测试上下文；返回值为空，失败时报告测试错误。
 */
-func TestConfiguredHTTPSHostsDoNotDependOnStaticEnvironmentBlacklist(t *testing.T) {
+func TestProductionAndUpdateHostsRemainAvailable(t *testing.T) {
 	requests := 0
 	app := New(Options{Store: config.NewStore(t.TempDir()), HTTPClient: &http.Client{Transport: productionRoundTripFunc(func(*http.Request) (*http.Response, error) {
 		requests++
 		return productionResponse(http.StatusOK, `{}`), nil
 	})}})
-	for _, origin := range []string{"https://dev-open.qtech.cn", "https://dev-myaccount.qtech.cn", "https://open-b.qfei.cn", "https://myaccount-b.qfei.cn"} {
+	for _, origin := range []string{"https://open.qfei.cn", "https://myaccount.qfei.cn", "https://registry.npmjs.org", "https://github.com"} {
 		response, err := app.httpClient.Get(origin)
 		if response != nil {
 			_ = response.Body.Close()
@@ -154,7 +154,7 @@ func TestConfiguredHTTPSHostsDoNotDependOnStaticEnvironmentBlacklist(t *testing.
 }
 
 /*
-TestConfigHelpShowsSupportedEnvironments 验证帮助展示 prod/test 预设，默认 prod。
+TestConfigHelpShowsSupportedEnvironments 验证帮助仅展示 prod 预设。
 入参 t（*testing.T）为测试上下文；返回值为空，失败时报告测试错误。
 */
 func TestConfigHelpShowsSupportedEnvironments(t *testing.T) {
@@ -163,9 +163,9 @@ func TestConfigHelpShowsSupportedEnvironments(t *testing.T) {
 	if err := app.Run(context.Background(), []string{"config", "add", "--help"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "--env <prod|test>") ||
-		!strings.Contains(output.String(), "支持 prod/test，默认 prod") ||
-		!strings.Contains(output.String(), "--env test --name contract-test") ||
+	if !strings.Contains(output.String(), "--env <prod>") ||
+		!strings.Contains(output.String(), "仅支持 prod，默认 prod") ||
+		strings.Contains(output.String(), "test") ||
 		strings.Contains(output.String(), "--env dev") ||
 		strings.Contains(output.String(), "--env blue") {
 		t.Fatalf("unexpected environment help: %s", output.String())
@@ -205,10 +205,6 @@ func TestCrossTargetDeviceStateRejected(t *testing.T) {
 	}
 	for _, test := range tests {
 		for _, withProfile := range []bool{false, true} {
-			// 无现存 profile 时，自洽的完整快照允许恢复，由单独用例覆盖。
-			if test.name == "snapshot" && !withProfile {
-				continue
-			}
 			mode := "recovery"
 			if withProfile {
 				mode = "existing prod profile"
