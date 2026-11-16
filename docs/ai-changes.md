@@ -1,3 +1,12 @@
+## 2026-11-16 - 预审状态保存失败保留鉴权错误
+- 范围：在原问题修复开发分支处理，再 merge 更新主仓库 test MR !47；不直接修改 test、不包含代理下载问题。
+- 实现：review_pre_audit_workflow.go 的启动拒绝、候选任务与轮询失败保存分支使用 errors.Join 保留请求和保存错误，避免 401/403 被覆盖后输出旧恢复数据。
+- 边界：继续由 withPreAuditRun 识别鉴权失败并抑制 stdout；正常审查、未知结果不重发和状态持久化规则不变，无新增接口或锁。
+- 回归：review_pre_audit_output_security_test.go 新增 12 个完整 CLI 场景，覆盖三条路径、401/403、保存成功/失败；先复现六个失败场景，再验证错误链及 stdout 无恢复数据。
+- 验证：聚焦安全回归、全量 Go race/coverage（CLI 83.9%）、exhaustive lint 0 issues、Windows amd64 CLI 测试交叉编译通过；Windows 原生未执行。
+- 隔离：仅模拟 HTTP 和测试临时目录；真实用户 Skill、凭据与登记文件未修改，不调用真实业务接口。
+- 交付：保留开发分支与 MR 集成分支的独立历史；MR 继续保留 test 环境 profile，不发布、不部署。
+
 ## 2026-11-16 - 问题 10/12/13/14/15/17 的业务影响子项修复
 - 范围：当前 codex/fix-release-doc-issues-20261112@e759a63；不改强制宿主验签、旧 OAuth、问题 16 或其他排除项，不新增锁，保留通用 api call。
 - 存储：privatefile 为 config/secrets 和 Windows 导入计划提供完整替换；经用户确认，任务凭据改到私有 device-sessions-v2，随机密钥原子首次创建，不信任旧项目密文，旧任务需重新授权，桌面 Keychain 实现不变。

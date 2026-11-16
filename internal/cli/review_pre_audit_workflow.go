@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -111,7 +112,7 @@ func (a *App) startPreAudit(ctx context.Context, options commandOptions, run *pr
 			rejected.Stage = "start_rejected_confirmed"
 			if saveErr := a.preAuditStore().save(&rejected); saveErr != nil {
 				a.logger.Error("pre-audit rejection state save failed", "run_id", run.RunID)
-				return fmt.Errorf("启动拒绝状态保存失败，请保留原run人工核实，不自动重发: %w", saveErr)
+				return fmt.Errorf("启动拒绝状态保存失败，请保留原run人工核实，不自动重发: %w", errors.Join(err, saveErr))
 			}
 			*run = rejected
 			a.logger.Warn("pre-audit start rejected before task creation", "run_id", run.RunID, "status_code", response.StatusCode)
@@ -120,7 +121,8 @@ func (a *App) startPreAudit(ctx context.Context, options commandOptions, run *pr
 		if taskID := preAuditCandidateTask(response.Body); taskID != "" {
 			run.Start = map[string]any{"candidateTaskId": taskID}
 			if saveErr := a.preAuditStore().save(run); saveErr != nil {
-				return saveErr
+				a.logger.Error("pre-audit candidate task state save failed", "run_id", run.RunID)
+				return fmt.Errorf("候选任务记录保存失败，请保留原run人工核实，不自动重发: %w", errors.Join(err, saveErr))
 			}
 		}
 		return fmt.Errorf("启动结果不确定，任务可能已创建；未取得已确认taskId，不自动重发，请保留runId/preAuditId人工核实: %w", err)
@@ -167,7 +169,8 @@ func (a *App) resumePreAudit(ctx context.Context, options commandOptions, run *p
 				run.Stage = "review_failed"
 			}
 			if saveErr := a.preAuditStore().save(run); saveErr != nil {
-				return saveErr
+				a.logger.Error("pre-audit recovery state save failed", "run_id", run.RunID, "stage", run.Stage)
+				return fmt.Errorf("审查恢复状态保存失败，请保留原run人工核实: %w", errors.Join(err, saveErr))
 			}
 			return err
 		}
