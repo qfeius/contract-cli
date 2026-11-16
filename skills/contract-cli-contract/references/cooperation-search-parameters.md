@@ -65,7 +65,20 @@ contract-cli contract cooperation search --input-file request.json --profile con
 官方请求体示例（动态字段接口仍须以当前租户配置为准）：
 
 ```json
-"{\n  \"user_id\": \"wersdfxc\",\n  \"keyword\": \"123\",\n  \"cooperation_query_status_codes\": [\n    2\n  ],\n  \"contract_category_ids\": [\n    \"993477335229399383\"\n  ],\n  \"search_cooperation_by_create_time\": [\n    \"2026-02-06\",\n    \"2026-04-08\"\n  ],\n  \"create_user_ids\": [\n    \"wersdfxc\"\n  ],\n  \"search_cooperation_by_last_confirm_time\": [\n    \"2026-03-13\",\n    \"2026-04-16\"\n  ],\n  \"confirmed_role_codes\": [\n    \"legal\",\n    \"finance\"\n  ],\n  \"confirm_process_status_codes\": [\n    4\n  ],\n  \"confirmable_status_codes\": [\n    1\n  ]\n  \"page_size\": 10,\n  \"page_token\": \"1\"\n}"
+{
+  "user_id": "wersdfxc",
+  "keyword": "123",
+  "cooperation_query_status_codes": [2],
+  "contract_category_ids": ["993477335229399383"],
+  "search_cooperation_by_create_time": ["2026-02-06", "2026-04-08"],
+  "create_user_ids": ["wersdfxc"],
+  "search_cooperation_by_last_confirm_time": ["2026-03-13", "2026-04-16"],
+  "confirmed_role_codes": ["legal", "finance"],
+  "confirm_process_status_codes": [4],
+  "confirmable_status_codes": [1],
+  "page_size": 10,
+  "page_token": "1"
+}
 ```
 
 ## 来源差异说明

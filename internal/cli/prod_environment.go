@@ -273,12 +273,36 @@ func (a *App) productionProfileRequiresReset(profile config.Profile) (bool, erro
 	return validateProductionDeviceCredential(profile, stored) != nil, nil
 }
 
-func (a *App) clearProfileAuthenticationState(ctx context.Context, profileName string) (err error) {
+func (a *App) clearProfileAuthenticationState(ctx context.Context, target config.Profile) (err error) {
+	profileName := target.Name
 	var outcome *localCommandOutcome
 	defer func() { err = withCompletedLocalCommand(ctx, err, outcome) }()
 	a.logger.Info("clear changed profile authentication state", "profile", profileName)
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	store, available, err := a.deviceCredentialStoreIfAvailable()
+	if err != nil {
+		return err
+	}
+	resetDevice := false
+	if available {
+		release, acquired, err := a.tryDeviceAuthorizationOperation(profileName)
+		if err != nil {
+			return err
+		}
+		if !acquired {
+			return errors.New("device credential operation in progress; retry configuration reset after it finishes")
+		}
+		defer release()
+		stored, loadErr := store.Load(profileName)
+		if loadErr != nil && !errors.Is(loadErr, credential.ErrCredentialNotFound) {
+			return loadErr
+		}
+		resetDevice = loadErr == nil && validateProductionDeviceCredential(target, stored) != nil
+		if loadErr == nil && !resetDevice {
+			a.logger.Info("preserve matching Device credential during profile reset", "profile", profileName)
+		}
 	}
 	if err := a.secrets.Delete(config.AppSecretKey(profileName)); err != nil {
 		a.logger.Error("clear app secret failed", "profile", profileName, "error", err.Error())
@@ -288,12 +312,7 @@ func (a *App) clearProfileAuthenticationState(ctx context.Context, profileName s
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	store, available, err := a.deviceCredentialStoreIfAvailable()
-	if err != nil {
-		a.logger.Error("resolve Device credential store for reset failed", "profile", profileName, "error", err.Error())
-		return err
-	}
-	if available {
+	if resetDevice {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

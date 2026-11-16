@@ -1,3 +1,14 @@
+## 2026-11-16 - 问题 10/12/13/14/15/17 的业务影响子项修复
+- 范围：当前 codex/fix-release-doc-issues-20261112@e759a63；不改强制宿主验签、旧 OAuth、问题 16 或其他排除项，不新增锁，保留通用 api call。
+- 存储：privatefile 为 config/secrets 和 Windows 导入计划提供完整替换；经用户确认，任务凭据改到私有 device-sessions-v2，随机密钥原子首次创建，不信任旧项目密文，旧任务需重新授权，桌面 Keychain 实现不变。
+- 恢复：配置缺失也核对残留 Device 快照；复用现有凭据操作锁并在清理前重查，只删除不匹配凭据；缺省名称仅恢复 contract，保留有效生产登录；auth init/complete 默认错误统一 JSON。
+- 部门：按 product/group/显式类型校验，合同矩阵仍用字符串 SaaS 部门 ID；导入保存类型并在 apply/verify 恢复，新计划 v5，兼容 v4 默认类型计划，旧 CLI 不执行新计划。
+- 网络：普通 API 响应和通用 JSON 输入限 32 MiB；无调用方时限时普通请求 30s、流式上传/下载 10m，保留显式时限；签名下载限 1 GiB，校验 HTTPS、公网 IP、DNS/重定向，保留 CDN 与显式代理。
+- Skill：补齐四个业务路由、预审命令与授权参数说明，修复协商 JSON；从 9 个固定官方 GitHub Tag 补齐 1.9.5–1.9.13 整目录指纹，保留自定义内容保护，新增生成工具和维护说明。
+- 验证：先红后绿；make release-check（Node 37 通过/3 跳过）、全量 race/coverage、exhaustive lint 0 issues、五包 Windows 测试交叉编译通过；仓库 frontmatter/Skill 回归通过，通用严格模板不接受的既有 version 扩展未改；Windows 原生未执行。
+- 问题 11：隔离管道子进程实测强制终止后共享 O_NONBLOCK 残留，正常取消回归通过；临时探针已移除，仅记录发现，不修改取消/非阻塞实现，Windows 原生取消待验证。
+- 交付：真实 Skill 登记与已安装 auth Skill 哈希不变；按用户要求提交并推送 GitLab 主仓库当前同名开发分支，不合并、不发布，不执行生产业务写入。
+
 ## 2026-11-16 - 问题 5：预审失败判定与恢复状态修复
 - 范围：当前 codex/fix-release-doc-issues-20261112 分支；正常上传、分类、配置、审查和链接流程不变，不新增接口或锁。
 - 请求：openplatform/client.go 与 not_sent.go 记录整个 Do 的派发证据；发送前失败可识别，已有任一 HTTP 尝试后的刷新或 hook 失败不能误判为未发送。

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"cn.qfei/contract-cli/internal/openplatform"
 	contractsvc "cn.qfei/contract-cli/internal/openplatform/contract"
@@ -230,6 +232,11 @@ func copyDownloadedFileNoReplace(temporaryPath string, outputPath string) error 
 }
 
 func (a *App) downloadSignedContractFile(ctx context.Context, rawURL string, expectedSize *int64, writer io.Writer) error {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 10*time.Minute)
+		defer cancel()
+	}
 	logger := a.commandTraceLogger(ctx)
 	parsedURL, err := validateSignedDownloadURL(rawURL)
 	if err != nil {
@@ -256,9 +263,15 @@ func (a *App) downloadSignedContractFile(ctx context.Context, rawURL string, exp
 		logger.Error("signed contract file download failed", "host", parsedURL.Hostname(), "status_code", response.StatusCode)
 		return fmt.Errorf("signed file download failed with status %d", response.StatusCode)
 	}
-	written, err := io.Copy(writer, response.Body)
+	if response.ContentLength > maxSignedFileBytes {
+		return fmt.Errorf("%w (%d bytes)", errSignedFileTooLarge, maxSignedFileBytes)
+	}
+	written, err := copySignedFile(writer, response.Body, maxSignedFileBytes)
 	if err != nil {
 		logger.Error("copy signed contract file download failed", "host", parsedURL.Hostname(), "error_type", fmt.Sprintf("%T", err))
+		if errors.Is(err, errSignedFileTooLarge) {
+			return err
+		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return fmt.Errorf("copy signed file download: %w", ctxErr)
 		}
@@ -278,6 +291,7 @@ func (a *App) downloadSignedContractFile(ctx context.Context, rawURL string, exp
 
 func signedDownloadHTTPClient(base *http.Client) *http.Client {
 	client := *base
+	client.Transport = publicSignedFileTransport(base.Transport)
 	client.Jar = nil
 	previousCheckRedirect := client.CheckRedirect
 	client.CheckRedirect = func(request *http.Request, via []*http.Request) error {
@@ -308,6 +322,9 @@ func validateSignedDownloadURL(rawURL string) (*url.URL, error) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
 		return nil, fmt.Errorf("contract file metadata returned an invalid HTTPS download URL")
+	}
+	if err := publicFileHost(parsed.Hostname()); err != nil {
+		return nil, err
 	}
 	return parsed, nil
 }

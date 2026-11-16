@@ -214,8 +214,11 @@ func (a *App) deliverPreAuditLink(ctx context.Context, options commandOptions, r
 
 func validatePreAuditPageURL(page, preAuditID string) error {
 	u, err := url.Parse(page)
-	if err != nil || u.Hostname() == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil || strings.Contains(page, "#") || u.Path != "/pre-audit/detail" || u.RawPath != "" {
+	if err != nil || u.Hostname() == "" || u.Scheme != "https" || u.User != nil || strings.Contains(page, "#") || u.Path != "/pre-audit/detail" || u.RawPath != "" {
 		return fmt.Errorf("CLM预审page_url无效")
+	}
+	if err := publicFileHost(u.Hostname()); err != nil {
+		return err
 	}
 	query, err := url.ParseQuery(u.RawQuery)
 	if err != nil || len(query["preAuditId"]) != 1 || query.Get("preAuditId") != preAuditID || len(query["from"]) != 1 || query.Get("from") != "cli" {

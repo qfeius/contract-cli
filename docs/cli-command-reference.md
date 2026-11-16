@@ -21,6 +21,8 @@
 
 ## 审查文件准备
 
+通用 JSON 输入和普通 API 响应上限为 32 MiB；预审配置保留原有更小上限。未提供调用方时限时，普通 API 请求默认 30 秒，流式上传/下载默认 10 分钟；调用方已有时限时沿用，不覆盖预审显式上传时限。签名文件下载仅允许 HTTPS 公网目标，逐次校验重定向，普通网络连接校验 DNS 并连接已验证的 IP；不使用固定域名白名单。签名下载上限 1 GiB，失败不替换原目标文件。
+
 - 本地文件从 `contract-cli review pre-audit prepare --file <path> --name <name>` 开始，上传到 CLM 后选择分类，再由 `review pre-audit create` 创建预审并自动准备 AI 文件引用；`review pre-audit start` 等待审查完成后返回预审链接。
 - `review file upload` 仅引用 CLM 已有文件，必填 `--name`、`--business-id`、`--business-file-id`、`--business-file-version` 和 `--source-locator`。来源支持 `sourceFileType=0/1/2`；业务、文件、版本和协商关联 ID 均取真实接口结果。
 - 该命令显式拒绝本地文件与 stdin 参数，包括预览；旧脚本会收到 `review pre-audit prepare` 的迁移提示。引用请求不携带 file 二进制字段，由 AI 服务读取 CLM 文件。
@@ -1940,10 +1942,11 @@ contract-cli rule table import apply --profile contract --as app --plan-id <plan
 
 - 新增结构命令字段见 [结构接口参数](../skills/contract-cli-rule/references/structure-parameters.md)。`approval-matrix` 是对应 `rule` 命令的兼容入口，支持 user/app。
 - 规则表总列数上限为 12，优先级列和备注列固定占 2 列，条件列与结果列合计最多 10 列。规划结构时先校验 `目标条件列数 + 目标结果列数 + 2 <= 12`；`rule table column add` 会先查询当前列头，在当前总数达到 12 时本地阻断，不发送新增写请求。服务端错误码 20303 仍是并发变化场景的最终保护。
-- 人员批量值使用正 int64 外部 ID（数字或十进制字符串输入，发送为数字）；部门规则行与 import plan 统一使用 `open_department_id` 字符串（形如 `od-...`）并原样发送。`department search` 的可选候选直接返回该字段；兼容的数字 `department_id` 仅作为 `department batch-get` 查询键，用于回查 `open_department_id`，不可直接写入规则行。NUMBER 支持整数 30 位、小数 8 位，导入显式 null 清空单元格，省略字段保持不变。
+- 人员批量值使用正 int64 外部 ID（数字或十进制字符串输入，发送为数字）。`contract/approve_matrix` 的部门规则行和 import plan 默认使用 `tenant_department_id`，即十进制字符串形式的 SaaS 部门 ID；直接采用部门搜索返回的 `selectable=true` 候选 `department_id`，不改成 od 标识。其他 product/group 默认使用 `open_department_id`（`od-...` 或 `od_...`）；原子行命令可通过 `--department-id-type` 显式选择兼容模式，合同矩阵 import plan 仅支持 `tenant_department_id`，其他范围可显式选型。NUMBER 支持整数 30 位、小数 8 位，导入显式 null 清空单元格，省略字段保持不变。
 - `apply --rows 1,3 --batch-size 10` 支持局部确认和分批执行；get 查询本地进度，pause 在当前行结束后停批，resume 清除暂停标记，verify 只读重试回读，cancel 取消后续操作。列头或全量行快照变化、24 小时过期返回 invalidated，结果不确定立即停止后续行。
 - `import plan` 的输入顶层为 `rows`；每行包含可选 `operation`、更新所需的 `row_id`，以及以列名或列 ID 为键的 `cells`。未传 `--table-id` 时返回已有矩阵候选项和 `status=needs_input`。
 - `plan` 查询列头和全部规则行，在本地做映射、目标行和 2000 行容量检查，不写矩阵。校验通过返回 `status=needs_confirmation` 与 `plan_id`；校验失败返回 `status=needs_input`。
+- 显式选择的部门 ID 类型会随新计划保存，apply/verify 沿用，不重新推断。新计划版本为 5，须用新版 CLI 继续；旧版 4 的默认类型计划仍可恢复，不丢弃已核验进度。
 - `import apply` 将 `plan_id` 作为确认令牌，串行逐行写入并回读；回读吻合才记成功，失败时进入 `needs_verification` 并停批，再次执行同一计划时跳过已验证成功行。`partial_success`、`failed` 和 `invalidated` 会在保留结构化结果后返回非零退出码。
 - 矩阵写请求的编辑人由开平服务端从当前 Bearer 用户身份解析。使用 `--as user` 时，CLI 发送 `X-Qfei-Identity: user` 并移除 `--user-id` 对应的 query，避免把审批人 ID 或其他人员 ID 作为编辑人；`--as app` 记录应用/系统身份。
 - 写入结果不确定先用 `row get/list/search` 核对，停止后续写入，不自动重试。

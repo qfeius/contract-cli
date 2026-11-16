@@ -2053,7 +2053,10 @@ func addRuleHelp(registry map[string]helpTopic) {
 
 func ruleTableHelpTopic(name string, summary string, usage string, extraFlags []helpFlag, examples []string, notes []string) helpTopic {
 	if strings.HasPrefix(name, "rule table row ") && name != "rule table row delete" {
-		extraFlags = append(extraFlags, helpFlag{"--department-id-type <type>", "contract/approve_matrix 默认 tenant_department_id；可显式选择兼容类型"})
+		extraFlags = append(extraFlags, helpFlag{"--department-id-type <type>", "contract/approve_matrix 默认 tenant_department_id；其他范围默认 open_department_id，可显式选择兼容类型"})
+	}
+	if name == "rule table import plan" {
+		extraFlags = append(extraFlags, helpFlag{"--department-id-type <type>", "contract/approve_matrix 仅 tenant_department_id；其他范围默认 open_department_id，可显式选择兼容类型"})
 	}
 	return helpTopic{
 		Name:    name,

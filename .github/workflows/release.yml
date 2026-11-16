@@ -52,7 +52,7 @@ jobs:
       - name: Windows npm installation regression
         run: node --test scripts/install.test.js
       - name: Security regression tests without native dialogs
-        run: go test ./internal/cli ./internal/openplatform -run "TestSaveDialog|TestRuleRowDeleteRejectsDotID|TestAPIWebCall|TestClientRejectsUnsafePaths|TestClientCannotWeakenRouteIdentityPolicy|TestClientPreservesSafeEncodedIDs|TestClientUsesDecodedRuleRoute|TestPreAudit|TestRequestNotSent|TestAppDownloadsPreserveFilesOnFailure|TestLogRedaction|TestStream|TestAppSearchPOSTs"
+        run: go test -timeout 3m ./internal/cli ./internal/openplatform ./internal/config ./internal/credential ./internal/privatefile -run "TestSaveDialog|TestRuleRowDeleteRejectsDotID|TestAPIWebCall|TestClientRejectsUnsafePaths|TestClientCannotWeakenRouteIdentityPolicy|TestClientPreservesSafeEncodedIDs|TestClientUsesDecodedRuleRoute|TestPreAudit|TestRequestNotSent|TestAppDownloadsPreserveFilesOnFailure|TestLogRedaction|TestStream|TestAppSearchPOSTs|TestDefaultCommandInput|TestDefaultInjectedCommand|TestTaskCredentials|TestTaskStoreDoesNotImport|TestConcurrentTaskKey|TestTaskPrivateState|TestPrivate|TestFailedReplacement|TestAuthenticationReset|TestConfigRecreation|TestDeviceProfileRecoveryUsesDefault|TestDeviceAuthorizationDefaultErrors|TestClientResponseLimit|TestClientDefaultDeadline|TestClientMultipartDefault|TestSignedDownload|TestMatrixDepartmentDefaults|TestMatrixImportRecognizes|TestMatrixImportKeepsExplicit|TestApprovalPlan"
 
   publish:
     needs: [checks, windows-security]

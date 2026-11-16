@@ -59,6 +59,9 @@ func (a *App) resolveDeviceRuntime() (credential.DeviceRuntime, error) {
 		a.logger.Info("Device credential runtime inspected", "source", report.AgentSourceType, "confidence", report.Confidence, "rule_id", report.RuleID)
 	}
 	resolved, err := credential.ResolveDeviceRuntimeWithEvidence(a.lookupEnv, *a.runtimeEvidence)
+	if err == nil && resolved.Kind == credential.DeviceRuntimeDoubaoWorkTask {
+		resolved.DataDir = filepath.Join(filepath.Dir(a.store.Path()), "device-sessions-v2", resolved.SessionNamespace)
+	}
 	if err != nil {
 		a.logger.Debug("Device credential runtime unavailable", "error", err.Error())
 	}

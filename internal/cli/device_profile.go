@@ -35,7 +35,7 @@ func (a *App) loadDeviceAwareProfile(profileName string) (config.Profile, error)
 
 	normalizedProfileName := strings.TrimSpace(profileName)
 	if normalizedProfileName == "" {
-		return config.Profile{}, profileNotFoundError(profileName)
+		normalizedProfileName = "contract"
 	}
 	agentKitWorkspace, inAgentKit := a.lookupEnv("SKILL_SESSION_WORKSPACE")
 	workTaskSession, inDoubaoWorkTask := a.lookupEnv("SESSION_ID")

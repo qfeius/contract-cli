@@ -35,6 +35,10 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 - 合同搜索、筛选、合同文本关键词及搜索字段元数据查询：读 [../contract-cli-contract-search/SKILL.md](../contract-cli-contract-search/SKILL.md)
 - 按合同编号/完整名称查询摘要，或为本地合同文件生成摘要：读 [../zhishu-contract-summary/SKILL.md](../zhishu-contract-summary/SKILL.md)
 - 个人协商搜索、详情和历史版本文件：读 [../contract-cooperation/SKILL.md](../contract-cooperation/SKILL.md)；固定 user，不发起智能审查。
+- 按人员、部门、角色、合同或流程统计审批、盖章和归档效率：读 [../contract-approval-efficiency/SKILL.md](../contract-approval-efficiency/SKILL.md)，仅统计当前用户获准查询的任务及可读流程。
+- 本人任务加签、转办、抄送：读 [../contract-cli-approval-actions/SKILL.md](../contract-cli-approval-actions/SKILL.md)；不用于审批通过、拒绝或代他人办理。
+- 按合同查询关联协商当前轮次的飞书群 ID 和状态：读 [../contract-cooperation-chat-group/SKILL.md](../contract-cooperation-chat-group/SKILL.md)，不主动建群、拉人或读取群消息。
+- 查询合同归属人与交接历史、将指定合同交接给接收人：读 [../contract-handover/SKILL.md](../contract-handover/SKILL.md)；不等同于审批任务转办，写入前确认影响。
 - 合同详情、创建、已知合同正文读取、模板、分类、枚举、字段更新、签署链接、合同授权、电子签、分享、app 协商管理、审批：读 [../contract-cli-contract/SKILL.md](../contract-cli-contract/SKILL.md)
   这里现在采用“主文档 + 字段树附录 + 枚举附录”的结构
 - 单份文件智能审查、系统内合同审查入口或继续审查任务：读 [../contract-cli-review/SKILL.md](../contract-cli-review/SKILL.md)，按实际能力检查系统当前正文与场景关联；不能用审批任务代替 AI 审查任务。
@@ -59,7 +63,7 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 
 - `contract get/search/search-fields/search-v2/create/sync-user-groups/text`
 - `contract summary query/generate`
-- `review file upload/upload-url`、`review subject extract`、`review task start/status/info/result`、`review run`
+- `review file upload`（CLM 文件引用）、`review pre-audit prepare/create/start/resume`（本地文件预审）、`review subject extract`、`review task start/status/info/result`、`review run`
 - `review checklist`、`review rule`、`review rule group`（审查配置，与顶层审批矩阵 `rule table` 分离）
 - `contract upload-file`
 - `contract field update`

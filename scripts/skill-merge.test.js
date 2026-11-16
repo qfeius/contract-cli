@@ -70,3 +70,33 @@ test('Blue profile setup remains unsupported by the Skill bundle', () => {
   assert.ok(!shared.includes('contract-cli config add --env blue'));
   assert.ok(!auth.includes('contract-cli config add --env blue'));
 });
+
+test('shared decisions reach every delivered business workflow', () => {
+  const shared = read('contract-cli-shared');
+  const decisions = shared.split('## 快速决策')[1].split('\n## ')[0];
+  for (const name of ['contract-approval-efficiency', 'contract-cli-approval-actions', 'contract-cooperation-chat-group', 'contract-handover']) {
+    assert.ok(decisions.includes(`../${name}/SKILL.md`), `missing business route ${name}`);
+    assert.ok(fs.existsSync(path.join(root, name, 'SKILL.md')));
+  }
+  const modules = shared.split('## 当前已实现模块')[1].split('\n## ')[0];
+  assert.ok(modules.includes('review pre-audit'));
+  assert.ok(!modules.includes('upload-url'));
+});
+
+test('authorization guidance does not reject supported JSON status output', () => {
+  for (const name of ['auth', 'contract-cli-contract-search']) {
+    assert.doesNotMatch(read(name), /auth status`?\s*不支持\s*`?--output/);
+  }
+});
+
+test('cooperation request example is an object accepted as a JSON input file', () => {
+  const content = fs.readFileSync(path.join(root, 'contract-cli-contract', 'references', 'cooperation-search-parameters.md'), 'utf8');
+  const examples = [...content.matchAll(/```json\s*\n([\s\S]*?)```/g)];
+  assert.ok(examples.length > 0);
+  for (const [, body] of examples) {
+    const request = JSON.parse(body);
+    assert.ok(request && typeof request === 'object' && !Array.isArray(request));
+    assert.equal(request.page_size, 10);
+    assert.ok(Array.isArray(request.confirmable_status_codes));
+  }
+});

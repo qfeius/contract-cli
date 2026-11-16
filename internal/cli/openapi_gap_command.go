@@ -920,11 +920,11 @@ func (a *App) runRuleTableRowCreate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := validateApprovalMatrixDepartmentIDs(body, options.departmentIDType); err != nil {
-		return err
-	}
 	productID, groupID, tableID, err := requiredRuleTable(parsed)
 	if err != nil {
+		return err
+	}
+	if err := validateMatrixDepartmentScope(body, productID, groupID, options.departmentIDType); err != nil {
 		return err
 	}
 	return a.executeRuleOpenPlatformRequest(ctx, options, http.MethodPost, ruleTablePath(productID, groupID, tableID)+"/table_rows", nil, body)
@@ -1001,11 +1001,11 @@ func (a *App) runRuleTableRowSearch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := validateApprovalMatrixDepartmentIDs(body, options.departmentIDType); err != nil {
-		return err
-	}
 	productID, groupID, tableID, err := requiredRuleTable(parsed)
 	if err != nil {
+		return err
+	}
+	if err := validateMatrixDepartmentScope(body, productID, groupID, options.departmentIDType); err != nil {
 		return err
 	}
 	query, err := requiredPageQueryWithPageSizeRange(parsed, 1, 100)
@@ -1033,11 +1033,11 @@ func (a *App) runRuleTableRowUpdate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := validateApprovalMatrixDepartmentIDs(body, options.departmentIDType); err != nil {
-		return err
-	}
 	productID, groupID, tableID, err := requiredRuleTable(parsed)
 	if err != nil {
+		return err
+	}
+	if err := validateMatrixDepartmentScope(body, productID, groupID, options.departmentIDType); err != nil {
 		return err
 	}
 	path := ruleTablePath(productID, groupID, tableID) + "/table_rows/" + escapePathSegment(parsed.positionals[0])

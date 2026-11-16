@@ -245,6 +245,7 @@ func TestBusinessCommandRejectsHistoricalDevDeviceStateWithProductionProfile(t *
 
 func TestConfigAddProdResetsSameNameDevProfileAndCredentials(t *testing.T) {
 	configDir := t.TempDir()
+	workspace := t.TempDir()
 	store := config.NewStore(configDir)
 	secrets := config.NewSecretsStore(configDir)
 	oldProfile := validProductionProfile()
@@ -271,6 +272,7 @@ func TestConfigAddProdResetsSameNameDevProfileAndCredentials(t *testing.T) {
 	}}
 	app := New(Options{
 		Store: store, Secrets: secrets, CredentialStore: credentials,
+		LookupEnv: func(name string) (string, bool) { return workspace, name == "SKILL_SESSION_WORKSPACE" },
 		HTTPClient: &http.Client{Transport: productionRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			if request.URL.String() != "https://myaccount.qfei.cn/.well-known/oauth-authorization-server/contract" {
 				t.Fatalf("unexpected metadata request: %s", request.URL.String())

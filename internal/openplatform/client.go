@@ -29,6 +29,7 @@ type Options struct {
 	Logger             *slog.Logger
 	AuthProvider       AuthProvider
 	BeforeRequestHooks []BeforeRequestHook
+	MaxResponseBytes   int64
 }
 
 type BeforeRequestHook func(context.Context, *http.Request) error
@@ -38,6 +39,7 @@ type Client struct {
 	logger             *slog.Logger
 	authProvider       AuthProvider
 	beforeRequestHooks []BeforeRequestHook
+	maxResponseBytes   int64
 }
 
 type RequestContext struct {
@@ -58,6 +60,9 @@ const (
 	maxReadNetworkRetries                   = 1
 	authenticationErrorHeader               = "X-Qfei-Open-Platform-Auth-Error"
 	tokenExpiredErrorType                   = "token_expired"
+	defaultMaxResponseBytes                 = int64(32 << 20)
+	defaultRequestTimeout                   = 30 * time.Second
+	defaultStreamTimeout                    = 10 * time.Minute
 )
 
 type Request struct {
@@ -135,12 +140,17 @@ func New(options Options) *Client {
 	if authProvider == nil {
 		authProvider = ProfileAuthProvider{}
 	}
+	limit := options.MaxResponseBytes
+	if limit <= 0 {
+		limit = defaultMaxResponseBytes
+	}
 
 	return &Client{
 		httpClient:         httpClient,
 		logger:             logger,
 		authProvider:       authProvider,
 		beforeRequestHooks: append([]BeforeRequestHook(nil), options.BeforeRequestHooks...),
+		maxResponseBytes:   limit,
 	}
 }
 
@@ -154,6 +164,12 @@ Do 验证所选身份并发送请求；规则 user 请求附加验证分支标�
 返回 Response 为远端响应，error 为校验或网络错误。
 */
 func (c *Client) Do(ctx context.Context, requestContext RequestContext, request Request) (response Response, err error) {
+	fallback := defaultRequestTimeout
+	if request.BodyReader != nil {
+		fallback = defaultStreamTimeout
+	}
+	ctx, cancel := requestBudget(ctx, fallback)
+	defer cancel()
 	dispatched := false
 	defer func() {
 		if err != nil && !dispatched {
@@ -294,7 +310,7 @@ func (c *Client) doOnce(ctx context.Context, method, fullURL string, headers htt
 	}
 	defer func() { _ = resp.Body.Close() }() // Read/status errors determine the request result.
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := c.readResponseBody(resp.Body)
 	if err != nil {
 		return response, fmt.Errorf("read open platform response: %w", err)
 	}
@@ -340,6 +356,8 @@ func wrapTraceError(traceID string, err error) error {
 }
 
 func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, request Request, writer io.Writer) (Response, error) {
+	ctx, cancel := requestBudget(ctx, defaultStreamTimeout)
+	defer cancel()
 	if writer == nil {
 		return Response{}, fmt.Errorf("open platform stream writer is required")
 	}
@@ -447,7 +465,7 @@ func (c *Client) doStreamOnce(ctx context.Context, method, fullURL string, heade
 	response.StatusCode = resp.StatusCode
 	response.Headers = resp.Header.Clone()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, readErr := io.ReadAll(resp.Body)
+		body, readErr := c.readResponseBody(resp.Body)
 		if readErr != nil {
 			c.logger.Error("read open platform stream error response failed", "method", method, "path", request.Path, "error", readErr.Error(), "trace_id", requestTrace.TraceID)
 			return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("read open platform response: %w", readErr))
