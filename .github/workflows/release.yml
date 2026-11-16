@@ -52,7 +52,7 @@ jobs:
       - name: Windows npm installation regression
         run: node --test scripts/install.test.js
       - name: Security regression tests without native dialogs
-        run: go test ./internal/cli ./internal/openplatform -run "TestSaveDialog|TestRuleRowDeleteRejectsDotID|TestAPIWebCall|TestClientRejectsUnsafePaths|TestClientCannotWeakenRouteIdentityPolicy|TestClientPreservesSafeEncodedIDs|TestClientUsesDecodedRuleRoute|TestPreAuditOutput|TestAppDownloadsPreserveFilesOnFailure|TestLogRedaction|TestStream|TestAppSearchPOSTs"
+        run: go test ./internal/cli ./internal/openplatform -run "TestSaveDialog|TestRuleRowDeleteRejectsDotID|TestAPIWebCall|TestClientRejectsUnsafePaths|TestClientCannotWeakenRouteIdentityPolicy|TestClientPreservesSafeEncodedIDs|TestClientUsesDecodedRuleRoute|TestPreAudit|TestRequestNotSent|TestAppDownloadsPreserveFilesOnFailure|TestLogRedaction|TestStream|TestAppSearchPOSTs"
 
   publish:
     needs: [checks, windows-security]

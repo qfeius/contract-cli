@@ -1,3 +1,13 @@
+## 2026-11-16 - 问题 5：预审失败判定与恢复状态修复
+- 范围：当前 codex/fix-release-doc-issues-20261112 分支；正常上传、分类、配置、审查和链接流程不变，不新增接口或锁。
+- 请求：openplatform/client.go 与 not_sent.go 记录整个 Do 的派发证据；发送前失败可识别，已有任一 HTTP 尝试后的刷新或 hook 失败不能误判为未发送。
+- 启动：review_pre_audit_outcome/workflow 仅接受已核实的参数/鉴权拒绝；start_rejected_confirmed 允许显式再发，超时/5xx/未知码/异常响应仍为 start_unknown，候选任务 ID 仅留作核实。
+- 恢复：确定创建、引用或启动未发送时恢复原阶段；先保存再切换内存状态，保存失败停止；旧 start_rejected 不自动放行，历史未知记录不回滚或重放。
+- 上传：移除固定 30 秒；prepare 新增 --deadline（默认 10m），review run 沿用总时限，服从调用方更短时限；未发送清理空记录，已发送超时不自动重传。
+- 回归：先红后绿覆盖未知启动、候选 ID、明确拒绝后显式再发、精确恢复/保存失败、刷新后错误、同 run 创建续行、上传时限及历史记录；同步帮助、Skill、命令文档与 Windows CI。
+- 验证：make release-check、全量 race/coverage、exhaustive lint（0 issues）和 Windows CLI/openplatform 测试交叉编译通过；Windows 原生测试本机未执行。
+- 交付：用户真实 Skill 登记与 auth Skill 哈希未变；按用户要求提交并推送 GitLab 主仓库当前同名开发分支，不合并、不发布、不调用生产业务写接口。
+
 ## 2026-11-12 - 审查问题 4/6/9 及 Windows 安装传参修复
 - 范围：在 codex/fix-release-doc-issues-20261112@c83117b 继续修复；不处理其余问题，不改变安装下载协议、哈希或回退规则。
 - 预审：review_pre_audit.go 在预览及恢复输出前核对原身份；鉴权/刷新失败不输出旧结果，预览仍不刷新 Token、不写业务或恢复记录。

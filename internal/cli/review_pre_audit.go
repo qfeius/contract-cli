@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"cn.qfei/contract-cli/internal/openplatform"
 	contractsvc "cn.qfei/contract-cli/internal/openplatform/contract"
@@ -138,7 +138,11 @@ func (a *App) runPreAudit(ctx context.Context, args []string) (err error) {
 	if args[0] != "prepare" {
 		return fmt.Errorf("unknown review pre-audit subcommand %q", args[0])
 	}
-	parsed, err := parseReviewArgs(args[1:], []string{"--file", "--name"}, []string{"--dry-run", "--print-input"})
+	parsed, err := parseReviewArgs(args[1:], []string{"--file", "--name", "--deadline"}, []string{"--dry-run", "--print-input"})
+	if err != nil {
+		return err
+	}
+	_, deadline, err := reviewDurations(parsed)
 	if err != nil {
 		return err
 	}
@@ -152,6 +156,8 @@ func (a *App) runPreAudit(ctx context.Context, args []string) (err error) {
 	if parsed.Bool("--dry-run") || parsed.Bool("--print-input") {
 		return a.renderReviewValue(options, map[string]string{"operation": "pre-audit.prepare", "name": parsed.String("--name"), "nextStage": "awaiting_category"})
 	}
+	ctx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
 	run, err := a.preparePreAudit(ctx, options, parsed.String("--file"), parsed.String("--name"))
 	return a.finishReviewWorkflow(options, preAuditOutput(run), err)
 }
@@ -201,11 +207,15 @@ func (a *App) preparePreAudit(ctx context.Context, options commandOptions, path,
 	if err := store.save(run); err != nil {
 		return run, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
 	response, err := contractsvc.NewService(session.client).UploadFile(ctx, session.rc, contractsvc.UploadFileInput{FileName: name, FileType: "text", File: file})
 	if err != nil {
 		a.logger.Error("pre-audit CLM upload failed", "run_id", runID)
+		if openplatform.RequestWasNotSent(err) {
+			if removeErr := os.Remove(filepath.Join(store.dir, runID+".json")); removeErr != nil {
+				return run, fmt.Errorf("业务上传未发送，但空恢复记录清理失败，请核实原run: %w", errors.Join(err, removeErr))
+			}
+			return nil, fmt.Errorf("业务上传未发送，修复原因后可重新执行prepare: %w", err)
+		}
 		return run, fmt.Errorf("上传结果未确认，请保留runId核实，不自动重传: %w", err)
 	}
 	data, err := preAuditResponseData(response)
@@ -331,6 +341,11 @@ func (a *App) createPreAudit(ctx context.Context, options commandOptions, run *p
 		}
 		body, _ := json.Marshal(map[string]string{"source_file_id": run.SourceFileID, "category_id": run.CategoryID, "pre_audit_name": run.Name})
 		response, err := a.doReview(ctx, options, openplatform.Request{Method: http.MethodPost, Path: preAuditPath, Body: body, IdentityPolicy: openplatform.IdentityPolicyUserOnly})
+		if openplatform.RequestWasNotSent(err) {
+			previous := *run
+			previous.Stage, previous.CategoryID, previous.RequestID = "awaiting_category", "", ""
+			return a.restoreUnsentPreAuditRun(run, previous, err)
+		}
 		var data map[string]any
 		if err == nil {
 			data, err = preAuditResponseData(response)
@@ -363,13 +378,21 @@ func (a *App) createPreAudit(ctx context.Context, options commandOptions, run *p
 	if err != nil {
 		return err
 	}
+	previous := *run
 	run.Stage = "reference_unknown"
 	if err := store.save(run); err != nil {
 		return err
 	}
-	data, err := a.reviewDocument(ctx, options, request)
+	response, err := a.doReview(ctx, options, request)
+	if openplatform.RequestWasNotSent(err) {
+		return a.restoreUnsentPreAuditRun(run, previous, err)
+	}
 	if err != nil {
 		return fmt.Errorf("引用上传未完成，保留预审及run，不自动重新上传: %w", err)
+	}
+	data, err := preAuditResponseData(response)
+	if err != nil {
+		return err
 	}
 	id, err := reviewResponseID(data, "fileId")
 	if err != nil {

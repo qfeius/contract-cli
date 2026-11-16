@@ -2,8 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -51,7 +49,7 @@ func (a *App) runPreAuditReview(ctx context.Context, action string, args []strin
 			return a.resumePreAudit(ctx, options, run, interval)
 		}
 		switch run.Stage {
-		case "awaiting_config", "start_rejected", "review_failed":
+		case "awaiting_config", "start_rejected_confirmed", "review_failed":
 			if err := a.startPreAudit(ctx, options, run, config); err != nil {
 				return err
 			}
@@ -93,25 +91,39 @@ func (a *App) startPreAudit(ctx context.Context, options commandOptions, run *pr
 	}
 	// A crash after this durable marker means the outcome is unknown. Never
 	// infer that no task was created from a timeout or a missing response.
+	previous := *run
 	run.Stage = "start_unknown"
 	run.TaskID, run.Start, run.Final = "", nil, nil
 	if err := a.preAuditStore().save(run); err != nil {
 		return err
 	}
 	response, err := a.doReview(ctx, options, request)
+	if openplatform.RequestWasNotSent(err) {
+		return a.restoreUnsentPreAuditRun(run, previous, err)
+	}
+	var data map[string]any
+	if err == nil {
+		data, err = preAuditResponseData(response)
+	}
 	if err != nil {
 		if preAuditStartRejected(response, err) {
-			run.Stage = "start_rejected"
+			rejected := *run
+			rejected.Stage = "start_rejected_confirmed"
+			if saveErr := a.preAuditStore().save(&rejected); saveErr != nil {
+				a.logger.Error("pre-audit rejection state save failed", "run_id", run.RunID)
+				return fmt.Errorf("启动拒绝状态保存失败，请保留原run人工核实，不自动重发: %w", saveErr)
+			}
+			*run = rejected
+			a.logger.Warn("pre-audit start rejected before task creation", "run_id", run.RunID, "status_code", response.StatusCode)
+			return err
+		}
+		if taskID := preAuditCandidateTask(response.Body); taskID != "" {
+			run.Start = map[string]any{"candidateTaskId": taskID}
 			if saveErr := a.preAuditStore().save(run); saveErr != nil {
 				return saveErr
 			}
-			return err
 		}
-		return fmt.Errorf("启动结果不确定，任务可能已创建；没有taskId时不自动重发，请保留runId/preAuditId人工核实: %w", err)
-	}
-	data, err := preAuditResponseData(response)
-	if err != nil {
-		return fmt.Errorf("启动结果不确定，未取得taskId，不自动重发: %w", err)
+		return fmt.Errorf("启动结果不确定，任务可能已创建；未取得已确认taskId，不自动重发，请保留runId/preAuditId人工核实: %w", err)
 	}
 	taskID, err := reviewResponseID(data, "taskId")
 	if err != nil {
@@ -121,20 +133,6 @@ func (a *App) startPreAudit(ctx context.Context, options commandOptions, run *pr
 	run.Start = map[string]any{"taskId": run.TaskID}
 	run.Stage = "running"
 	return a.preAuditStore().save(run)
-}
-
-func preAuditStartRejected(response openplatform.Response, requestErr error) bool {
-	var uncertain *openplatform.UncertainWriteError
-	if errors.As(requestErr, &uncertain) {
-		return false
-	}
-	if response.StatusCode >= 400 && response.StatusCode < 500 {
-		return true
-	}
-	var envelope struct {
-		Code json.Number `json:"code"`
-	}
-	return json.Unmarshal(response.Body, &envelope) == nil && envelope.Code != "" && envelope.Code != "0" && envelope.Code != "200"
 }
 
 func (a *App) resumePreAudit(ctx context.Context, options commandOptions, run *preAuditRun, interval time.Duration) error {
@@ -178,7 +176,9 @@ func (a *App) resumePreAudit(ctx context.Context, options commandOptions, run *p
 			return err
 		}
 	case "start_unknown":
-		return fmt.Errorf("启动结果不确定，没有taskId；请人工核实，不自动重发")
+		return fmt.Errorf("启动结果不确定，未取得已确认taskId；请人工核实，不自动重发")
+	case "start_rejected":
+		return fmt.Errorf("旧版启动拒绝记录没有可靠的未创建证明，请人工核实，不重新发起")
 	case "upload_unknown", "reference_unknown", "reference_not_ready":
 		return fmt.Errorf("上传/引用结果未知或未就绪，请保留run核实，不自动重新上传")
 	default:

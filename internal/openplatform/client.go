@@ -153,7 +153,13 @@ Do 验证所选身份并发送请求；规则 user 请求附加验证分支标�
 入参 ctx（context.Context）为执行上下文、requestContext（RequestContext）为已解析身份凭证、request（Request）为接口参数。
 返回 Response 为远端响应，error 为校验或网络错误。
 */
-func (c *Client) Do(ctx context.Context, requestContext RequestContext, request Request) (Response, error) {
+func (c *Client) Do(ctx context.Context, requestContext RequestContext, request Request) (response Response, err error) {
+	dispatched := false
+	defer func() {
+		if err != nil && !dispatched {
+			err = &requestNotSentError{cause: err}
+		}
+	}()
 	method := strings.ToUpper(strings.TrimSpace(request.Method))
 	if method == "" {
 		return Response{}, fmt.Errorf("open platform request method is required")
@@ -212,7 +218,7 @@ func (c *Client) Do(ctx context.Context, requestContext RequestContext, request 
 
 	refreshed := false
 	for attempt := 0; ; attempt++ {
-		response, requestErr := c.doOnce(ctx, method, fullURL, headers, request, requestTrace)
+		response, requestErr := c.doOnce(ctx, method, fullURL, headers, request, requestTrace, &dispatched)
 		if requestErr == nil {
 			c.logger.Info("open platform request completed", "method", method, "path", request.Path, "status_code", response.StatusCode, "trace_id", requestTrace.TraceID)
 			return response, nil
@@ -260,7 +266,7 @@ func isTrustedTokenExpired(response Response, statusErr *HTTPStatusError) bool {
 		response.Headers.Get(authenticationErrorHeader) == tokenExpiredErrorType
 }
 
-func (c *Client) doOnce(ctx context.Context, method, fullURL string, headers http.Header, request Request, requestTrace tracecontext.RequestTrace) (Response, error) {
+func (c *Client) doOnce(ctx context.Context, method, fullURL string, headers http.Header, request Request, requestTrace tracecontext.RequestTrace, dispatched *bool) (Response, error) {
 	response := Response{TraceID: requestTrace.TraceID}
 	bodyReader := io.Reader(bytes.NewReader(request.Body))
 	if request.BodyReader != nil {
@@ -278,6 +284,10 @@ func (c *Client) doOnce(ctx context.Context, method, fullURL string, headers htt
 		return response, fmt.Errorf("apply open platform request trace: %w", err)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return response, err
+	}
+	*dispatched = true
 	resp, err := c.httpClient.Do(httpRequest)
 	if err != nil {
 		return response, fmt.Errorf("perform open platform request: %w", err)

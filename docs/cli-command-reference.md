@@ -32,6 +32,10 @@ contract-cli review file upload --profile contract --as user --business-id <busi
 
 CLM 本地上传支持 DOC、DOCX、PDF，最大 50 MiB。当前不支持通过文件地址上传；`review run` 的 `source.type=url` 在执行和预览模式均会报错。外部文件预审必须先上传 CLM，再以文件引用上传 AI；不自动下载文件地址。
 
+`pre-audit prepare --deadline <duration>` 控制上传总时限（默认 `10m`）；`review run` 沿用其总时限，均受调用方剩余时限约束。确认上传未发送时清理本次空记录，可修复后重新 prepare；已发送而结果未知时保留原 run 核实，不自动重传。
+
+创建、引用或启动确认未发送时恢复原阶段，修复原因后使用原 run 继续；保存恢复状态失败则停止。启动仅在确认参数或鉴权拒绝且任务未创建时进入 `start_rejected_confirmed`，允许修复后显式 start。超时、5xx、未知错误保持 `start_unknown`；`start.candidateTaskId` 仅供核实，不代表启动成功。旧版 `start_rejected` 不自动放行，须人工核实；新版记录请使用新版 CLI 继续。
+
 ## 顶层人员与部门查询
 
 两个命令分别由 `contract-cli-employee`、`contract-cli-department` 独立 Skill 指导；只读、仅 user，省略 `--as` 也使用 user。
