@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"strings"
 )
 
@@ -78,32 +79,60 @@ func publicFileIPs(ctx context.Context, host string, lookup func(context.Context
 
 type configuredFileProxyKey struct{}
 
+type configuredFileProxy struct {
+	url     *url.URL
+	address string
+}
+
 type publicFileTransport struct {
-	next     http.RoundTripper
-	standard *http.Transport
+	next          http.RoundTripper
+	proxy         func(*http.Request) (*url.URL, error)
+	customTLSDial bool
 }
 
 func (transport publicFileTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	if _, err := validateSignedDownloadURL(request.URL.String()); err != nil {
 		return nil, err
 	}
-	if transport.standard != nil {
+	selected := configuredFileProxy{}
+	if transport.proxy != nil {
+		proxy, err := transport.proxy(request)
+		if err != nil {
+			return nil, err
+		}
+		selected.url = proxy
+		if proxy != nil {
+			// Explicit proxies own target DNS and destination access policy. Only
+			// the configured proxy socket may bypass direct public-IP validation.
+			selected.address = fileProxyAddress(proxy)
+		}
+		request = request.WithContext(context.WithValue(request.Context(), configuredFileProxyKey{}, selected))
+	}
+	// Custom TLS dialers bypass Transport.DialContext. Retain their existing
+	// direct-target DNS check without imposing local target DNS on proxies.
+	if selected.url == nil && transport.customTLSDial {
 		if _, err := publicFileIPs(request.Context(), request.URL.Hostname(), net.DefaultResolver.LookupIPAddr); err != nil {
 			return nil, err
 		}
-		if transport.standard.Proxy != nil {
-			proxy, err := transport.standard.Proxy(request)
-			if err != nil {
-				return nil, err
-			}
-			if proxy != nil {
-				// An explicitly configured proxy is trusted transport, not a file
-				// target. Keep enterprise proxies working without allowing private URLs.
-				request = request.WithContext(context.WithValue(request.Context(), configuredFileProxyKey{}, proxy.Hostname()))
-			}
-		}
 	}
 	return transport.next.RoundTrip(request)
+}
+
+func fileProxyAddress(proxy *url.URL) string {
+	port := proxy.Port()
+	if port == "" {
+		switch proxy.Scheme {
+		case "http":
+			port = "80"
+		case "https":
+			port = "443"
+		case "socks5", "socks5h":
+			port = "1080"
+		default:
+			return ""
+		}
+	}
+	return net.JoinHostPort(proxy.Hostname(), port)
 }
 
 func publicSignedFileTransport(base http.RoundTripper) http.RoundTripper {
@@ -115,6 +144,14 @@ func publicSignedFileTransport(base http.RoundTripper) http.RoundTripper {
 		return publicFileTransport{next: base}
 	}
 	guarded := standard.Clone()
+	if standard.Proxy != nil {
+		// Resolve a possibly dynamic Proxy function once per request, and use
+		// that exact selection for both Transport routing and dial validation.
+		guarded.Proxy = func(request *http.Request) (*url.URL, error) {
+			selected, _ := request.Context().Value(configuredFileProxyKey{}).(configuredFileProxy)
+			return selected.url, nil
+		}
+	}
 	dial := standard.DialContext
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
@@ -124,7 +161,7 @@ func publicSignedFileTransport(base http.RoundTripper) http.RoundTripper {
 		if err != nil {
 			return nil, err
 		}
-		if proxyHost, _ := ctx.Value(configuredFileProxyKey{}).(string); proxyHost != "" && strings.EqualFold(proxyHost, host) {
+		if proxy, _ := ctx.Value(configuredFileProxyKey{}).(configuredFileProxy); proxy.address != "" && strings.EqualFold(proxy.address, address) {
 			return dial(ctx, network, address)
 		}
 		ips, err := publicFileIPs(ctx, host, net.DefaultResolver.LookupIPAddr)
@@ -144,7 +181,9 @@ func publicSignedFileTransport(base http.RoundTripper) http.RoundTripper {
 		}
 		return nil, last
 	}
-	return publicFileTransport{next: guarded, standard: guarded}
+	// Honor caller-supplied legacy TLS hooks without removing their DNS guard.
+	customTLSDial := standard.DialTLSContext != nil || standard.DialTLS != nil //nolint:staticcheck // Compatibility with existing http.Transport callers.
+	return publicFileTransport{next: guarded, proxy: standard.Proxy, customTLSDial: customTLSDial}
 }
 
 func copySignedFile(writer io.Writer, reader io.Reader, limit int64) (int64, error) {

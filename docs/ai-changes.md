@@ -1,3 +1,13 @@
+## 2026-11-17 - test 审查问题 1/2/4 与 5 编码检查修复
+- 范围：原开发分支 codex/fix-release-doc-issues-20261112；不处理 Windows 长路径、任务相对目录、锁问题或矩阵编码前缀；按用户后续要求提交推送主仓库当前开发分支，再基于最新 test 创建独立集成分支提交 MR。
+- 身份：device_runtime/device_profile 将已有匹配 Device 快照的模式恢复扩展到 Agent 运行时；保持目标校验、任务隔离、旧 OAuth 与 pending/expired 语义，修复恢复后的业务、状态与登出。
+- 下载：signed_download_guard 按请求固定代理选择，代理仅放行精确 host:port 并交由可信代理解析目标；直连继续校验并连接公网 IP，自定义 TLS 拨号保留原 DNS 检查。
+- 输出：debug_logging 登记 include-current-version；save_dialog 移除全局日志，由 contract_download_mcp_command 的命令日志策略记录弹窗边界，保持 JSON 错误可解析。
+- 路径：request_path 遇到字面百分号继续检查后续合法转义；只检查不重写 URL，保留正常编码 ID、正文与通用 api call 能力。
+- 回归：先红后绿覆盖三类 Agent 的 18 个恢复生命周期场景、身份边界、代理离线 DNS/精确端口/选择失败/TLS 兼容、布尔参数排列、弹窗 JSON 和嵌套编码。
+- 验证：全量 go test -race -cover -parallel 1 ./... 通过（CLI 84.2%），exhaustive lint 0 issues；Node 37 通过/3 跳过，Windows CLI 测试交叉编译通过，原生未运行。
+- 环境：通过临时 Go overlay 在 test 集成代码验证 profile/显式地址/恢复及本轮回归；未修改 test 工作区、生产环境约束、真实凭据或已安装 Skill。
+
 ## 2026-11-16 - 预审状态保存失败保留鉴权错误
 - 范围：在原问题修复开发分支处理，再 merge 更新主仓库 test MR !47；不直接修改 test、不包含代理下载问题。
 - 实现：review_pre_audit_workflow.go 的启动拒绝、候选任务与轮询失败保存分支使用 errors.Join 保留请求和保存错误，避免 401/403 被覆盖后输出旧恢复数据。

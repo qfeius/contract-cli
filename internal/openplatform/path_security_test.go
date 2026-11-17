@@ -22,6 +22,10 @@ func TestClientRejectsUnsafePathsBeforeCredentialsOrHTTP(t *testing.T) {
 		"/open-apis/x/%255citem", "/open-apis/x/%00item",
 		"/open-apis/x/item?other=route", "/open-apis/x/item#fragment",
 		"/open-apis/x/item;route", " /open-apis/x/item", "/open-apis/x/%0aitem",
+		"/open-apis/x/%25g%252f../item", "/open-apis/x/%25%255citem",
+		"/open-apis/x/%25g%25253fquery", "/open-apis/x/%25g%2523fragment",
+		"/open-apis/x/%25g%253bparam", "/open-apis/x/%25g%250aitem",
+		"/open-apis/x/%25g%2500item", "/open-apis/x/%25g%257fitem",
 	}
 	for _, stream := range []bool{false, true} {
 		for _, path := range paths {
@@ -88,6 +92,24 @@ func TestClientPreservesSafeEncodedIDsAndUnrestrictedData(t *testing.T) {
 	_, err := client.Do(context.Background(), openplatform.RequestContext{Identity: config.IdentityApp, BaseURL: "https://open.qfei.cn", AccessToken: "fixture"}, openplatform.Request{Method: http.MethodPost, Path: path, Body: []byte(body), Query: url.Values{"name": {"../研发/%"}}})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestClientPreservesLiteralPercentInEncodedIDs(t *testing.T) {
+	for _, id := range []string{"100%", "%g%20name", "name%2", "研发 A%g%20", "%not-hex%41"} {
+		t.Run(id, func(t *testing.T) {
+			path := "/open-apis/mdm/v1/vendors/" + url.PathEscape(id)
+			client := openplatform.New(openplatform.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path != "/open-apis/mdm/v1/vendors/"+id {
+					t.Fatalf("ID was rewritten: %s", r.URL.Path)
+				}
+				return jsonResponse(`{}`), nil
+			})}})
+			_, err := client.Do(context.Background(), openplatform.RequestContext{Identity: config.IdentityApp, BaseURL: "https://open.qfei.cn", AccessToken: "fixture"}, openplatform.Request{Method: http.MethodGet, Path: path})
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

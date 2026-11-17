@@ -40,11 +40,32 @@ func unsafePathSegment(segment string) bool {
 			return true
 		}
 		decoded, err := url.PathUnescape(segment)
-		if err != nil || decoded == segment {
+		if err != nil {
+			decoded = unescapeValidPathTokens(segment)
+		}
+		if decoded == segment {
 			return false
 		}
 		segment = decoded
 	}
+}
+
+// A literal percent must not hide a later, valid escape from nested checks.
+// This decoded value is only inspected, never used to rewrite the request URL.
+func unescapeValidPathTokens(segment string) string {
+	var decoded strings.Builder
+	decoded.Grow(len(segment))
+	for i := 0; i < len(segment); i++ {
+		if segment[i] == '%' && i+2 < len(segment) {
+			if value, err := url.PathUnescape(segment[i : i+3]); err == nil {
+				decoded.WriteString(value)
+				i += 2
+				continue
+			}
+		}
+		decoded.WriteByte(segment[i])
+	}
+	return decoded.String()
 }
 
 func prepareRequestTarget(rc RequestContext, request Request) (*url.URL, error) {

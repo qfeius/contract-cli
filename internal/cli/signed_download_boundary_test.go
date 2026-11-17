@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -107,5 +108,104 @@ func TestSignedDownloadKeepsExplicitProxyWithoutAllowingPrivateTargets(t *testin
 	address = ""
 	if _, err := client.Get("https://127.0.0.1/file"); err == nil || address != "" {
 		t.Fatal("proxy allowed a private file target")
+	}
+}
+
+func TestSignedDownloadProxyDoesNotResolveTargetLocally(t *testing.T) {
+	original := net.DefaultResolver
+	var lookups atomic.Int32
+	net.DefaultResolver = &net.Resolver{PreferGo: true, Dial: func(context.Context, string, string) (net.Conn, error) {
+		lookups.Add(1)
+		return nil, errors.New("local DNS unavailable")
+	}}
+	t.Cleanup(func() { net.DefaultResolver = original })
+	for _, proxyURL := range []string{"http://127.0.0.1:4567", "http://127.0.0.1", "https://127.0.0.1", "socks5://127.0.0.1"} {
+		t.Run(proxyURL, func(t *testing.T) {
+			proxy, err := url.Parse(proxyURL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			probe := errors.New("configured proxy reached")
+			address, selections := "", 0
+			base := &http.Transport{Proxy: func(*http.Request) (*url.URL, error) {
+				selections++
+				return proxy, nil
+			}, DialContext: func(_ context.Context, _ string, remote string) (net.Conn, error) {
+				address = remote
+				return nil, probe
+			}}
+			client := signedDownloadHTTPClient(&http.Client{Transport: base, Timeout: time.Second})
+			defer client.CloseIdleConnections()
+			_, err = client.Get("https://proxy-only.example.invalid/file")
+			if !errors.Is(err, probe) || address == "" || lookups.Load() != 0 || selections != 1 {
+				t.Fatalf("proxy dispatch failed: dial=%q DNS=%d selections=%d error=%v", address, lookups.Load(), selections, err)
+			}
+		})
+	}
+}
+
+func TestSignedDownloadProxyPermissionBindsExactSocket(t *testing.T) {
+	probe := errors.New("dial reached")
+	base := &http.Transport{DialContext: func(context.Context, string, string) (net.Conn, error) { return nil, probe }}
+	guard := publicSignedFileTransport(base).(publicFileTransport).next.(*http.Transport)
+	defer guard.CloseIdleConnections()
+	ctx := context.WithValue(context.Background(), configuredFileProxyKey{}, configuredFileProxy{address: "127.0.0.1:4567"})
+	for _, address := range []string{"127.0.0.1:4567", "127.0.0.1:4568", "127.0.0.2:4567"} {
+		_, err := guard.DialContext(ctx, "tcp", address)
+		if errors.Is(err, probe) != (address == "127.0.0.1:4567") {
+			t.Fatalf("proxy permission escaped exact socket: %s %v", address, err)
+		}
+	}
+}
+
+func TestSignedDownloadProxySelectionFailureAndBypass(t *testing.T) {
+	for _, selectionError := range []bool{false, true} {
+		probe := errors.New("proxy selection unavailable")
+		base := &http.Transport{Proxy: func(*http.Request) (*url.URL, error) {
+			if selectionError {
+				return nil, probe
+			}
+			return nil, nil
+		}, DialContext: func(_ context.Context, _ string, address string) (net.Conn, error) {
+			if selectionError || address != "8.8.8.8:443" {
+				t.Errorf("unexpected direct dial: %s", address)
+			}
+			return nil, errors.New("direct dial probe")
+		}}
+		client := signedDownloadHTTPClient(&http.Client{Transport: base})
+		_, err := client.Get("https://8.8.8.8/file")
+		client.CloseIdleConnections()
+		if err == nil || errors.Is(err, probe) != selectionError {
+			t.Fatalf("proxy selection error changed: %v", err)
+		}
+	}
+}
+
+func TestSignedDownloadDirectCustomTLSStillValidatesDNS(t *testing.T) {
+	original := net.DefaultResolver
+	net.DefaultResolver = &net.Resolver{PreferGo: true, Dial: func(context.Context, string, string) (net.Conn, error) {
+		return nil, errors.New("offline DNS")
+	}}
+	t.Cleanup(func() { net.DefaultResolver = original })
+	for _, legacy := range []bool{false, true} {
+		var calls atomic.Int32
+		base := &http.Transport{}
+		if legacy {
+			base.DialTLS = func(string, string) (net.Conn, error) { //nolint:staticcheck // Verify the legacy caller hook cannot lose its existing DNS guard.
+				calls.Add(1)
+				return nil, errors.New("unexpected custom TLS dial")
+			}
+		} else {
+			base.DialTLSContext = func(context.Context, string, string) (net.Conn, error) {
+				calls.Add(1)
+				return nil, errors.New("unexpected custom TLS dial")
+			}
+		}
+		client := signedDownloadHTTPClient(&http.Client{Transport: base})
+		_, err := client.Get("https://offline.example.invalid/file")
+		client.CloseIdleConnections()
+		if err == nil || calls.Load() != 0 {
+			t.Fatalf("custom TLS bypassed DNS validation: calls=%d error=%v", calls.Load(), err)
+		}
 	}
 }

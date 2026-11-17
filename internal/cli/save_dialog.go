@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/exec"
 	"runtime"
@@ -14,7 +13,6 @@ import (
 func defaultSaveFileDialog(ctx context.Context, suggestedName string) (string, error) {
 	command, err := buildSaveDialogCommand(runtime.GOOS, suggestedName, exec.LookPath)
 	if err != nil {
-		slog.Error("save dialog unavailable", "platform", runtime.GOOS)
 		return "", err
 	}
 	return runSaveDialogCommand(ctx, command)
@@ -51,21 +49,17 @@ func buildSaveDialogCommand(platform, suggestedName string, lookup func(string) 
 }
 
 func runSaveDialogCommand(ctx context.Context, command saveDialogCommand) (string, error) {
-	slog.Debug("save dialog started", "command", command.name)
 	if err := ctx.Err(); err != nil {
-		slog.Debug("save dialog cancelled before start")
 		return "", err
 	}
 	process := exec.CommandContext(ctx, command.name, command.args...)
 	process.Env = append(os.Environ(), command.env...)
 	output, err := process.Output()
 	if err != nil {
-		slog.Debug("save dialog stopped", "command", command.name, "error_type", fmt.Sprintf("%T", err))
 		return "", err
 	}
 	path := strings.TrimSpace(string(output))
 	if path == "" {
-		slog.Debug("save dialog returned no path", "command", command.name)
 		return "", fmt.Errorf("save dialog returned empty path")
 	}
 	return path, nil

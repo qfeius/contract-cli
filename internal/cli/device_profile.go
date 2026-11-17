@@ -30,7 +30,7 @@ func (a *App) loadDeviceAwareProfile(profileName string) (config.Profile, error)
 		if err := a.validateProductionDeviceCredentialIfAvailable(profile); err != nil {
 			return config.Profile{}, err
 		}
-		return a.restoreLocalDeviceIdentity(profile)
+		return a.restoreDeviceIdentity(profile)
 	}
 
 	normalizedProfileName := strings.TrimSpace(profileName)

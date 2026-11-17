@@ -114,14 +114,14 @@ func (a *App) reuseDeviceAuthorization(ctx context.Context, profile config.Profi
 	return true, a.writeDeviceAuthOutput(output)
 }
 
-// A fresh config directory can recover the already-authorized local profile;
+// A fresh config directory can recover the already-authorized scoped profile;
 // explicit legacy Authorization Code profiles keep their chosen mode.
-func (a *App) restoreLocalDeviceIdentity(profile config.Profile) (config.Profile, error) {
+func (a *App) restoreDeviceIdentity(profile config.Profile) (config.Profile, error) {
 	if profile.Identities.User.AuthMode != "" || profile.Identities.User.Token != nil {
 		return profile, nil
 	}
 	runtimeContext, err := a.resolveDeviceRuntime()
-	if err != nil || runtimeContext.Kind != credential.DeviceRuntimeLocalUser {
+	if err != nil {
 		return profile, nil
 	}
 	store, err := a.deviceCredentials()
@@ -151,6 +151,6 @@ func (a *App) restoreLocalDeviceIdentity(profile config.Profile) (config.Profile
 	if err := a.store.SaveProfile(profile); err != nil {
 		return config.Profile{}, err
 	}
-	a.logger.Info("restored local Device identity", "profile", profile.Name)
+	a.logger.Info("restored Device identity", "profile", profile.Name, "runtime", runtimeContext.Kind)
 	return profile, nil
 }

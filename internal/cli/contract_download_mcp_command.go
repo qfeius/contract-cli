@@ -111,14 +111,19 @@ func (a *App) resolveContractDownloadPath(ctx context.Context, fileID string, ou
 	}
 	outputPath := strings.TrimSpace(outputFile)
 	if outputPath == "" {
+		logger := a.commandTraceLogger(ctx)
+		logger.Debug("save dialog started")
 		selectedPath, err := a.saveFileDialog(ctx, fileID)
 		if err != nil {
+			logger.Error("save dialog failed", "error_type", fmt.Sprintf("%T", err))
 			return "", fmt.Errorf("select save path failed; pass --output-file <path> in non-GUI environments: %w", err)
 		}
 		outputPath = strings.TrimSpace(selectedPath)
 		if outputPath == "" {
+			logger.Error("save dialog returned no path")
 			return "", fmt.Errorf("select save path failed; pass --output-file <path> in non-GUI environments")
 		}
+		logger.Debug("save dialog completed")
 	}
 	if _, err := os.Lstat(outputPath); err == nil && !force {
 		return "", fmt.Errorf("download output file %q already exists; pass --force to overwrite", outputPath)
