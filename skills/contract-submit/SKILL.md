@@ -2,13 +2,15 @@
 name: contract-submit
 description: "查询当前授权范围内的草稿和协商合同，支持列表、筛选及准确定位；为单份或批量合同提供原生系统页面的提交审批、重提或协商处理链接，用户在页面填写并操作，按需回查状态。不在对话或自建页面填表，不代为保存、完成协商或启动审批。"
 metadata:
-  version: "0.9.0-rc.3"
-  delivery-status: "OFFLINE_VERIFIED_CANDIDATE"
+  version: "0.9.0-rc.4"
+  delivery-status: "DOCUMENT_PROTOCOL_VERIFIED_CANDIDATE"
 ---
 
 # 合同送审助手
 
 本 Skill 只采用链接办理。用户给出合同名称、编号、链接、已上传合同清单或筛选条件，Agent 在当前权限内定位真实对象并核实状态，在合同名称后展示合适的系统页面文字链接。单份和批量使用同一方式；用户在原页面填写、保存、完成所需前置并点击提交。字段样式、联动、必填、自定义字段、模板正文同步及业务校验由原页面执行。
+
+Agent 按本文和 references 中的命令、参数及结果规则，直接调用当前已有 CLI。业务说明使用 Markdown，agents/openai.yaml 仅提供宿主展示元数据；本包不提供、不生成或执行自定义脚本，不将程序藏入文档或临时文件，也不要求新增运行框架。请求体、查询记录属于数据，按[运行上下文](references/runtime.md)处理。
 
 ## 1. 固定对象、环境和查询范围
 
