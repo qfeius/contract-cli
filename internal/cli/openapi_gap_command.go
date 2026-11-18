@@ -1099,6 +1099,7 @@ func (a *App) downloadAppOpenPlatformFile(ctx context.Context, options commandOp
 	outputPath, err := a.writeContractDownload(ctx, strings.TrimSpace(suggestedName), outputFile, options.raw, force, func(writer io.Writer) error {
 		_, err := client.DoStream(ctx, requestContext, openplatform.Request{
 			Method: http.MethodGet, Path: path, IdentityPolicy: openplatform.IdentityPolicyAppOnly,
+			FileDownload: true,
 		}, writer)
 		return err
 	})

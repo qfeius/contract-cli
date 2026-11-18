@@ -124,6 +124,38 @@ func TestSkillsJSONListSuccess(t *testing.T) {
 	}
 }
 
+func TestSkillsStatusSnapshot(t *testing.T) {
+	app, out, diagnostic, state := skillsJSONFixture(t)
+	args := []string{"skills", "status", "--output", "json"}
+	app.lookupEnv = func(string) (string, bool) { return "", false }
+	if app.shouldAutoCheckUpdate(args) {
+		t.Fatal("read-only status must not refresh the update cache")
+	}
+	if code := app.Execute(context.Background(), args); code != 0 {
+		t.Fatalf("exit %d: %s", code, diagnostic)
+	}
+	got := skillsJSONDecode(t, out.Bytes())
+	if !got.OK || got.Data.CLI.Version != build.Current().Version || got.Data.CLI.Executable == "" || got.Data.Registration.Locations == nil || len(got.Data.Registration.Locations) != 0 {
+		t.Fatalf("unexpected empty snapshot: %s", out)
+	}
+	registry := filepath.Join(state, "skill-locations.json")
+	if _, err := os.Stat(registry); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("status created registry: %v", err)
+	}
+	if err := os.WriteFile(registry, []byte("bad"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if code := app.Execute(context.Background(), args); code == 0 || out.Len() != 0 {
+		t.Fatalf("corrupt registry reported as success: %s / %s", out, diagnostic)
+	}
+	lines := bytes.Split(bytes.TrimSpace(diagnostic.Bytes()), []byte("\n"))
+	last := skillsJSONDecode(t, lines[len(lines)-1])
+	if last.OK || last.Error.Type != "command" {
+		t.Fatalf("missing command error: %s", diagnostic)
+	}
+}
+
 func TestSkillsJSONInstallSuccessRegistrationAndResources(t *testing.T) {
 	for _, mode := range []string{"complete", "selected", "skip"} {
 		t.Run(mode, func(t *testing.T) {

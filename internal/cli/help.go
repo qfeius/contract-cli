@@ -210,6 +210,7 @@ func helpRegistry() map[string]helpTopic {
 		{"contract-cli auth use [flags]", "切换默认业务身份"},
 		{"contract-cli version", "查看版本信息"},
 		{"contract-cli skills list", "列出内置 Agent skills"},
+		{"contract-cli skills status", "查看 Skill 同步登记记录"},
 		{"contract-cli skills install [flags]", "安装内置 Agent skills"},
 		{"contract-cli update check [flags]", "检查 npm 远端版本"},
 		{"contract-cli environment inspect [flags]", "探测当前 CLI 的宿主客户端环境"},
@@ -492,6 +493,7 @@ func addSkillsHelp(registry map[string]helpTopic) {
 		Usage: []string{"contract-cli skills <subcommand> [flags]"},
 		Commands: []helpCommand{
 			{"contract-cli skills list", "列出内置 Agent skills"},
+			{"contract-cli skills status", "查看 Skill 同步登记记录"},
 			{"contract-cli skills install [flags]", "安装内置 Agent skills"},
 		},
 		Notes: []string{
@@ -499,6 +501,10 @@ func addSkillsHelp(registry map[string]helpTopic) {
 			"首次安装或未识别的历史位置：未找到可自动同步的位置时，先提示用户确认真实目录，或提供经过核实的推荐目录；确认前不自动安装所有候选。",
 			"历史通用安装入口仍可使用，但不能用 GitHub 默认分支的 Skill 代替当前 CLI 配套版本同步。",
 		},
+	}
+	registry["skills status"] = helpTopic{
+		Name: "skills status", Summary: "只读查询当前 CLI 和各目录最近一次登记的版本、状态；不验证客户端是否加载。",
+		Usage: []string{"contract-cli skills status [--output json]"},
 	}
 	registry["skills list"] = helpTopic{
 		Name:    "skills list",

@@ -34,12 +34,14 @@ function assertPath(parts) {
   if (parts.some(part => !part || part === '.' || part === '..')) throw new Error('invalid snapshot path');
 }
 
-function rewriteVersion(content, version) {
+function rewriteVersion(content, version, legacyIndented = false) {
   const lines = content.toString().split('\n');
   if (lines[0].trim() !== '---') return content;
   for (let i = 1; i < lines.length; i++) {
     if (lines[i].trim() === '---') { lines.splice(i, 0, `version: ${version}`); return Buffer.from(lines.join('\n')); }
-    if (/^version[ \t]*:/.test(lines[i])) { lines[i] = `version: ${version}`; return Buffer.from(lines.join('\n')); }
+    // 1.9.5-7 matched the key after trimming indentation, then wrote it at column zero.
+    const line = legacyIndented ? lines[i].trim() : lines[i];
+    if (/^version[ \t]*:/.test(line)) { lines[i] = `version: ${version}`; return Buffer.from(lines.join('\n')); }
   }
   return content;
 }
@@ -54,7 +56,7 @@ function extendCatalog(existing, releases) {
       hashes.add(treeFingerprint(tree));
       for (const stamp of [version, 'v' + version]) {
         const stamped = new Map(tree);
-        stamped.set('SKILL.md', rewriteVersion(tree.get('SKILL.md'), stamp));
+        stamped.set('SKILL.md', rewriteVersion(tree.get('SKILL.md'), stamp, /^1\.9\.[567]$/.test(version)));
         hashes.add(treeFingerprint(stamped));
       }
       result[skill] = [...hashes].sort();

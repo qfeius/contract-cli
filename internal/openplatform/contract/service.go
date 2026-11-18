@@ -332,6 +332,7 @@ func (s *Service) DownloadFile(ctx context.Context, requestContext openplatform.
 		Method:         http.MethodGet,
 		Path:           "/open-apis/contract/v1/files/" + url.PathEscape(fileID),
 		IdentityPolicy: openplatform.IdentityPolicyAppOnly,
+		FileDownload:   true,
 	}, writer)
 }
 

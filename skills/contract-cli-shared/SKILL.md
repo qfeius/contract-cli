@@ -146,6 +146,7 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 - 先完成用户当前请求，不要中断当前任务。
 - 在最终回复中告知用户当前版本和最新版本。
 - 建议执行 `_notice.update.command` 中的命令进行升级。
+- 升级后从当前 Agent 环境运行 `contract-cli skills status --output json`，核对 CLI 路径、版本和实际读取的用户 Skill 目录。目录未登记、状态非 success 或版本不一致时，不要报告该客户端已同步。登记成功不是会话已加载的证明。
 - 不要静默忽略 `_notice.update`；即使当前任务与升级无关，也应补充提示。
 
 ## 实现来源

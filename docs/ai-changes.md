@@ -1,3 +1,26 @@
+## 2026-11-18 - App 模板列表业务失败返回退出码 1
+- 范围：仅 contract template list 的 App 身份（含默认 App）启用已有合同响应校验；参数、User 身份和通用 api call 不变。
+- 行为：HTTP 200 下业务失败仍输出后端响应，CLI 退出 1；正常分页与空列表退出 0。MCP 继续使用原错误文本及输出行为。
+- 回归：contract_template_list_exit_test.go 覆盖 110405、显式失败、默认 App/raw、正常与空结果，另对照 User 和 api call 的透传行为。
+
+## 2026-11-18 - npm 升级后核对 Agent Skill 与历史目录迁移
+- 升级：internal/update 的实时及缓存通知都生成带 --foreground-scripts 的 npm 命令，使 Agent 可以读取安装器逐目录结果。
+- 状态：新增 skills status --output json，离线读取 CLI 路径、版本和各目录最近的登记结果；文件损坏返回失败，不冒充空登记。
+- 提示：安装摘要、帮助、README 和共享 Skill 提醒核对当前 Agent 的真实用户目录；未证明客户端已加载，不推断豆包目录。
+- 迁移：scripts/skill-history.js 复现 1.9.5～1.9.7 安装器写入缩进版本字段的字节结果；仅补 review 与 review-rule 的官方指纹，仍严格校验整目录。
+- 回归：tests/release/skill-sync-install.test.js 用正式 npm 包覆盖 1.9.5 原地、1.9.6/7 无登记迁移、用户修改拒绝接管、已登记多目录更新及 JSON 查询。
+- 复跑：将三个正式 npm pack 压缩包放入 CONTRACT_CLI_OFFICIAL_TGZ_DIR 指定的目录，执行 npm run test:skill-sync-install；安装与升级使用临时 prefix/配置/Skill 目录。
+
+## 2026-11-18 - app 下载业务失败不落盘、不覆盖旧文件
+- 范围：原开发分支修复合同文件、协商文件、主数据附件三类 app 下载；不修改通用 api call、user 签名下载或环境配置。
+- 实现：openplatform/file_download.go 与三类入口显式启用 Request.FileDownload，流式写入前识别 HTTP 200 的业务错误 JSON；保留 trace，仅输出业务码，不记录服务端正文。
+- 文件：失败时非零退出、stdout 不输出错误文件，沿用临时文件提交和清理，--force 也保留原文件；不新增重试或鉴权刷新。
+- 兼容：有有效 Content-Disposition 文件名的附件继续流式传输，包括内容与错误响应相同的 JSON；非文件 JSON 沿用 API 响应读取上限，普通 JSON 内容原样保留。
+- 回归：先红后绿覆盖三类命令的新文件/覆盖/raw、JSON MIME/缺失头/BOM、合法 JSON 附件及编码文件名；另测通用流透传、长度、读取失败、取消和有界读取。
+- 夹具：同步旧下载错误透传断言；基线也复现预审短时限用例受真实宿主探测影响，仅给测试夹具注入固定探测结果，时限/断言/业务代码不变，两项各连续 10 次通过。
+- 验证：专项及全量 Go race/coverage 通过（CLI 覆盖率 84.2%），exhaustive lint 0 issues；Windows CLI/openplatform 测试交叉编译通过，原生未运行。
+- 交付：仅本地修改，未提交推送、未同步 test、未重打安装包，不使用真实凭据或调用业务接口。
+
 ## 2026-11-17 - test 审查问题 1/2/4 与 5 编码检查修复
 - 范围：原开发分支 codex/fix-release-doc-issues-20261112；不处理 Windows 长路径、任务相对目录、锁问题或矩阵编码前缀；按用户后续要求提交推送主仓库当前开发分支，再基于最新 test 创建独立集成分支提交 MR。
 - 身份：device_runtime/device_profile 将已有匹配 Device 快照的模式恢复扩展到 Agent 运行时；保持目标校验、任务隔离、旧 OAuth 与 pending/expired 语义，修复恢复后的业务、状态与登出。

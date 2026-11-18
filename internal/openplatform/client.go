@@ -75,6 +75,8 @@ type Request struct {
 	Raw            bool
 	IdentityPolicy IdentityPolicy
 	OperationKind  OperationKind
+	// FileDownload enables business-error validation for file endpoints only.
+	FileDownload bool
 }
 
 type Response struct {
@@ -474,7 +476,16 @@ func (c *Client) doStreamOnce(ctx context.Context, method, fullURL string, heade
 		return response, &HTTPStatusError{StatusCode: resp.StatusCode, ErrorType: responseErrorType(body), Body: body}
 	}
 
-	written, err := io.Copy(writer, resp.Body)
+	var source io.Reader = resp.Body
+	if request.FileDownload && method != http.MethodHead {
+		c.logger.Debug("validate file download response", "trace_id", requestTrace.TraceID)
+		source, err = c.fileDownloadBody(resp)
+		if err != nil {
+			c.logger.Error("file download response rejected", "status_code", resp.StatusCode, "trace_id", requestTrace.TraceID)
+			return response, err
+		}
+	}
+	written, err := io.Copy(writer, source)
 	if err != nil {
 		c.logger.Error("copy open platform stream response failed", "method", method, "path", request.Path, "error", err.Error(), "trace_id", requestTrace.TraceID)
 		return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("copy open platform response: %w", err))

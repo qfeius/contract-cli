@@ -666,6 +666,9 @@ func (a *App) runContractTemplate(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
+		if requestContext.Identity == config.IdentityApp {
+			return a.renderCheckedContractResponse("contract template list", options, response)
+		}
 		return a.renderOpenPlatformResponse(options, response)
 	case "get":
 		parsed, err := parseArgs(args[1:], structuredValueFlags(), commonBoolFlags())

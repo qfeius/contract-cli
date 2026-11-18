@@ -301,7 +301,7 @@ func TestUpdateCheckJSONReportsAvailableBetaVersion(t *testing.T) {
 	if output["current_version"] != "0.1.0-beta.1" || output["latest_version"] != "0.1.0-beta.2" {
 		t.Fatalf("unexpected update output: %+v", output)
 	}
-	if output["command"] != "npm install -g @qfeius/contract-cli@beta --registry https://registry.npmjs.org" {
+	if output["command"] != "npm install -g @qfeius/contract-cli@beta --registry https://registry.npmjs.org --foreground-scripts" {
 		t.Fatalf("missing install command: %+v", output)
 	}
 	if _, ok := output["_notice"]; ok {

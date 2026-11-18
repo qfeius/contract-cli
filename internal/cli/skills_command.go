@@ -38,6 +38,8 @@ func (a *App) runSkills(ctx context.Context, args []string) error {
 	}
 
 	switch args[0] {
+	case "status":
+		return a.runSkillsStatus(args[1:])
 	case "list":
 		return a.runSkillsList(args[1:])
 	case "install":
@@ -46,6 +48,32 @@ func (a *App) runSkills(ctx context.Context, args []string) error {
 		return fmt.Errorf("unknown skills subcommand %q", args[0])
 	}
 }
+
+func (a *App) runSkillsStatus(args []string) error {
+	flags := flag.NewFlagSet("skills status", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	format := registerJSONOutputFlag(flags)
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if _, err := parseJSONOutputFormat(*format); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("skills status does not accept arguments")
+	}
+	snapshot := readSkillRegistrationSnapshot(a.skillSyncService(), false)
+	if snapshot.ReadError != "" {
+		return fmt.Errorf("read Skill registration: %s", snapshot.ReadError)
+	}
+	return a.renderJSONCommandResult(map[string]any{
+		"cli":          currentSkillCLIIdentity(),
+		"registration": map[string]any{"path": snapshot.Path, "locations": snapshot.Locations},
+		"guidance":     skillStatusGuidance,
+	})
+}
+
+const skillStatusGuidance = "请核对当前 Agent 实际读取的用户 Skill 目录：运行 contract-cli skills status --output json，对照 CLI 路径、版本和该目录最近的登记状态。目录不明、缺失、版本不符或状态非 success 时，不要报告已同步；登记不代表当前会话已加载。"
 
 func (a *App) runSkillsList(args []string) error {
 	flags := flag.NewFlagSet("skills list", flag.ContinueOnError)
@@ -211,6 +239,7 @@ func (a *App) runSkillSyncOnInstall(args []string) error {
 	}
 	service := a.skillSyncService()
 	a.printSkillCLIIdentity()
+	defer func() { _, _ = fmt.Fprintln(a.stdout, skillStatusGuidance) }()
 	defer a.printRegisteredSkillLocations(service)
 	skills, err := loadBundledSkills(a.skillsFS)
 	if err != nil {

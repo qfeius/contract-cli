@@ -26,3 +26,12 @@ test('catalog adopts only exact official snapshots and preserves older trusted e
   assert.ok(!result.auth.includes(treeFingerprint(edited)));
   assert.equal(extendCatalog(result, [{ version: '1.9.13', files }]).auth.length, result.auth.length);
 });
+
+test('1.9.5 through 1.9.7 installed review metadata matches the old installer bytes', () => {
+  const source = Buffer.from('---\nmetadata:\n  version: old\n---\nbody\n');
+  const files = new Map([['review/SKILL.md', source]]);
+  for (const version of ['1.9.5', '1.9.6', '1.9.7']) {
+    const expected = Buffer.from('---\nmetadata:\nversion: ' + version + '\n---\nbody\n');
+    assert.ok(extendCatalog({}, [{ version, files }]).review.includes(treeFingerprint(new Map([['SKILL.md', expected]]))));
+  }
+});
