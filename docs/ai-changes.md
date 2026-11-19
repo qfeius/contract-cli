@@ -1,3 +1,7 @@
+## 2026-11-19：取消 CLI Open Web 请求体固定上限
+- 删除 `internal/cli/api_command.go` 的 1 MiB 本地拦截；不变更服务端、身份及路径检查。
+- 补充大 JSON 文件原样发送的回归测试，同步命令帮助、使用文档及 API Call Skill 说明。
+
 ## 2026-11-11 — 两个审批 Skill 提交 GitHub 生产 release
 - 来源：基于 github/release@75cad7b 建集成分支，merge 已验收的 contract-approval-efficiency@bd74a29、contract-cli-approval-actions@d9bd52a，保留历史。
 - 范围：引入两个 Skill 共 15 个运行文件；仅适配生产环境说明并补齐效率 Skill 的 Agent policy，不修改业务参考流程。

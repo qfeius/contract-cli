@@ -511,7 +511,7 @@ contract-cli api call \
 - `--as user`：只支持 user；省略时也固定使用 user，不跟随 profile 的 app 默认身份
 - `--query key=value`：追加 query，可重复；CLI 不会自动补 `user_id_type`
 - `--header 'Key: Value'`：追加普通业务 header，可重复
-- `--input-file` / `--data`：请求体二选一，最大 1 MiB
+- `--input-file` / `--data`：请求体二选一；CLI 不设固定大小上限，大请求建议使用文件，仍受服务端限制
 - `--output json|yaml|table` / `--raw`：结构化或原始输出
 
 安全边界：
