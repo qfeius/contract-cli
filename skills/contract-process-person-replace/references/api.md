@@ -82,7 +82,7 @@ GET `/open-web/web/clm/employee/getEmployeesByIds`：`employeeIds` 是从已获�
 
 POST `/open-web/web/clm/form/editFormDefinition`，无 query；JSON 仅 `formId`，其值为本批已确认源定义的内部 ID 字符串。本业务不发送 reminderRuleId。
 
-成功 `data` 是完整可编辑定义 VO。未发布对象可能原地规范化并保存；已发布对象可能新建后继，也可能返回既有未发布后继。必须重新取实际返回 `formId`，核其未发布状态、类型、节点映射和当前配置；后续 update/publish/回读都用该目标，不能继续拿旧源 ID 保存。
+成功 `data` 是完整可编辑定义 VO。未发布对象可能原地规范化并保存；已发布对象可能新建后继，也可能返回既有未发布后继。必须重新取实际返回 `formId`，核其未发布状态、类型、节点映射和当前配置。后续保存、按需发布和回读都用该目标。返回未发布草稿只说明写入对象，执行方式继续沿用编辑前核实的源版本状态和用户选择。
 
 edit 会规范化模块/适用流程；新副本保留图、节点配置及版本组，部分 extraInfo 按原系统规则重建。不能对陌生草稿、额外业务差异或未核实的继承行为作“完全无变化”保证。异常按主流程停在实际阶段，不自动清理。
 
@@ -121,13 +121,13 @@ POST `/open-web/web/clm/form/updateFormDefinition`，无 query；body 以 edit �
 
 `layoutInfo/extraInfo/assignApprovalEmployeeId` 在 DTO 中虽有声明，当前实现未消费，不能靠发送它们承诺保留一切服务器状态。本业务不以整个 VO 透传替代上表，也不丢弃原快照；edit 已发生的系统变动与未知字段保留/复核边界照主流程处理。不能假定修改 `extraInfo` 能覆盖 AI 配置，实际使用上述 `aiSummaryConfig` 原生字段。
 
-发送前确认 JSON 转义、真实 ID、集合、布尔/整数类型及实际 UTF-8 字节符合运行方式。保存成功要求 envelope 成功且 `data=true`，之后 GET 实际目标并按节点不变量及其他保存字段做业务回读。响应成功但回读失败时保留“保存响应成功，回读待核实”，不能继续发布。
+发送前确认 JSON 转义、真实 ID、集合、布尔/整数类型及实际 UTF-8 字节符合运行方式。保存成功要求 envelope 成功且 `data=true`，之后 GET 实际目标并按节点不变量及其他保存字段做业务回读。仅保存分支回读通过即完成，响应成功但回读失败时保留“保存响应成功，回读待核实”。
 
 当前实现可能在保存后的模块回读中，将属性 `attributeOrder` 显示为数组内连续序号或 null；原生模型保存的是 `attributeIndex`，差异检查按原数组补序号且可能提前结束。仅当本轮已核实这是同一实现行为，并逐项确认模块、字段、组的完整数组顺序及其余所有配置均一致时，才能将仅这一序号表示差异记录为已解释的系统规范化。不能一律忽略排序字段、对数组重排后比较或跳过其他模块差异。发布会合并当前字段元数据，须重新比较发布后的完整配置，不提前承诺这些序号一定恢复。
 
 ## 发布与结果
 
-POST `/open-web/web/clm/form/publishFormDefinition`，仅 query `formId=实际编辑目标ID`，无 JSON body。发布前再次 GET 对照已保存且已核验快照，漂移则停止该对象。
+只有[保存与发布选择](interactions.md#保存与发布选择)确定为保存后发布，并且保存回读通过，才调用 POST `/open-web/web/clm/form/publishFormDefinition`。仅 query `formId=实际编辑目标ID`，无 JSON body。发布前再次 GET 对照已保存且已核验快照，漂移则停止该对象。
 
 成功 envelope 后还需 `data.result=true`。data 可能包含 `changed/multiLangExist/errorNodeIds/errorFields/previousId`，不含发布 taskId。`changed=false` 或 result=true 都不能代替实际目标已发布的回查；方法名含 Async 也不能据此制造轮询任务接口。
 
