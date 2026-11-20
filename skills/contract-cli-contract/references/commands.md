@@ -16,6 +16,8 @@ contract-cli contract summary generate --profile contract --as user --file ./SMO
 contract-cli contract create --profile contract --input-file contract-create.json
 contract-cli contract create --profile contract --data '{"title":"示例合同"}'
 contract-cli contract create --profile contract --as app --data '{"contract_name":"示例合同","create_user_id":"ou_xxx"}'
+contract-cli contract project search --profile contract --as user --keyword 采购
+contract-cli contract project search --profile contract --as app --page-index 0 --page-size 20
 contract-cli contract field update --profile contract --as app --input-file field-update.json
 contract-cli contract sign switch-to-paper --profile contract --as app --business-id 7023646046559404327 --business-type-code 0
 contract-cli contract sign-url get 7023646046559404327 --profile contract --as app
@@ -80,6 +82,7 @@ contract-cli contract enum list --profile contract --type contract_status
 - `contract template fields` 尚未实现
 - `contract create` 不自动帮你补模板信息；当前就是透传请求体
 - `contract create --as app` 时，`create_user_id` 需要你自己写进 JSON body
+- `contract project search` 支持 user/app。使用与创建相同的身份，将 `data.content[].project_id` 填入 `project_changes.add_project_ids`。页码从 0 开始，每页 1 到 200 条。
 - `contract template list --as app` 按生产文档通常需要 `category_number`、`user_id`、`user_id_type`，但 CLI 目前只负责透传，不做本地必填校验
 - `contract template get --as app` 按生产文档通常需要 `user_id`、`user_id_type`，但 CLI 目前只负责透传，不做本地必填校验
 - `contract template instantiate --as app` 按生产文档会用到 query `user_id_type` 和 body `create_user_id`，但 CLI 目前只负责透传，不做本地必填校验

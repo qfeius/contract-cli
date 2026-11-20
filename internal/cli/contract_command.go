@@ -40,6 +40,8 @@ func (a *App) runContract(ctx context.Context, args []string) error {
 		return a.runContractText(ctx, args[1:])
 	case "create":
 		return a.runContractCreate(ctx, args[1:])
+	case "project":
+		return a.runContractProject(ctx, args[1:])
 	case "submit":
 		return a.runContractSubmit(ctx, args[1:])
 	case "resubmit":

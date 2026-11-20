@@ -180,6 +180,28 @@ func (s *Service) Create(ctx context.Context, requestContext openplatform.Reques
 	}
 }
 
+func (s *Service) SearchProjects(ctx context.Context, requestContext openplatform.RequestContext, body []byte) (openplatform.Response, error) {
+	var path string
+	var policy openplatform.IdentityPolicy
+	switch requestContext.Identity {
+	case config.IdentityUser:
+		path = "/open-apis/contract/v1/mcp/projects/search"
+		policy = openplatform.IdentityPolicyUserOnly
+	case config.IdentityApp:
+		path = "/open-apis/contract/v1/projects/search"
+		policy = openplatform.IdentityPolicyAppOnly
+	default:
+		return openplatform.Response{}, fmt.Errorf("unsupported identity %q for contract project search", requestContext.Identity)
+	}
+	return s.client.Do(ctx, requestContext, openplatform.Request{
+		Method:         http.MethodPost,
+		Path:           path,
+		Body:           body,
+		IdentityPolicy: policy,
+		OperationKind:  openplatform.OperationRead,
+	})
+}
+
 func (s *Service) ListTemplates(ctx context.Context, requestContext openplatform.RequestContext, input ListTemplatesInput) (openplatform.Response, error) {
 	query := url.Values{}
 	if strings.TrimSpace(input.CategoryNumber) != "" {

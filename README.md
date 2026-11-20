@@ -673,6 +673,7 @@ Agent 查询并汇总出口 IP；分页未完成时说明清单不完整。该 s
 | `contract search-v2` | app-only | 按合同编号做 ES 模糊或分号批量搜索 |
 | `contract summary query/generate` | user-only | 按合同编号或完整名称查询摘要，或上传单个 doc/docx/pdf 文件生成独立摘要 |
 | `contract create/sync-user-groups/text` | user/app | app 创建时请求体需要自行包含 `create_user_id` |
+| `contract project search` | user/app | 使用与创建合同相同的身份查询可选项目，返回的 `project_id` 填入 `project_changes.add_project_ids` |
 | `contract upload-file/category list` | user/app | 创建合同前可查询分类树，取当前身份可用末级分类的 `abbreviation` |
 | `contract template list/get/instantiate` | user/app | 模板实例命令只接收请求体，不接模板 ID 位置参数 |
 | `contract enum list` | user-only | 当前不支持 app |

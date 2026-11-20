@@ -89,6 +89,32 @@ data.contract_category_resource_vo.category_resources[].children[].abbreviation
 - 是否选择了非末级分类
 - 该分类是否属于当前租户，并且对创建命令使用的身份可见
 
+### 1.2 填写所属项目
+
+创建普通合同（业务类型 `0`）或补充协议（业务类型 `2`）时，可以在创建请求体根对象中加入 `project_changes`。使用与创建命令相同的 `--profile` 和 `--as` 查询可选项目，把选中项目的 `project_id` 原样填入 `add_project_ids`。
+
+```bash
+contract-cli contract project search --profile contract --as user --keyword 采购
+contract-cli contract project search --profile contract --as app --keyword 采购
+```
+
+从查询响应的 `data.content[].project_id` 取值。
+
+```json
+{
+  "project_changes": {
+    "add_project_ids": ["9007199254740993"]
+  }
+}
+```
+
+将这段字段合并到本次创建的完整 JSON，并用实际查询返回的项目 ID 替换示例值。数组支持多个项目，ID 使用字符串。文件和模板场景均在最终创建合同时填写此字段。
+
+- 应用身份（`--as app`）可选择该应用获准访问的租户项目，创建请求还需提供 `create_user_id`。
+- 用户身份（`--as user`）可选择当前用户有查看权限的项目。
+- 选中流程需启用所属项目，且字段在当前表单可见、可填写。字段不可填写时，含项目 ID 的请求会被拒绝。
+- 省略 `project_changes` 或提供空增量表示此次创建没有新增项目。草稿可以先留空，流程规定必填时，提交或直接归档需要有效的项目关联。
+
 ## 2. 场景配方
 
 ### 2.1 文件正文创建
@@ -349,9 +375,10 @@ data.contract_category_resource_vo.category_resources[].children[].abbreviation
 - 收款计划与收款对象：
   - `$.collection_plan_list[]`
   - `$.collection_plan_list[].collection_counter_party`
-- 预算、关联合同、字段权限：
+- 预算、关联合同、所属项目、字段权限：
   - `$.contract_budget_list[]`
   - `$.relation_list[]`
+  - `$.project_changes`
   - `$.attribute_permission_list[]`
 
 ## 4. 枚举值导航
