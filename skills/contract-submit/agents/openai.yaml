@@ -1,4 +1,4 @@
 interface:
-  display_name: "合同送审助手"
-  short_description: "定位草稿与协商合同，提供原生页面办理链接并按需回查状态"
-  default_prompt: "使用 $contract-submit 定位当前授权范围内的合同，单份与批量均给出正确的系统页面办理链接；不在聊天或自建页面填表，不自动保存或送审。"
+  display_name: "完成协商+提交审批"
+  short_description: "保存上传合同的表单字段并回查，按确认办理协商和送审"
+  default_prompt: "使用 $contract-submit 定位我的文件上传类合同并核对表单。按我指定的字段保存后回查。如果我要求送审，让我确认完整表单和实际送审动作后再办理。"

@@ -1,134 +1,44 @@
-# 列出、筛选及定位合同
+# 本人草稿、协商与送审对象定位
 
-用户可以说“列出我的草稿”“找编号为…的草稿”“找名称含…的软件采购草稿”。Agent 按本文复用现有 CLI，取得当前授权范围内的结果，核对后交给[系统页面入口](native-page-handoff.md)。不要求用户知道内部 ID，也不替用户新建合同。
+按[会话与调用上下文](runtime.md)固定 USER、环境、租户和员工。优先复用本轮准确已获权的合同、本人草稿或协商事实，避免重新扫描。只有上传文件 ID 时不能代替合同 ID。编号可按完整字符串核对，名称筛选可按原文字包含，用户要求全名时逐字匹配。多个条件采用 AND；字段取不到则显示待核实，不忽略条件。未知或重名请用户从真实候选中选择。
 
-每次查询先按[运行上下文](runtime.md)核实并固定 CLI、profile、实际环境、USER 身份、租户与员工；扫描结束后再次核对同一上下文。中途身份或端点变化时，不输出混合结果，作废本轮结果并重新只读查询。以下 `<本次已核 profile>`、文件路径、页码及业务头的值均由 Agent 根据本轮事实替换，不让用户提供技术参数。请求体和原响应的私有保存、JSON 转义、长 ID 保真及错误处理统一遵循运行上下文。
-
-若本轮上传流程已产生精确合同 ID，直接复用该清单，不重新全量搜索；上传文件 ID 不能代替实际合同 ID。本人草稿不覆盖所有协商，某一查询无匹配不能说明合同在系统中不存在。只有获得真实对象与办理资格的足够依据后，才生成适用的页面入口。
-
-## USER 本人草稿
-
-当前页面接口按授权上下文的 tenant + owner 查询，读取范围是**当前用户本人负责的编辑中草稿**。不传用户、租户或负责人覆盖条件，不取全租户后再过滤，也不将此范围称为“全部可见合同”或“全部可提交业务”。
-
-### 调用配方
-
-单合同草稿第一页：
+## 本人编辑中草稿
 
 ```sh
-contract-cli api call --channel web --profile '<本次已核 profile>' --as user --raw POST /open-web/web/clm/es/search/contractList --data '{"pageIndex":0,"pageSize":20,"searchTabCode":2,"conditionUnits":[],"filterUnits":[]}'
+contract-cli api call --channel web --profile '<已核 profile>' --as user --raw POST /open-web/web/clm/es/search/contractList --data '{"pageIndex":0,"pageSize":20,"searchTabCode":2,"conditionUnits":[],"filterUnits":[]}'
 ```
 
-合同组/模板批量草稿使用相同命令，将请求体 `searchTabCode` 改为 `3`，`pageIndex` 仍从 `0` 开始。两类分别扫描；每次只调用当前需要的一页，再按返回结果决定下一步。后续页只递增 `pageIndex`，保持该 tab、页大小及两个空条件数组不变。此页面分支不应用普通查询条件，用户筛选必须在当前 USER 已获权结果中执行，不向这两个数组填入猜测条件。
+`searchTabCode=2` 是本 USER 单合同草稿。用户要求组清单时才另扫 `3`，父组与单合同分开记录。每次只增加 `pageIndex`；`pageSize` 默认 20，合法 1–30。此路径按上下文过滤本人 owner；不传租户或用户覆盖，两个条件数组保持空，本轮筛选在已获权摘要中进行。
 
-默认 `pageSize=20`，允许 1–30。每个 tab 默认最多读取 100 页，这是本次查询的资源预算，不是服务端已证上限。用户要求更多结果时，可在同一授权范围增加预算重新扫描；本次预算保持 1–10000 页，且仍受实际分页能力及并发变化限制。默认每次展示 20 条，可在 1–100 条内调整，展示偏移从 0 起；展示分页与查询是否完整分开，不以只展示一部分为由省略实际查询范围说明。
+业务成功需 `code=200`、`success=true`，`data.content[]` 各项恰有一条 `searchContractListItems[]` 摘要。保留 `contractId`、`contractNumber`、`contractName`、`sourceTypeCode`、`sourceTypeName`、`templateId`、`contractCategoryId`、`assemblyId`、`cooperationId`、`businessTypeCode` 等实际值。父组或组成员不能走独立业务路径；`assemblyId` 缺失不能推广为所有来源都是独立合同。
 
-### 每页校验与续页
+以 `data.filteredTotalElements` 作当前 tab 的已核总数，不能用 `totalElements` 替代。在页号、页大小、总数、实际可达窗口及去重都一致时，累计达到总数才宣称该 tab 已查全。缺计数、重复、变化、短页/空页但未达总数、失败或预算耗尽时保留已验证候选并标记结果不完整。仅选择已唯一匹配且可核实的目标；用户可以从部分结果中明确选一份继续。
 
-按下面顺序核查，完整保留页级结果和失败原因：
+## 我的协商
 
-1. HTTP 成功还不足够；业务响应必须为 `success=true`、`code=200`，否则记录本 tab 请求失败，不将响应当作空列表。业务成功后记录一次成功响应页数。
-2. `data.content` 必须是数组。读取当前 tab 的 `filteredTotalElements`：正常值应是非负整数，跨页不变化；缺失或 null 按“总数缺失”处理，格式非法或负数按“总数异常”处理。总数异常或前后变化时停止本 tab，不接收本页候选。`totalElements` 可能统计其他 tab，不能替代当前 tab 总数。
-3. 按[服务端分页窗口](#服务端分页窗口)核查实际 `paginationCapability`。返回 `pageIndex` 时须与请求一致；当前页条数不得超过请求页大小。分页元数据异常或前后变化时停止当前 tab。
-4. 每个 `content` 元素必须恰好包含一条 `searchContractListItems` 摘要。`contractId` 须为正整数 ID，保留原响应中的完整十进制文本。tab 2 中 `assemblyId` 实际返回非 null 且非零值时不能当作独立草稿；tab 3 中 `assemblyId` 实际返回非 null 值时必须与父对象 `contractId` 一致。空字符串、非法 ID 不能当作 null 或零。不合规的一页整页不接收，保留此前有效页。
-5. tab 2 以 `contract:<完整 ID>` 标识单合同，tab 3 以 `assembly:<完整 ID>` 标识父对象。接收本页前先检查页内重复、与之前页重复以及非空整页重复；有重复或位移迹象时整页不接收，停止当前 tab 并保留不完整，不把重复条目计为新合同。父对象 ID 不作单合同 ID 使用。
-6. 总数有效时，接收本页后的累计去重条数不得超过总数；也先通过此检查，才一次接收本页全部候选。达到总数才完成该 tab；尚未达到总数就出现短页或空页时，保留已验证候选、说明结果不完整并停止该 tab。总数缺失时保留通过前述校验的本页候选，记录缺失发生的页码和该页条数，然后停止当前 tab，不猜测下一页。
-7. 本 tab 请求失败、总数缺失或其他校验异常，不阻止另一个 tab 按既定授权范围完成查询。普通请求失败分别报告；若是认证失效或身份变化，则先按运行上下文处理，不能换身份继续混合扫描。
-
-在 Agent 的本次工作记录中，两个 tab 分别记录业务成功响应页数、已通过页级校验的页数、最后已核总数（从未取得则未知）、已接收去重候选数、实际分页能力及完成与否。后续页缺总数时，先前总数不能证明本次已查全。某页条数为 0 只说明该页为空，不能据此推断另一 tab 或整个范围为空。
-
-### 摘要与筛选
-
-每个候选保留完整对象 ID、所属 tab、来源是本人草稿列表，以及实际返回的 `contractNumber`、`contractName`、`businessTypeCode`、`businessTypeName`、`sourceTypeCode`、`sourceTypeName`、`templateId`、`contractCategoryId`、`contractCategoryName`、`contractCategoryDisplayName`、`createTime`、`assemblyId`、`cooperationId`、`editModeEnabled`。保留缺失、null、false 与零的区别，不补造默认值。
-
-| 用户条件 | 实际来源与匹配方式 |
-| --- | --- |
-| 合同或合同组编号 | `contractNumber`，完整字符串精确匹配 |
-| 名称包含文字 | `contractName`，按原文字包含匹配，区分大小写；用户要求名称完全一致时，再逐字核对，不把包含匹配当作唯一定位 |
-| 单合同、合同组、模板批量 | tab 2 为单合同；tab 3 的 `businessTypeCode=10` 为合同组、`17` 为模板批量；未知值保留未知类型 |
-| 业务类型 | `businessTypeCode`；根据真实返回的类型名称与代码映射，不能让用户填写代码或猜代码 |
-| 发起来源 | `sourceTypeCode`，根据真实来源名称与代码映射 |
-| 来源模板 | 已获权解析的 `templateId`；模板同名先澄清，模板名称不等于草稿名称 |
-| 合同分类 | 已获权解析的 `contractCategoryId` |
-| 本轮已有精确对象 | `contractId` 原文本，并保留单合同/父对象语义 |
-
-多个条件采用 AND。条件值须明确且有效；不静默裁剪、改写合同编号或名称。任何一项已有明确不匹配即可排除候选；没有明确不匹配、但缺少某项筛选字段时，列为“待核实”，不能当作不匹配。金额、日期、对方主体、负责人和自定义字段等未适配条件必须说明当前无法精确筛选；可展示已知候选供页面核对，不丢弃这些条件后宣称匹配，也不调用有副作用的完整详情补字段。
-
-### 空结果与不完整结果的说明
-
-总数缺失、变化或异常、页码异常、重复、短页、读取失败、扫描预算/分页窗口达到上限，以及存在未解析的筛选字段，均将本次查询记为 `INCOMPLETE`：只知道已观察结果，不知道完整匹配总数。不得据此报告“没有”“只有一份”，也不能自动选中仅返回的一条候选。用户可以从已知候选中明确选择；后续仍要核对精确对象、状态和权限。
-
-| 已取得的事实 | 对用户的说明及下一步 |
-| --- | --- |
-| 对应 tab 本次已校验页面均为空、存在总数缺失，且没有其他请求失败 | “本次单合同草稿查询未返回记录，但系统没有提供完整计数，暂时不能确认是否已查全。”查询组草稿时替换范围名称；可建议提供合同编号继续定位，或到系统对应草稿页核对 |
-| 已有符合条件的候选，但总数缺失 | “本次已找到 X 份符合条件的草稿；系统未提供完整计数，结果可能不完整。”X 为已观察匹配数；展示部分时再说明展示数量，不把 X 叫作全部匹配数 |
-| 已返回合同但条件未匹配，或筛选字段缺失 | 分别说明“在已取得结果中暂未找到符合条件的草稿，查询尚未完整”或“部分合同缺少筛选所需信息，暂不能确认是否匹配”；保留待核实项，不说接口未返回合同 |
-| 另一 tab 成功，本 tab 请求失败或校验异常 | 分别解释各范围的可靠结果和失败原因，不把失败解释成空列表，也不将整个查询统一称为失败 |
-| 两个 tab 均完整，筛选已解析且无匹配 | “在本次本人负责的编辑中草稿范围内，没有找到符合条件的合同。”该结论不覆盖协商、退回或撤回申请等其他场景 |
-
-只有两个 tab 均完成、所有筛选已解析，才能将实际匹配数视为本次范围的完整匹配数。此时一条匹配可作为唯一候选；已有明确授权对象时继续核对，模糊请求仍需用户确认；多条匹配展示候选，不挑首条或最近一条。无匹配时，用户所指若是协商、退回或撤回申请，按[场景协议](scenario-actions.md)继续定位，不要求用户换一个草稿。
-
-展示页为空还可能是展示偏移、筛选无匹配或待核实，不能仅凭展示条目为空判断无合同。每个候选生成链接前都须获取新鲜且安全的状态与入口依据；列表不等于可编辑/可提交。输出格式统一见[主流程](../SKILL.md#3-在聊天中交付链接)。
-
-## USER 本人协商定位
-
-输入已知来自协商，或本人草稿未找到用户指定合同且请求范围允许时，继续查 MY 协商。已有精确底层合同 ID 时优先安全的对象读取，不重复按名称扫描。MY 是当前账号“我的协商”范围，可能含历史参与关联，不等于当前轮有效参与者或全部可见协商；无匹配不能说明全系统不存在。
-
-### 调用配方
-
-Agent 使用可用文件工具在本次私有目录写入请求 JSON。无关键词时文件内容为：
-
-```json
-{"keyword":"","searchTabEnumCode":1,"cooperationDisplayTabCode":0}
-```
-
-需要关键词时，只把 `keyword` 的值替换为用户原编号或名称条件，按 JSON 规则转义引号、反斜杠等；不要将用户文字拼接进 shell 命令。关键词最多 500 个字符，不含控制字符；输入有歧义先澄清，不截断后冒充原条件。用已核的文件绝对路径调用第一页：
+当前请求来自协商，或草稿未命中且用户范围包括协商时，读取 MY 范围。请求体固定 `searchTabEnumCode=1`、`cooperationDisplayTabCode=0`，`keyword` 可为空或用户原关键词。以 JSON 文件承载动态文本。每页保持同一认证、时区和条件：
 
 ```sh
-contract-cli api call --channel web --profile '<本次已核 profile>' --as user --raw POST /open-web/web/clm/cooperation/searchV2 --query 'pageIndex=0' --query 'pageSize=20' --header 'Timezone-Offset: <本次业务时区偏移分钟>' --input-file '<Agent创建的私有请求JSON绝对路径>'
+contract-cli api call --channel web --profile '<已核 profile>' --as user --raw POST /open-web/web/clm/cooperation/searchV2 --query 'pageIndex=0' --query 'pageSize=20' --header 'Timezone-Offset: <业务时区偏移分钟>' --input-file '<本任务私有请求 JSON 文件>'
 ```
 
-`Timezone-Offset` 是本次业务时区的分钟偏移，须为 -840 至 840 的整数；中国时区为 `-480`，不能把它写成所有租户固定值。`searchTabEnumCode=1` 固定 MY，`cooperationDisplayTabCode=0` 为该范围全部展示，不改为 ALL，不传调用人/租户覆盖值。请求体文件是数据，不是可执行内容。
+时区为 `-840` 至 `840` 的实值，中国标准时区为 `-480`；页从 `0` 递增，页大小默认 20、允许 1–100。检查 Web 成功、`data.content[]`、`data.totalElements` 以及页索引和分页窗口，按实际 `cooperationId` 原文去重。短页可能来自失效数据，不能单凭短页宣称已读完；读取到总数对应的末页且实收等于该总数才算完整。MY 最多读取前 10000 偏移窗口内可达整页，响应提供更小窗口时遵守实际窗口。默认两类查询各 100 页为本任务预算，可在受权范围内按实际需要增加；达到窗口或预算均说明不完整。
 
-默认 `pageSize=20`，允许 1–100；默认扫描预算 100 页，按用户需求调整时保持 1–10000 页且遵守实际窗口。下一页只递增 query 中的 `pageIndex`，其他条件、请求体、时区头和上下文保持一致。是否还能读取下一页由返回总数与下述分页窗口共同决定；默认每次展示 20 条，可在 1–100 条内调整，展示偏移从 0 起，不把展示截断当作已查全。
+存在 `paginationCapability` 时核对 `strategy=OFFSET_WINDOW`、请求页大小与返回一致、`reachablePageCount=floor(offsetWindow/pageSize)`。草稿 `unit=CONTRACT_GROUP`，协商 `unit=COOPERATION`；未知或变化时停止该范围续页。名称关键词检索结果仍要逐项保护精确匹配。
 
-### 每页校验、筛选与续页
+正文存于底层合同。保留 `cooperationId`、`cooperationRoundId`、`businessId`、`businessTypeCode`、`cooperationStatusCode`、`cooperationStageCode`、`isCooperationUser`、`todoTaskId`、合同名和编号。先证明确实为本系统合同，再把 `businessId` 接到 `contractId`。当前轮成员由同轮 `isCooperationUser=true` 支持；原创建者、历史参与者、能查看协商均不能推成当前可提交。
 
-1. 业务响应须为 `success=true`、`code=200`，`data.content` 为数组，`totalElements` 为非负整数且跨页不变化。缺总数、总数非法、响应失败或字段结构异常时停止续页，保留此前已校验结果并记为 `INCOMPLETE`，不能解释为空。
-2. 返回 `pageIndex/pageSize` 时须与请求一致；当前页条数不得大于请求页大小。分页元数据按[服务端分页窗口](#服务端分页窗口)校验。无效或跨页变化时停止，不能采用更宽窗口继续查询。
-3. `content` 每条直接提供协商摘要，`cooperationId` 必须是正整数 ID。检查同页、跨页协商 ID 重复、非空整页重复和接收本页后的累计去重条数不超过总数；整页核对完再一次接收。出现重复、位移或超出总数时本页不接收，停止续页，保留此前可靠结果。
-4. 总数为 0 且首个有效页为空时完成该范围。其他情况在原总数对应的页范围内继续读取。MY 短页或空页可能来自关联对象失效，不能仅因此提前宣布结束：只要预算和窗口允许，继续下一页，直到本页覆盖到总数应在的末页。此时实际去重条数等于总数才算读取完整，否则说明实收不足。总数变化、解析失败、预算耗尽或窗口限制均保留不完整。
-5. 每个候选保留实际返回的 `cooperationId`、`cooperationRoundId`、`cooperationTypeCode`、`cooperationName`、`contractNumber`、`businessId`、`businessTypeCode`、`cooperationStatusCode`、`cooperationStageCode`、`cooperationRoundSourceCode`、`isCooperationUser`、`cooperationUserTypeCode`、`cooperationUserStatusCode`、`createEmployeeVO`、`todoTaskId`、`createTime`、`updateTime`、`confirmProcessStatusCode`、`cooperationFinalizeStatusCode`。缺失字段保持缺失，不据枚举补出角色或状态。
-6. 关键词是服务器检索条件，不保证精确命中。Agent 在已获权结果中再次按下面条件以 AND 核对；未知字段列为待核实，不用不完整字段排除候选。需要补字段时只复用[窄查询协议](query-protocol.md)允许的安全获权详情，无安全读取则保留待核实。
+## 当前状态、角色和任务补证
 
-| 用户条件 | 实际来源与匹配方式 |
+按需选用现有窄接口，继续沿用当前 profile、USER 与 Web 通道。除严格详情外，读取 `code=200`、`success=true` 的 `data`；失败保留具体对象、步骤和原因。
+
+| 所需事实 | 已核查询和结果衔接 |
 | --- | --- |
-| 合同编号 | `contractNumber` 完整字符串精确匹配 |
-| 协商名称 | `cooperationName` 按原文字包含匹配、区分大小写；要求全名时逐字核对 |
-| 已有协商 ID | `cooperationId` 完整原文本 |
-| 已有底层业务 ID | `businessId` 完整原文本，先核业务对象类型 |
-| 业务类型 | `businessTypeCode`，按真实类型名称/代码映射 |
-| 协商状态 | `cooperationStatusCode` 实际状态，不能拿列表筛选枚举替代 |
+| 当前轮、文件与底层业务 | GET `/open-web/web/clm-openapi/v1/mcp/cooperations/<已核协商ID>`，header `X-MCP-Response-Profile: clm-web-status-v2.0`，无 query/body。使用 `code=0` 且 `success` 非 false 的 `data`。核对 `cooperation_id`、`cooperation_round_id`、`business_id/business_type_code`、`cooperation_status_code` 及 `cooperation_stage_code`。使用 `current_round_files[].cooperation_file_id`，不误用 `file_id`。 |
+| 需要当前轮创建者的完整身份 | 严格详情 → GET `/open-web/web/clm/cooperation/checkCooperation`，query `cooperationId=<协商ID>`、`cooperationFileId=<当前轮有效文件ID>` → 再读严格详情。同对象、轮次、状态、文件版本稳定且 `cooperationCheckStatusCode=2` 对应协商完成，才用 `data.createEmployeeVO.tenantId/employeeId` 比较当前 USER。检查码 `1` 是文件变化，不采用旧结论。 |
+| 有协商合同的当前基础状态 | GET `/open-web/web/clm/contract/briefInfo`，query `contractId=<真实合同ID>`。比对 `tenantId`、`contractId`、`cooperationId`、`contractStatusCode` 与 `ownerEmployeeId`；实际 `processInstanceId` 可用于流程衔接。`data=null` 不能断言无合同，`groupId` 是版本分组，不作父合同组 ID。 |
+| 有真实 `todoTaskId` 的本人待办 | GET `/open-web/web/clm/task/info`，仅 query `taskInstanceId=<实际任务ID>`，不传 `noticeId`。`data.processTaskInstanceId`、`businessId/businessTypeCode` 必须同对象，`taskTypeCode=0` 只支持「有当前本人待办」；仍需实际重提资格和协议。 |
 
-其他条件不能静默忽略。需要的技术 ID/代码由 Agent 从真实结果解析，不让用户填写。全部实际匹配数只有在读取完整、筛选字段均已核实时才能确定；否则保留已知匹配、待核实候选和失败原因，不宣布唯一或不存在。完整精确编号仍匹配多对象时，让用户选择。
+草稿列表、窄详情和权限候选只供定位与前置核对。预检满足的对象交给[表单协议](form.md)补核实际正文、对象类型、授权和对应页面。协商完成的首次提交核当前合同 owner、轮次身份和实际提交动作。有真实当前任务的重提另按[提交协议](submit.md)确认。
 
-先核底层对象族，外部协商工具的 `businessId` 不能当作 CLM 合同 ID。只有 `isCooperationUser=true` 才是该返回时刻当前轮有效成员的事实；默认 `cooperationUserTypeCode` 不能替代它，`createEmployeeVO` 为原始创建者，也不是本轮创建者的证明。MY 可能包含跨租户对象，继续读取仍须通过具体对象权限检查。
-
-查询结束按运行上下文再次核验身份及端点。当前轮、编号、名称、底层对象或关联关系不一致时刷新，不混用旧轮角色。列表角色、可读字段或当前轮成员事实均不单独证明提交资格。本节发现/列表阶段不调用有副作用的 `cooperation/info`；用户明确要求具体合同的完成态提交入口时，定位后转[查询协议第8节](query-protocol.md#8-协商完成后的页面配置查询)核实其受限条件。条件不满足时保留已核查看入口，不编造可完成协商或可提交条件。
-
-工作记录保留检索条件、实际扫描页数、报告总数、实收去重数量、待核实字段、失败原因及最后核实时间。当前轮、本人任务和角色补证按窄查询协议衔接；已知精确底层 ID 或任务时不重新按名称挑选。
-
-## 服务端分页窗口
-
-两个列表都兼容 `paginationCapability` 缺失或 null 的旧响应，但缺失不等于零条。存在时须核对下列事实，并保持跨页一致：
-
-- `strategy=OFFSET_WINDOW`；草稿 `unit=CONTRACT_GROUP`，协商 `unit=COOPERATION`。
-- `offsetWindow`、`pageSize`、`reachablePageCount` 为正整数，计算结果须可精确表示；元数据页大小等于实际请求页大小。
-- `reachablePageCount` 等于 `offsetWindow ÷ pageSize` 向下取整；请求页码必须小于这个可达页数。
-
-MY 协商还遵守已核实的 10000 偏移窗口，即使旧响应没有元数据也不越界。实际可达页数取“元数据可达页数”和“10000 ÷ 本次页大小向下取整”的较小值；没有元数据则用后一项。草稿没有该元数据时，不套用协商 10000 窗口，也不假造续页 token，只受真实总数、页级校验和本次扫描预算约束。
-
-可达条数是可达页数乘页大小，不能替代实际总数。达到窗口或预算而仍有未读项时，明确“结果不完整”；如果原条件可进一步缩小，应让用户选择缩小条件或在已授权范围调整预算，不自行放宽/丢弃条件，也不把窗口内唯一当作全局唯一。源码中存在字段不证明当前部署返回它，按每次原响应核实。
-
-## APP 入口
-
-本人草稿和 MY 协商需要 USER 身份，不能在 APP 上下文伪造当前用户。只有 APP 上下文时，可复用本轮已有、当前应用获权且对象关联明确的只读结果或真实页面入口，核实环境后提供查看链接，并注明浏览器个人办理权限仍由页面判断。本包不执行未适配为纯读的 APP 合同完整详情或通用搜索；没有可靠对象/入口时说明当前 APP 范围无法继续定位，不切 USER、不索取 Token，也不安排原系统改造。APP 结果不能命名为“你的全部草稿”。
+协商中按[协商完成前置](cooperation-submit.md#1-核适用动作和清洁方式)核本对象实际模式、当前轮、对应动作和服务端清洁生效值。状态码、参与者身份、列表确认码和类型配置都不足以独立证明资格。待发起、取消、回滚或被拒绝时说明相应前置。不从普通送审意图推导发起、跳过、单独完成或恢复协商的授权。查询结束核验上下文。已进入审批或提交中的对象先回查，避免重复。
