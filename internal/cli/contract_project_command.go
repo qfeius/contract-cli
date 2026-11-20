@@ -9,6 +9,7 @@ import (
 	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/openplatform"
 	contractsvc "cn.qfei/contract-cli/internal/openplatform/contract"
+	"cn.qfei/contract-cli/internal/output"
 )
 
 func (a *App) runContractProject(ctx context.Context, args []string) (err error) {
@@ -73,6 +74,11 @@ func (a *App) runContractProject(ctx context.Context, args []string) (err error)
 	response, err := contractsvc.NewService(client).SearchProjects(ctx, requestContext, body)
 	if err != nil {
 		return err
+	}
+	if !options.raw && options.output == output.FormatTable && validateContractMCPResponse(response.Body) == nil {
+		if rendered, tableErr := writeContractProjectTable(a.stdout, response.Body); rendered {
+			return tableErr
+		}
 	}
 	if requestContext.Identity == config.IdentityUser {
 		return a.renderContractMCPResponse(options, response)

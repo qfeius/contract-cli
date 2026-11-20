@@ -786,11 +786,13 @@ func addContractHelp(registry map[string]helpTopic) {
 		},
 		Examples: []string{
 			"contract-cli contract project search --profile contract --as user --keyword 采购",
+			"contract-cli contract project search --profile contract --as user --keyword 采购 --output table",
 			"contract-cli contract project search --profile contract --as app --page-size 20",
 		},
 		Notes: []string{
 			"user 按当前登录用户的项目查看权限查询，app 按应用授权的租户范围查询。",
-			"将返回的 data.content[].project_id 填入创建合同的 project_changes.add_project_ids。",
+			"表格逐项展示项目名称、状态、所属部门、项目周期和项目 ID，并显示当前页与项目总数。",
+			"将选中的项目 ID（JSON 中为 data.content[].project_id）填入创建合同的 project_changes.add_project_ids。",
 		},
 	}
 	registry["contract upload-file"] = helpTopic{

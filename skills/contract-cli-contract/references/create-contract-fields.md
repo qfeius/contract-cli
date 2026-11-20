@@ -94,11 +94,11 @@ data.contract_category_resource_vo.category_resources[].children[].abbreviation
 创建普通合同（业务类型 `0`）或补充协议（业务类型 `2`）时，可以在创建请求体根对象中加入 `project_changes`。使用与创建命令相同的 `--profile` 和 `--as` 查询可选项目，把选中项目的 `project_id` 原样填入 `add_project_ids`。
 
 ```bash
-contract-cli contract project search --profile contract --as user --keyword 采购
-contract-cli contract project search --profile contract --as app --keyword 采购
+contract-cli contract project search --profile contract --as user --keyword 采购 --output table
+contract-cli contract project search --profile contract --as app --keyword 采购 --output table
 ```
 
-从查询响应的 `data.content[].project_id` 取值。
+终端表格每行展示项目名称、状态、所属部门、项目周期和项目 ID。由 Agent 协助填写时，读取默认 JSON，将名称、状态和用于区分的部门、周期列给用户，可用序号确认一个或多个项目，再从对应的 `data.content[].project_id` 取值。
 
 ```json
 {

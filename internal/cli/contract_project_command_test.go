@@ -62,6 +62,87 @@ func TestContractProjectSearchUsesMatchingIdentity(t *testing.T) {
 	}
 }
 
+func TestContractProjectSearchTable(t *testing.T) {
+	t.Parallel()
+	const response = `{"code":0,"data":{"page_index":1,"page_size":2,"total_elements":5,"content":[
+		{"project_id":"9007199254740993","basic_info":{"name":"园区\t采购项目","start_date":"2026-01-15","end_date":"2026-10-30"},
+		"department":{"display_name":"基建采购部"},"field_values":[{"field_key":"custom_tags","display_value":["采购","基建"]},{"field_key":"project_status","display_value":"进行中"}]},
+		{"project_id":"9007199254740994","basic_info":{"name":"算力扩容项目"},"department":null,
+		"field_values":[{"field_key":"custom_status","display_value":"其他状态"}]}
+	]}}`
+	for _, identity := range []config.IdentityKind{config.IdentityApp, config.IdentityUser} {
+		t.Run(string(identity), func(t *testing.T) {
+			stdout, err := runProjectSearchWithResponse(t, identity, response, "--output", "table")
+			if err != nil {
+				t.Fatal(err)
+			}
+			lines := strings.Split(strings.TrimSpace(stdout), "\n")
+			for index, line := range lines {
+				lines[index] = strings.Join(strings.Fields(line), " ")
+			}
+			want := []string{
+				"项目名称 状态 所属部门 项目周期 项目 ID",
+				"园区 采购项目 进行中 基建采购部 2026-01-15 至 2026-10-30 9007199254740993",
+				"算力扩容项目 — — — 9007199254740994",
+				"第 2 页，共 5 个项目",
+			}
+			if !reflect.DeepEqual(lines, want) {
+				t.Fatalf("table lines = %q, want %q", lines, want)
+			}
+		})
+	}
+}
+
+func TestContractProjectSearchTableBoundaries(t *testing.T) {
+	t.Parallel()
+	const empty = `{"code":0,"data":{"page_index":0,"page_size":10,"total_elements":0,"content":[]}}`
+	const rejected = `{"code":123,"success":false,"msg":"permission denied","data":null}`
+	for _, tc := range []struct {
+		name     string
+		identity config.IdentityKind
+		response string
+		args     []string
+		want     string
+		wantErr  string
+	}{
+		{"empty", config.IdentityUser, empty, []string{"--output", "table"}, "本页无项目\n第 1 页，共 0 个项目\n", ""},
+		{"app business error", config.IdentityApp, rejected, []string{"--output", "table"}, "permission denied", ""},
+		{"user business error", config.IdentityUser, rejected, []string{"--output", "table"}, "permission denied", "business code 123"},
+		{"default JSON", config.IdentityApp, empty, nil, `"content": []`, ""},
+		{"YAML", config.IdentityUser, empty, []string{"--output", "yaml"}, "total_elements: 0", ""},
+		{"raw table request", config.IdentityUser, empty, []string{"--output", "table", "--raw"}, empty, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stdout, err := runProjectSearchWithResponse(t, tc.identity, tc.response, tc.args...)
+			if (tc.wantErr == "" && err != nil) || (tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr))) {
+				t.Fatalf("error = %v, want %q", err, tc.wantErr)
+			}
+			if !strings.Contains(stdout, tc.want) {
+				t.Fatalf("output = %q, want %q", stdout, tc.want)
+			}
+			if tc.name == "raw table request" && stdout != tc.response {
+				t.Fatalf("raw output = %q, want %q", stdout, tc.response)
+			}
+		})
+	}
+}
+
+func runProjectSearchWithResponse(t *testing.T, identity config.IdentityKind, response string, flags ...string) (string, error) {
+	t.Helper()
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(uploadProfile(config.IdentityApp), true); err != nil {
+		t.Fatal(err)
+	}
+	stdout := &bytes.Buffer{}
+	app := cli.New(cli.Options{Stdout: stdout, Stderr: &bytes.Buffer{}, Store: store,
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return jsonResponse(response), nil
+		})}})
+	args := append([]string{"contract", "project", "search", "--profile", "contract", "--as", string(identity)}, flags...)
+	err := app.Run(context.Background(), args)
+	return stdout.String(), err
+}
+
 func TestContractProjectSearchRejectsInvalidOptionsBeforeHTTP(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
