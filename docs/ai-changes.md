@@ -1,7 +1,14 @@
+## 2026-11-23 - 将 Open Web 大请求体修复合入生产 release PR
+- 来源为原开发分支 `codex/remove-open-web-body-limit` 的 375c86b；仅移除 CLI 大小检查，不放宽生产环境、路径、身份或服务端限制。
+
 ## 2026-11-23 - 到期查询与扫描修复集成至生产 release
 - 从 release 合入两个原开发分支，保留仅生产环境约束，不合入环境交付分支。
 - 到期 Skill 以业务时区选日历日期、以 GMT+8 生成平台检索边界；示例使用明确的生产 profile。
 - 补单日边界协议检查及 23 个官方 Skill 的安装、升级登记回归。
+
+## 2026-11-19：取消 CLI Open Web 请求体固定上限
+- 删除 `internal/cli/api_command.go` 的 1 MiB 本地拦截；不变更服务端、身份及路径检查。
+- 补充大 JSON 文件原样发送的回归测试，同步命令帮助、使用文档及 API Call Skill 说明。
 
 ## 2026-11-18 - App 模板列表业务失败返回退出码 1
 - 范围：仅 contract template list 的 App 身份（含默认 App）启用已有合同响应校验；参数、User 身份和通用 api call 不变。

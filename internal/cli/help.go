@@ -304,7 +304,7 @@ func addAPIHelp(registry map[string]helpTopic) {
 		},
 		Notes: []string{
 			"method、path、query/body 和响应映射由业务 Skill 提供；CLI 不发现接口，也不负责编排业务语义。",
-			"只接受相对 /open-web/web/ 路径；请求体最大 1 MiB。",
+			"只接受相对 /open-web/web/ 路径；大请求体建议使用 --input-file。",
 			"Authorization、Cookie、租户/用户和网关可信身份头由 CLI 与网关管理，不能通过 --header 传入。",
 			"HTTP 2xx 不等于业务成功；调用方仍需按业务 Skill 的响应映射判断。",
 		},
