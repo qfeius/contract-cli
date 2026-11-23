@@ -35,6 +35,8 @@ jobs:
       - name: Test and verify installation
         run: make release-check
       - name: Install pinned linter
+        env:
+          GOTOOLCHAIN: auto
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
       - name: Lint
         run: golangci-lint run --enable=exhaustive ./...

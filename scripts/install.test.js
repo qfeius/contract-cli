@@ -13,6 +13,12 @@ const { cliInstallSummary } = require("./install.js");
 const { extractArchive } = require("./install.js");
 const { execFileSync } = require("node:child_process");
 
+function zipFixture(sourceDir, archive) {
+  execFileSync("powershell", ["-NoProfile", "-NonInteractive", "-Command",
+    "$ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::CreateFromDirectory($env:ZIP_SOURCE, $env:ZIP_TARGET)"],
+    { env: { ...process.env, ZIP_SOURCE: sourceDir, ZIP_TARGET: archive }, stdio: "pipe" });
+}
+
 test("Windows archive paths remain child environment data, never PowerShell source", () => {
   const calls = [];
   const run = (...args) => calls.push(args);
@@ -41,11 +47,12 @@ test("macOS and Linux keep their existing tar extraction arguments", () => {
 test("Windows PowerShell extracts a real archive under quoted Unicode paths", { skip: process.platform !== "win32" }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "contract-cli-O'Neil-合同 "));
   try {
-    const source = path.join(root, "source [1].txt");
+    const sourceDir = fs.mkdtempSync(path.join(root, "input-"));
+    const source = path.join(sourceDir, "source [1].txt");
     const archive = path.join(root, "archive [1].zip");
     const target = path.join(root, "destination '测试’");
     fs.writeFileSync(source, "archive bytes");
-    execFileSync("tar.exe", ["-a", "-cf", archive, "-C", root, path.basename(source)]);
+    zipFixture(sourceDir, archive);
     extractArchive(archive, target);
     assert.equal(fs.readFileSync(path.join(target, path.basename(source)), "utf8"), "archive bytes");
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
@@ -62,12 +69,13 @@ test("Windows npm installs the bundled CLI under quoted Unicode paths", { skip: 
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"));
     fs.writeFileSync(path.join(packageDir, "package.json"), JSON.stringify(pkg));
     for (const file of ["install.js", "run.js", "setup.js"]) fs.copyFileSync(path.join(__dirname, file), path.join(scripts, file));
-    const binary = path.join(root, "contract-cli.exe");
+    const binaryDir = fs.mkdtempSync(path.join(root, "binary-"));
+    const binary = path.join(binaryDir, "contract-cli.exe");
     execFileSync("go", ["build", "-o", binary, "./cmd/contract-cli"], { cwd: path.join(__dirname, ".."), stdio: "pipe", timeout: 180000 });
     const arch = { x64: "amd64", arm64: "arm64" }[process.arch];
     const archiveName = `contract-cli-${pkg.version}-windows-${arch}.zip`;
     const archive = path.join(assets, archiveName);
-    execFileSync("tar.exe", ["-a", "-cf", archive, "-C", root, path.basename(binary)]);
+    zipFixture(binaryDir, archive);
     const digest = crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex");
     fs.writeFileSync(path.join(assets, "checksums.txt"), `${digest}  ${archiveName}\n`);
     const npm = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
