@@ -1,5 +1,10 @@
 version: 2
 
+release:
+  prerelease: auto
+  mode: keep-existing
+  replace_existing_artifacts: false
+
 builds:
   - id: contract-cli
     main: ./cmd/contract-cli
@@ -20,7 +25,7 @@ archives:
   - name_template: "contract-cli-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     files:
       - README.md
       - CHANGELOG.md

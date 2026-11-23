@@ -19,7 +19,7 @@ test("only GitHub Actions publishes; local build and test packaging remain", () 
   }
 });
 
-test("release workflow gates publication and reuses a single asset build", () => {
+test("release workflow gates tag publication through GoReleaser before npm", () => {
   const workflow = read(".github/workflows/release.yml");
   assert.match(workflow, /pull_request:/);
   assert.match(workflow, /macos-latest/);
@@ -36,7 +36,25 @@ test("release workflow gates publication and reuses a single asset build", () =>
   assert.match(workflow, /steps\.metadata\.outputs\.channel/);
   assert.equal((workflow.match(/make release-assets/g) || []).length, 1);
   assert.equal((workflow.match(/npm publish/g) || []).length, 1);
-  assert.doesNotMatch(workflow, /goreleaser|--clobber|contains\(github\.ref_name, 'beta'\)/);
+  assert.doesNotMatch(workflow, /gh release create|--clobber|contains\(github\.ref_name, 'beta'\)/);
+  assert.match(workflow, /push:\s+branches: \[release\]\s+tags: \["v\*"\]/);
+  assert.match(workflow, /if: github\.event_name == 'push' && github\.ref_type == 'tag' && github\.repository == 'qfeius\/contract-cli'/);
+  assert.match(workflow, /uses: goreleaser\/goreleaser-action@v6\s+with:\s+version: v2\.20\.1\s+args: release --clean\s+env:\s+GITHUB_TOKEN: \$\{\{ github\.token \}\}/);
+  const release = workflow.indexOf("uses: goreleaser/goreleaser-action@v6");
+  const prepare = workflow.indexOf("- name: Prepare package");
+  const build = workflow.indexOf("make release-assets");
+  const publish = workflow.indexOf("run: npm publish");
+  assert.ok(release < prepare, "GoReleaser must run before package.json is made dirty");
+  assert.ok(prepare < build && build < publish, "npm must use tag metadata and built assets");
+  assert.doesNotMatch(workflow, /continue-on-error: true|if: always\(\)/);
+});
+
+test("GoReleaser preserves notes and assets and marks prereleases correctly", () => {
+  const config = read(".goreleaser.yml");
+  assert.match(config, /release:\s+prerelease: auto\s+mode: keep-existing\s+replace_existing_artifacts: false/);
+  assert.match(config, /name_template: "contract-cli-\{\{ \.Version \}\}-\{\{ \.Os \}\}-\{\{ \.Arch \}\}"/);
+  assert.match(config, /checksum:\s+name_template: checksums\.txt/);
+  assert.match(config, /goos: windows\s+formats: \[zip\]/);
 });
 
 test("local installation checks isolate real user credentials and Skill locations", () => {

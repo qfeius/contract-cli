@@ -1,3 +1,10 @@
+## 2026-11-23 - 恢复 GoReleaser Tag 发布链路
+- 范围：release workflow、GoReleaser 配置、发布回归与文档；不修改业务代码、生产 Tag 或远端 Release。
+- 决策：保留三平台检查，移除 gh release create，恢复 GoReleaser -> npm 元信息 -> npm 资产 -> npm publish 顺序，固定旧成功版本 v2.20.1。
+- 兼容：复用可修改的已有 Release，保留说明与同名附件保护；预发布保持 GitHub prerelease/npm beta，普通分支与 fork 不发布；Windows ZIP 改用等价 formats 字段。
+- 测试：先复现 workflow/配置断言失败，再验证恢复后的发布条件、执行顺序及渠道规则；本地验证不执行真实发布。
+- 验证：make release-check、GoReleaser v2.20.1 check 均通过，exhaustive lint 为 0 issues；Windows 原生及远端发布未执行。
+
 ## 2026-11-23 - 验证 Windows 配置替换不改写旧文件
 - 配置与凭据保存测试用硬链接保留旧文件，分别核对旧内容不变和目标路径已更新；不修改运行时代码。
 
