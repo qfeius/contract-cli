@@ -104,7 +104,7 @@ function extractArchive(archivePath, tempDir, targetPlatform = process.platform,
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        "Expand-Archive -LiteralPath $env:CONTRACT_CLI_ARCHIVE_PATH -DestinationPath $env:CONTRACT_CLI_EXTRACT_DIR -Force",
+        "$ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory($env:CONTRACT_CLI_ARCHIVE_PATH, $env:CONTRACT_CLI_EXTRACT_DIR)",
       ],
       { stdio: "ignore", env: { ...process.env, CONTRACT_CLI_ARCHIVE_PATH: archivePath, CONTRACT_CLI_EXTRACT_DIR: tempDir } }
     );

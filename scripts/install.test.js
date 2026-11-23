@@ -25,8 +25,7 @@ test("Windows archive paths remain child environment data, never PowerShell sour
     assert.equal(options.env.CONTRACT_CLI_ARCHIVE_PATH, source);
     assert.equal(options.env.CONTRACT_CLI_EXTRACT_DIR, directory);
     assert.ok(!args.some(arg => arg.includes(directory)));
-    assert.match(args.at(-1), /Expand-Archive -LiteralPath \$env:CONTRACT_CLI_ARCHIVE_PATH/);
-    assert.match(args.at(-1), /-DestinationPath \$env:CONTRACT_CLI_EXTRACT_DIR/);
+    assert.match(args.at(-1), /ZipFile\]::ExtractToDirectory\(\$env:CONTRACT_CLI_ARCHIVE_PATH, \$env:CONTRACT_CLI_EXTRACT_DIR\)/);
   }
   assert.deepEqual(calls[0][1], calls[1][1]);
 });
@@ -46,9 +45,7 @@ test("Windows PowerShell extracts a real archive under quoted Unicode paths", { 
     const archive = path.join(root, "archive [1].zip");
     const target = path.join(root, "destination '测试’");
     fs.writeFileSync(source, "archive bytes");
-    execFileSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", "Compress-Archive -LiteralPath $env:TEST_ARCHIVE_SOURCE -DestinationPath $env:TEST_ARCHIVE_ZIP -Force"], {
-      env: { ...process.env, TEST_ARCHIVE_SOURCE: source, TEST_ARCHIVE_ZIP: archive }, stdio: "pipe",
-    });
+    execFileSync("tar.exe", ["-a", "-cf", archive, "-C", root, path.basename(source)]);
     extractArchive(archive, target);
     assert.equal(fs.readFileSync(path.join(target, path.basename(source)), "utf8"), "archive bytes");
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
@@ -70,9 +67,7 @@ test("Windows npm installs the bundled CLI under quoted Unicode paths", { skip: 
     const arch = { x64: "amd64", arm64: "arm64" }[process.arch];
     const archiveName = `contract-cli-${pkg.version}-windows-${arch}.zip`;
     const archive = path.join(assets, archiveName);
-    execFileSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", "Compress-Archive -LiteralPath $env:TEST_ARCHIVE_SOURCE -DestinationPath $env:TEST_ARCHIVE_ZIP -Force"], {
-      env: { ...process.env, TEST_ARCHIVE_SOURCE: binary, TEST_ARCHIVE_ZIP: archive }, stdio: "pipe",
-    });
+    execFileSync("tar.exe", ["-a", "-cf", archive, "-C", root, path.basename(binary)]);
     const digest = crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex");
     fs.writeFileSync(path.join(assets, "checksums.txt"), `${digest}  ${archiveName}\n`);
     const npm = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");

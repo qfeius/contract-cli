@@ -316,6 +316,9 @@ func TestUpdateCheckJSONReportsAvailableBetaVersion(t *testing.T) {
 	}
 }
 
+// These cases model a desktop user regardless of the runner's CI flags.
+func interactiveUpdateTestEnv(string) (string, bool) { return "", false }
+
 func TestAutomaticUpdateNoticeRefreshesStaleCacheSynchronously(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
@@ -338,6 +341,7 @@ func TestAutomaticUpdateNoticeRefreshesStaleCacheSynchronously(t *testing.T) {
 	}
 
 	app := cli.New(cli.Options{
+		LookupEnv:            interactiveUpdateTestEnv,
 		Stdout:               stdout,
 		Stderr:               stderr,
 		Store:                store,
@@ -408,6 +412,7 @@ func TestAutomaticUpdateNoticeDoesNotUseStaleCacheWhenRefreshFails(t *testing.T)
 	}
 
 	app := cli.New(cli.Options{
+		LookupEnv:            interactiveUpdateTestEnv,
 		Stdout:               stdout,
 		Stderr:               stderr,
 		Store:                store,
@@ -471,6 +476,7 @@ func TestAutomaticUpdateNoticeKeepsFreshNoUpdateCache(t *testing.T) {
 	}
 
 	app := cli.New(cli.Options{
+		LookupEnv:            interactiveUpdateTestEnv,
 		Stdout:               stdout,
 		Stderr:               stderr,
 		Store:                store,
@@ -517,6 +523,7 @@ func TestAutomaticUpdateNoticeWritesMissingCacheSynchronously(t *testing.T) {
 	cachePath := filepath.Join(filepath.Dir(store.Path()), "update-check.json")
 
 	app := cli.New(cli.Options{
+		LookupEnv:            interactiveUpdateTestEnv,
 		Stdout:               stdout,
 		Stderr:               stderr,
 		Store:                store,
@@ -607,6 +614,7 @@ func TestAutomaticUpdateNoticeRetriesFailureEveryRun(t *testing.T) {
 	registryRequests := 0
 
 	app := cli.New(cli.Options{
+		LookupEnv:            interactiveUpdateTestEnv,
 		Stdout:               stdout,
 		Stderr:               stderr,
 		Store:                config.NewStore(t.TempDir()),
