@@ -44,7 +44,7 @@ func TestLocalUserStoreDoesNotReadOrMigrateLegacyCredentials(t *testing.T) {
 		{"CODEBUDDY_SESSION_ID": "task-a"},
 		{"CODEBUDDY_SESSION_ID": "local-user-v1"},
 	} {
-		legacy, err := NewStore(Options{LookupEnv: envLookup(environment), Keyring: backend})
+		legacy, err := NewStore(Options{LookupEnv: envLookup(environment), Keyring: backend, StateDir: t.TempDir()})
 		if err != nil {
 			t.Fatal(err)
 		}

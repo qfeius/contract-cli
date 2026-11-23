@@ -7,6 +7,42 @@ import (
 	"strings"
 )
 
+func matrixDepartmentIDType(productID, groupID, selected string) (string, error) {
+	selected = strings.TrimSpace(selected)
+	if selected == "" {
+		if productID == "contract" && groupID == "approve_matrix" {
+			return "tenant_department_id", nil
+		}
+		return "open_department_id", nil
+	}
+	switch selected {
+	case "tenant_department_id", "open_department_id", "department_id":
+		return selected, nil
+	default:
+		return "", fmt.Errorf("unsupported department_id_type %q", selected)
+	}
+}
+
+func validateMatrixDepartmentScope(body []byte, productID, groupID, selected string) error {
+	idType, err := matrixDepartmentIDType(productID, groupID, selected)
+	if err != nil {
+		return err
+	}
+	return validateApprovalMatrixDepartmentIDs(body, idType)
+}
+
+func compatibleMatrixPlanVersion(plan approvalMatrixImportPlan) bool {
+	return plan.Version == approvalMatrixImportPlanVersion || (plan.Version == 4 && plan.DepartmentIDType == "")
+}
+
+func restoreMatrixPlanDepartmentMode(options *commandOptions, plan approvalMatrixImportPlan) error {
+	if _, err := matrixDepartmentIDType(plan.ProductID, plan.GroupID, plan.DepartmentIDType); err != nil {
+		return err
+	}
+	options.departmentIDType = plan.DepartmentIDType
+	return validateApprovalMatrixImportIDType(*options, plan.ProductID, plan.GroupID)
+}
+
 /*
 validateApprovalMatrixDepartmentIDs 校验原子行请求中的部门集合值。
 入参 body（[]byte）为 row create/update/search 的 JSON 请求体，departmentIDType（string）为请求模式；返回值为部门 ID 约定错误。

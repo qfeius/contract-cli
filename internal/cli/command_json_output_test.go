@@ -36,6 +36,11 @@ func TestCommandRequestsJSONKeepsUpdateAliasScoped(t *testing.T) {
 		{[]string{"update", "check", "--output=", "--json"}, true},
 		{[]string{"update", "check", "--json", "--output=", "--json=false"}, false},
 		{[]string{"unknown", "--json"}, false},
+		{[]string{"auth", "init"}, true},
+		{[]string{"auth", "complete"}, true},
+		{[]string{"auth", "init", "--output=json"}, true},
+		{[]string{"auth", "status"}, false},
+		{[]string{"auth", "logout"}, false},
 		{[]string{"update", "check", "--channel", "--json"}, false},
 	} {
 		clean, options, err := parseCommandLogOptions(test.args)

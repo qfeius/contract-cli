@@ -466,6 +466,12 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) (err error) {
 		a.logger.Error("reject inconsistent discovered profile", "profile", profileName, "error", err.Error())
 		return err
 	}
+	if !found {
+		resetAuthentication, err = a.productionProfileRequiresReset(profile)
+		if err != nil {
+			return err
+		}
+	}
 	a.logger.Info("save profile", "profile", profileName, "environment", env)
 	if err := ctx.Err(); err != nil {
 		return err
@@ -476,7 +482,7 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) (err error) {
 		profile.Identities.User.AuthMode = ""
 		profile.Identities.App = config.AppIdentity{}
 		profile.DefaultIdentity = config.IdentityUser
-		if err := a.clearProfileAuthenticationState(ctx, profileName); err != nil {
+		if err := a.clearProfileAuthenticationState(ctx, profile); err != nil {
 			return fmt.Errorf("clear authentication state for changed profile %q: %w", profileName, err)
 		}
 		outcome = &localCommandOutcome{Operation: "config add", Result: map[string]any{"profile": profileName, "authentication_reset": true, "profile_saved": false}}

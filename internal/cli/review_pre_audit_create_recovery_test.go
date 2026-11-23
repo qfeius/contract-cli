@@ -71,11 +71,18 @@ func TestPreAuditCreateKnownRejectionAllowsCategoryReselection(t *testing.T) {
 				})
 				runID := h.prepare()
 				result, err := h.run("create", "--run-id", runID, "--category-id", "2001")
-				if err == nil || result["workflowStage"] != "awaiting_category" || result["sourceFileId"] != preAuditSourceID || result["categoryId"] != nil || result["preAuditId"] != nil || references != 0 {
+				if err == nil || references != 0 {
 					t.Fatal("known rejection must reopen category selection and preserve the file", result, err)
 				}
+				if tc.status == http.StatusUnauthorized || tc.status == http.StatusForbidden {
+					if len(result) != 0 {
+						t.Fatal("authorization rejection must not disclose stored results", result)
+					}
+				} else if result["workflowStage"] != "awaiting_category" || result["sourceFileId"] != preAuditSourceID || result["categoryId"] != nil || result["preAuditId"] != nil {
+					t.Fatal("known business rejection must retain its recovery output", result)
+				}
 				record := preAuditStoredRecord(t, h, runID)
-				if record["workflowStage"] != "awaiting_category" || record["categoryId"] != nil || record["requestId"] != nil {
+				if record["workflowStage"] != "awaiting_category" || record["sourceFileId"] != preAuditSourceID || record["categoryId"] != nil || record["requestId"] != nil {
 					t.Fatal("failed category and creation key must be durably cleared", record)
 				}
 				if _, err := h.run("resume", "--run-id", runID); err == nil || creates != 1 {

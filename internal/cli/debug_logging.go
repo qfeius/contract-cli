@@ -86,7 +86,7 @@ func isCommandValueFlag(name string, args []string) bool {
 // 单横线形式用于 Go flag 子命令；保留其原有参数元数，不扩展业务解析语义。
 func isCommandBooleanFlag(name string) bool {
 	switch strings.TrimLeft(name, "-") {
-	case "raw", "force", "full-text", "no-open-browser", "restart", "include-processes", "json", "help", "h", "version", "v", "stdin", "dry-run", "print-input", "yes", "enabled":
+	case "raw", "force", "full-text", "no-open-browser", "restart", "include-processes", "include-current-version", "json", "help", "h", "version", "v", "stdin", "dry-run", "print-input", "yes", "enabled":
 		return true
 	default:
 		return false

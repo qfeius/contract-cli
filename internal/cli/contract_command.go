@@ -365,65 +365,17 @@ func (a *App) runContractDownloadFile(ctx context.Context, args []string) error 
 		return a.runContractDownloadFileAsUser(ctx, contractsvc.NewService(client), requestContext, contractID, fileID, parsed.String("--output-file"), options.raw, parsed.Bool("--force"), format)
 	}
 
-	writer, outputPath, closeOutput, err := a.contractDownloadWriter(ctx, strings.TrimSpace(fileID), parsed.String("--output-file"), options.raw, parsed.Bool("--force"))
+	outputPath, err := a.writeContractDownload(ctx, strings.TrimSpace(fileID), parsed.String("--output-file"), options.raw, parsed.Bool("--force"), func(writer io.Writer) error {
+		_, err := contractsvc.NewService(client).DownloadFile(ctx, requestContext, fileID, writer)
+		return err
+	})
 	if err != nil {
 		return err
-	}
-	if closeOutput != nil {
-		defer func() {
-			if closeOutput != nil {
-				_ = closeOutput()
-			}
-		}()
-	}
-
-	if _, err := contractsvc.NewService(client).DownloadFile(ctx, requestContext, fileID, writer); err != nil {
-		return err
-	}
-	if closeOutput != nil {
-		closeErr := closeOutput()
-		closeOutput = nil
-		if closeErr != nil {
-			return fmt.Errorf("close download output file: %w", closeErr)
-		}
 	}
 	if !options.raw {
 		return a.renderDownloadedFile(format, "", fileID, filepath.Base(outputPath), outputPath)
 	}
 	return nil
-}
-
-func (a *App) contractDownloadWriter(ctx context.Context, fileID string, outputFile string, raw bool, force bool) (io.Writer, string, func() error, error) {
-	if raw {
-		return a.stdout, "", nil, nil
-	}
-
-	outputPath := strings.TrimSpace(outputFile)
-	if outputPath == "" {
-		selectedPath, err := a.saveFileDialog(ctx, fileID)
-		if err != nil {
-			return nil, "", nil, fmt.Errorf("select save path failed; pass --output-file <path> in non-GUI environments: %w", err)
-		}
-		outputPath = strings.TrimSpace(selectedPath)
-		if outputPath == "" {
-			return nil, "", nil, fmt.Errorf("select save path failed; pass --output-file <path> in non-GUI environments")
-		}
-	}
-
-	flags := os.O_WRONLY | os.O_CREATE
-	if force {
-		flags |= os.O_TRUNC
-	} else {
-		flags |= os.O_EXCL
-	}
-	file, err := os.OpenFile(outputPath, flags, 0o600)
-	if err != nil {
-		if os.IsExist(err) {
-			return nil, "", nil, fmt.Errorf("download output file %q already exists; pass --force to overwrite", outputPath)
-		}
-		return nil, "", nil, fmt.Errorf("open download output file: %w", err)
-	}
-	return file, outputPath, file.Close, nil
 }
 
 func (a *App) runContractDelete(ctx context.Context, args []string) error {
@@ -713,6 +665,9 @@ func (a *App) runContractTemplate(ctx context.Context, args []string) error {
 		})
 		if err != nil {
 			return err
+		}
+		if requestContext.Identity == config.IdentityApp {
+			return a.renderCheckedContractResponse("contract template list", options, response)
 		}
 		return a.renderOpenPlatformResponse(options, response)
 	case "get":

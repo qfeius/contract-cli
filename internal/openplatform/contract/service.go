@@ -66,6 +66,7 @@ func (s *Service) Search(ctx context.Context, requestContext openplatform.Reques
 		return s.client.Do(ctx, requestContext, openplatform.Request{
 			Method:         http.MethodPost,
 			Path:           "/open-apis/contract/v1/contracts/search",
+			OperationKind:  openplatform.OperationRead,
 			Body:           input.Body,
 			IdentityPolicy: openplatform.IdentityPolicyAny,
 		})
@@ -331,6 +332,7 @@ func (s *Service) DownloadFile(ctx context.Context, requestContext openplatform.
 		Method:         http.MethodGet,
 		Path:           "/open-apis/contract/v1/files/" + url.PathEscape(fileID),
 		IdentityPolicy: openplatform.IdentityPolicyAppOnly,
+		FileDownload:   true,
 	}, writer)
 }
 

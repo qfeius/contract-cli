@@ -56,8 +56,8 @@ func TestSelectedInstallDoesNotRegister(t *testing.T) {
 
 func TestInstallRejectsRemovedReplaceTargetWithoutChangingRegistration(t *testing.T) {
 	state := t.TempDir()
-	oldTarget := filepath.Join(t.TempDir(), "old-skills")
-	newTarget := filepath.Join(t.TempDir(), "new-skills")
+	oldTarget := filepath.Join(canonicalSkillTempDir(t), "old-skills")
+	newTarget := filepath.Join(canonicalSkillTempDir(t), "new-skills")
 	out := &bytes.Buffer{}
 	a := cli.New(cli.Options{Store: config.NewStore(state), SkillsFS: testSkillsFS(), Stdout: out, Stderr: &bytes.Buffer{}})
 	if err := a.Run(context.Background(), []string{"skills", "install", "--target", oldTarget, "--force"}); err != nil {

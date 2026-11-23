@@ -190,6 +190,52 @@ func newDebugLoggingApp(t *testing.T, transport roundTripFunc, stdout, stderr *b
 	})
 }
 
+func TestCooperationHistoryBooleanPreservesGlobalOptions(t *testing.T) {
+	for _, flags := range [][]string{
+		{"--include-current-version", "--debug", "--output", "json"},
+		{"--include-current-version", "--output", "json"},
+		{"--include-current-version=true", "--output", "json"},
+		{"--include-current-version=false", "--debug", "--output", "json"},
+		{"--output", "json", "--debug", "--include-current-version"},
+	} {
+		for _, status := range []int{http.StatusOK, http.StatusForbidden} {
+			t.Run(strings.Join(flags, " ")+http.StatusText(status), func(t *testing.T) {
+				stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+				calls := 0
+				app := newDebugLoggingApp(t, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+					calls++
+					want := "true"
+					if strings.Contains(strings.Join(flags, " "), "=false") {
+						want = "false"
+					}
+					if r.URL.Query().Get("include_current_version") != want {
+						t.Fatal("history version flag changed")
+					}
+					response := jsonResponse(`{"code":0,"data":{"history_files":[]}}`)
+					response.StatusCode = status
+					return response, nil
+				}), stdout, stderr)
+				args := append([]string{"contract", "cooperation", "history-files", "list", "--cooperation-id", "123", "--as", "user"}, flags...)
+				code := app.Execute(context.Background(), args)
+				if calls != 1 || (code == 0) != (status == http.StatusOK) {
+					t.Fatalf("calls=%d exit=%d stderr=%s", calls, code, stderr)
+				}
+				if status == http.StatusOK && !json.Valid(stdout.Bytes()) {
+					t.Fatalf("invalid business JSON: %s", stdout)
+				}
+				for _, line := range bytes.Split(bytes.TrimSpace(stderr.Bytes()), []byte("\n")) {
+					if len(line) > 0 && !json.Valid(line) {
+						t.Fatalf("non-JSON diagnostics: %s", stderr)
+					}
+				}
+				if status == http.StatusForbidden && !bytes.Contains(stderr.Bytes(), []byte(`"http_status":403`)) {
+					t.Fatalf("missing JSON failure: %s", stderr)
+				}
+			})
+		}
+	}
+}
+
 func assertDebugTraceHeaders(t *testing.T, headers []http.Header) string {
 	t.Helper()
 	if len(headers) != 3 {

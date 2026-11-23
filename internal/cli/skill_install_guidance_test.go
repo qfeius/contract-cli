@@ -65,7 +65,7 @@ func TestSkillInstallGuidanceNeverOffersRepairIntoSystemDirectory(t *testing.T) 
 }
 
 func TestSkillInstallGuidanceSuggestsConfiguredTargetWithShellSafeCommand(t *testing.T) {
-	home, state := t.TempDir(), t.TempDir()
+	home, state := canonicalSkillTempDir(t), t.TempDir()
 	configured := filepath.Join(home, "codex $HOME 'quote' spaced")
 	var out bytes.Buffer
 	a := cli.New(cli.Options{Store: config.NewStore(state), SkillsFS: testSkillsFS(), Stdout: &out, Stderr: &bytes.Buffer{},
@@ -196,7 +196,7 @@ func TestSkillInstallGuidanceWaitsForVerifiedRecommendationBeforeShowingCommands
 func TestSkillInstallGuidanceDoesNotSayAllSkillsMissingWhenAnotherLocationSynced(t *testing.T) {
 	home, state := t.TempDir(), t.TempDir()
 	configured := filepath.Join(home, "configured-codex")
-	registered := filepath.Join(t.TempDir(), "other-client", "skills")
+	registered := filepath.Join(canonicalSkillTempDir(t), "other-client", "skills")
 	var out bytes.Buffer
 	a := cli.New(cli.Options{Store: config.NewStore(state), SkillsFS: testSkillsFS(), Stdout: &out, Stderr: &bytes.Buffer{},
 		LookupEnv: func(key string) (string, bool) { return configured, key == "CODEX_HOME" }, LocalUserHome: func() (string, error) { return home, nil },

@@ -268,15 +268,11 @@ func NoticeFromCache(cache Cache, currentVersion string, packageName string) *No
 	if err != nil || compare >= 0 {
 		return nil
 	}
-	command := strings.TrimSpace(cache.InstallCommand)
-	if command == "" {
-		command = InstallCommand(defaultString(packageName, DefaultPackageName), cache.Channel)
-	}
-	return newNotice(currentVersion, latestVersion, command)
+	return newNotice(currentVersion, latestVersion, InstallCommand(packageName, cache.Channel))
 }
 
 func InstallCommand(packageName string, channel string) string {
-	return fmt.Sprintf("npm install -g %s@%s --registry %s", defaultString(packageName, DefaultPackageName), defaultString(channel, "latest"), DefaultRegistryHost)
+	return fmt.Sprintf("npm install -g %s@%s --registry %s --foreground-scripts", defaultString(packageName, DefaultPackageName), defaultString(channel, "latest"), DefaultRegistryHost)
 }
 
 func (n *Notice) Map() map[string]any {

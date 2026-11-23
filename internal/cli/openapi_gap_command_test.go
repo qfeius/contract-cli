@@ -447,9 +447,10 @@ func TestOpenAPIGapDownloadCommandsWriteOutputFileAsBot(t *testing.T) {
 						}
 						assertQuery(t, req, map[string]string{"user_id_type": "user_id"})
 						return &http.Response{
-							StatusCode: http.StatusOK,
-							Header:     make(http.Header),
-							Body:       io.NopCloser(strings.NewReader("download bytes")),
+							StatusCode:    http.StatusOK,
+							Header:        make(http.Header),
+							Body:          io.NopCloser(strings.NewReader("download bytes")),
+							ContentLength: int64(len("download bytes")),
 						}, nil
 					}),
 				},

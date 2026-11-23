@@ -1,0 +1,11 @@
+[
+  {"version":"1.9.5","commit":"9308b266deb50e172e85f7c6aacb430693d3b95b"},
+  {"version":"1.9.6","commit":"071f6cf72157d2dd1ffebed9440253a748f9d18a"},
+  {"version":"1.9.7","commit":"f6da3c041874bd1524506453f1433ad761eae8ab"},
+  {"version":"1.9.8","commit":"fdce78e22e59ea92e11d976926ea1c4b288acd0f"},
+  {"version":"1.9.9","commit":"238ab3efc0671a292822bd0aab11d72971da51fa"},
+  {"version":"1.9.10","commit":"ae39acb93fd659636af6a0017231cda68e1dc942"},
+  {"version":"1.9.11","commit":"ff4fdc6786813f4e0357dd8417814dd85b417d00"},
+  {"version":"1.9.12","commit":"b9dc391095671a10b94a472d5bc525731a6b07a0"},
+  {"version":"1.9.13","commit":"2eabbbcc319d3aff4df17f7443b94fbc02ddf8ee"}
+]

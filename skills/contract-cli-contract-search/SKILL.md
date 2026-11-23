@@ -13,7 +13,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ### 1. 确认授权，先选 user 或 app
 
-复用本任务已确认有效的授权、profile 和配置目录。尚未确认当前身份的授权状态时，执行 `contract-cli auth status --profile contract --as user` 或已选定的 `--as app`；该命令不支持 `--output`，也不负责刷新 Token。缺失、过期或权限错误按 [授权 Skill](../auth/SKILL.md) 处理，不读取或展示原始 Token，不要求用户粘贴凭证。
+复用本任务已确认有效的授权、profile 和配置目录。尚未确认当前身份的授权状态时，执行 `contract-cli auth status --profile contract --as user --output json` 或已选定的 `--as app`；该命令不负责刷新 Token。缺失、过期或权限错误按 [授权 Skill](../auth/SKILL.md) 处理，不读取或展示原始 Token，不要求用户粘贴凭证。
 
 普通用户查合同优先使用已授权 user；用户明确要求 app 或已建立 app 调用上下文时使用 app。两种身份都存在时也不依赖 profile 默认值，业务命令显式写 `--as`。已确定的身份不可因零结果、权限错误或能力不足而静默切换。
 

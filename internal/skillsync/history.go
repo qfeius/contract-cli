@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 )
 
-// Exact, whole-directory fingerprints from verified official 1.9.3 / 1.9.4
-// installations. No version-line normalization: edited content is unverified.
+// Exact whole-directory fingerprints from verified official installations and
+// pinned GitHub releases (history_sources.json). Edited content is unverified.
 //
 //go:embed history_fingerprints.json
 var historicalFingerprintsJSON []byte

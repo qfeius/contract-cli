@@ -5,25 +5,29 @@ import "strings"
 const redactedArgumentValue = "[REDACTED]"
 
 var sensitiveArgumentNames = map[string]struct{}{
-	"access-token":  {},
-	"api-key":       {},
-	"app-secret":    {},
-	"authorization": {},
-	"client-secret": {},
-	"comment":       {},
-	"cookie":        {},
-	"data":          {},
-	"file-url":      {},
-	"name":          {},
-	"department-id": {},
-	"page-token":    {},
-	"header":        {},
-	"password":      {},
-	"private-key":   {},
-	"query":         {},
-	"refresh-token": {},
-	"secret":        {},
-	"token":         {},
+	"access-token":     {},
+	"api-key":          {},
+	"app-secret":       {},
+	"authorization":    {},
+	"client-secret":    {},
+	"comment":          {},
+	"cookie":           {},
+	"data":             {},
+	"file-url":         {},
+	"name":             {},
+	"department-id":    {},
+	"page-token":       {},
+	"header":           {},
+	"password":         {},
+	"private-key":      {},
+	"query":            {},
+	"refresh-token":    {},
+	"secret":           {},
+	"token":            {},
+	"certification-id": {},
+	"contract-name":    {},
+	"contract-number":  {},
+	"user-id":          {},
 }
 
 func redactCommandArgs(args []string) string {
@@ -31,13 +35,13 @@ func redactCommandArgs(args []string) string {
 	redactNext := false
 
 	for _, arg := range args {
+		name, _, hasInlineValue := strings.Cut(arg, "=")
 		if redactNext {
 			redacted = append(redacted, redactedArgumentValue)
-			redactNext = false
+			redactNext = isSensitiveArgument(name) && !hasInlineValue
 			continue
 		}
 
-		name, _, hasInlineValue := strings.Cut(arg, "=")
 		if !isSensitiveArgument(name) {
 			redacted = append(redacted, arg)
 			continue
@@ -56,6 +60,9 @@ func redactCommandArgs(args []string) string {
 }
 
 func isSensitiveArgument(name string) bool {
+	if !strings.HasPrefix(name, "-") {
+		return false
+	}
 	name = strings.ToLower(strings.TrimLeft(name, "-"))
 	name = strings.ReplaceAll(name, "_", "-")
 	_, sensitive := sensitiveArgumentNames[name]

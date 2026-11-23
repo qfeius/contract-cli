@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"cn.qfei/contract-cli/internal/privatefile"
 )
 
 const (
@@ -205,10 +207,6 @@ func (s *Store) Save(cfg *File) error {
 		cfg.Profiles = map[string]Profile{}
 	}
 
-	if err := os.MkdirAll(s.dir, 0o755); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
-	}
-
 	for name, profile := range cfg.Profiles {
 		profile.ensureDefaults()
 		cfg.Profiles[name] = profile
@@ -219,7 +217,7 @@ func (s *Store) Save(cfg *File) error {
 		return fmt.Errorf("encode config: %w", err)
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(s.Path(), data, 0o600); err != nil {
+	if err := privatefile.Write(s.Path(), data); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 	return nil
