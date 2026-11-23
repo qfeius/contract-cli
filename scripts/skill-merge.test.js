@@ -7,6 +7,18 @@ const test = require('node:test');
 const root = process.env.SKILL_TEST_ROOT || path.join(__dirname, '..', 'skills');
 const read = name => fs.readFileSync(path.join(root, name, 'SKILL.md'), 'utf8');
 
+test('expiry Skill uses production guidance and platform-day bounds for a UTC business date', () => {
+  const guide = read('contract-expiry-query');
+  const protocol = fs.readFileSync(path.join(root, 'contract-expiry-query/references/query-api.md'), 'utf8');
+  assert.doesNotMatch(guide + protocol, /contract-test/);
+  assert.match(guide, /GMT\+8/);
+  const range = protocol.match(/UTC[^\n]*2026-11-19[^\n]*\[(\d+),\s*(\d+)\]/);
+  assert.ok(range, 'missing single-day UTC example with the actual searchValue');
+  const [, start, end] = range.map(Number);
+  assert.equal(start, Date.parse('2026-11-19T00:00:00+08:00'));
+  assert.equal(end, Date.parse('2026-11-19T23:59:59.999+08:00'));
+});
+
 test('every shipped skill has unambiguous top-level frontmatter keys', () => {
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory() || !fs.existsSync(path.join(root, entry.name, 'SKILL.md'))) continue;

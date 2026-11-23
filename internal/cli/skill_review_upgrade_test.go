@@ -27,8 +27,8 @@ func TestSkillSyncUpgradeAddsBundledReviewSkills(t *testing.T) {
 			count++
 		}
 	}
-	if count != 22 {
-		t.Fatalf("integrated distributable Skill count = %d, want 22", count)
+	if count != 23 {
+		t.Fatalf("integrated distributable Skill count = %d, want 23", count)
 	}
 	previous := fstest.MapFS{}
 	err = fs.WalkDir(contractskills.FS, ".", func(path string, entry fs.DirEntry, walkErr error) error {
@@ -37,7 +37,7 @@ func TestSkillSyncUpgradeAddsBundledReviewSkills(t *testing.T) {
 		}
 		if entry.IsDir() {
 			if path == "contract-cli-review" || path == "contract-cli-review-rule" || path == "contract-cooperation-chat-group" ||
-				path == "contract-approval-efficiency" || path == "contract-cli-approval-actions" {
+				path == "contract-approval-efficiency" || path == "contract-cli-approval-actions" || path == "contract-expiry-query" {
 				return fs.SkipDir
 			}
 			return nil
@@ -67,15 +67,15 @@ func TestSkillSyncUpgradeAddsBundledReviewSkills(t *testing.T) {
 	if err := makeApp(contractskills.FS, &output).Run(context.Background(), []string{"__internal", "skill-sync-on-install"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"contract-cli-review", "contract-cli-review-rule", "contract-cooperation-chat-group", "contract-approval-efficiency", "contract-cli-approval-actions"} {
+	for _, name := range []string{"contract-cli-review", "contract-cli-review-rule", "contract-cooperation-chat-group", "contract-approval-efficiency", "contract-cli-approval-actions", "contract-expiry-query"} {
 		body, err := os.ReadFile(filepath.Join(target, name, "SKILL.md"))
 		if err != nil || !strings.Contains(string(body), "name: "+name) {
 			t.Fatalf("new official Skill %s missing or invalid: %v", name, err)
 		}
 	}
 	registry := readSkillSyncRegistry(t, filepath.Join(state, "skill-locations.json"))
-	if len(registry.Locations) != 1 || len(registry.Locations[0].Managed) != 22 || registry.Locations[0].Status != "success" {
-		t.Fatalf("registry did not synchronize all 22 Skills: %+v; output=%s", registry, output.String())
+	if len(registry.Locations) != 1 || len(registry.Locations[0].Managed) != count || registry.Locations[0].Status != "success" {
+		t.Fatalf("registry did not synchronize all %d Skills: %+v; output=%s", count, registry, output.String())
 	}
 	content, err := os.ReadFile(thirdParty)
 	if err != nil || string(content) != "keep unrelated skill" {
