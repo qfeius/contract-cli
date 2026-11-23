@@ -78,6 +78,13 @@ jobs:
       - name: Validate release metadata
         id: metadata
         run: node scripts/release-metadata.js "$GITHUB_REF_NAME"
+      - name: Publish GitHub Release
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: v2.20.1
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Prepare package
         env:
           VERSION: ${{ steps.metadata.outputs.version }}
@@ -85,21 +92,13 @@ jobs:
         run: |
           [ -z "${PACKAGE_NAME:-}" ] || npm pkg set "name=$PACKAGE_NAME"
           npm pkg set "version=$VERSION" "config.downloadBaseURLTemplate=https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
-      - name: Build one asset set for GitHub and npm
+      - name: Build npm release assets
         env:
           VERSION: ${{ steps.metadata.outputs.version }}
         run: |
           make release-assets
           (cd dist/release-assets && sha256sum -c checksums.txt)
           npm pack --dry-run
-      - name: Publish GitHub Release without overwriting existing assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PRERELEASE: ${{ steps.metadata.outputs.prerelease }}
-        run: |
-          args=(--verify-tag --title "$GITHUB_REF_NAME" --generate-notes)
-          if [ "$PRERELEASE" = true ]; then args+=(--prerelease --latest=false); else args+=(--latest); fi
-          gh release create "$GITHUB_REF_NAME" dist/release-assets/* "${args[@]}"
       - name: Publish npm package
         env:
           NPM_TAG: ${{ steps.metadata.outputs.channel }}
