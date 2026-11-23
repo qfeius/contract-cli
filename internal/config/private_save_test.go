@@ -15,11 +15,13 @@ func TestPrivateConfigurationSaveReplacesRatherThanTruncates(t *testing.T) {
 				t.Fatal(err)
 			}
 			path := filepath.Join(dir, kind+".json")
-			if err := os.WriteFile(path, []byte(`{"old":true}`), 0644); err != nil {
+			const original = `{"old":true}`
+			if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 				t.Fatal(err)
 			}
-			before, err := os.Stat(path)
-			if err != nil {
+			// Keep an independent name for the old file across the replacement.
+			oldPath := filepath.Join(dir, "old-link")
+			if err := os.Link(path, oldPath); err != nil {
 				t.Fatal(err)
 			}
 			var saveErr error
@@ -35,8 +37,11 @@ func TestPrivateConfigurationSaveReplacesRatherThanTruncates(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if os.SameFile(before, after) {
-				t.Fatal("private file was modified in place")
+			if old, err := os.ReadFile(oldPath); err != nil || string(old) != original {
+				t.Fatalf("original file was modified in place: %v", err)
+			}
+			if saved, err := os.ReadFile(path); err != nil || string(saved) == original {
+				t.Fatalf("new state did not replace the original: %v", err)
 			}
 			parent, err := os.Stat(dir)
 			if err != nil {
