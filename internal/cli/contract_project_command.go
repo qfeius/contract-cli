@@ -75,7 +75,7 @@ func (a *App) runContractProject(ctx context.Context, args []string) (err error)
 	if err != nil {
 		return err
 	}
-	if !options.raw && options.output == output.FormatTable && validateContractMCPResponse(response.Body) == nil {
+	if !options.raw && options.output == output.FormatTable && validateContractEnvelope("contract MCP", response.Body) == nil {
 		if rendered, tableErr := writeContractProjectTable(a.stdout, response.Body); rendered {
 			return tableErr
 		}
