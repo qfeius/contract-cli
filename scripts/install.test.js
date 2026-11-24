@@ -10,6 +10,85 @@ const test = require("node:test");
 const { verifyArchiveChecksum } = require("./install.js");
 const { synchronizeSkills } = require("./install.js");
 const { cliInstallSummary } = require("./install.js");
+const { extractArchive } = require("./install.js");
+const { execFileSync } = require("node:child_process");
+
+function zipFixture(sourceDir, archive) {
+  execFileSync("powershell", ["-NoProfile", "-NonInteractive", "-Command",
+    "$ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::CreateFromDirectory($env:ZIP_SOURCE, $env:ZIP_TARGET)"],
+    { env: { ...process.env, ZIP_SOURCE: sourceDir, ZIP_TARGET: archive }, stdio: "pipe" });
+}
+
+test("Windows archive paths remain child environment data, never PowerShell source", () => {
+  const calls = [];
+  const run = (...args) => calls.push(args);
+  for (const directory of ["C:\\Users\\O'Neil\\合同 tmp", "C:\\tmp\\quote’; & (1+1)"]) {
+    const source = directory + "\\archive [1].zip";
+    extractArchive(source, directory, "win32", run);
+    const [command, args, options] = calls.at(-1);
+    assert.equal(command, "powershell");
+    assert.ok(args.includes("-NoProfile") && args.includes("-NonInteractive"));
+    assert.equal(options.env.CONTRACT_CLI_ARCHIVE_PATH, source);
+    assert.equal(options.env.CONTRACT_CLI_EXTRACT_DIR, directory);
+    assert.ok(!args.some(arg => arg.includes(directory)));
+    assert.match(args.at(-1), /ZipFile\]::ExtractToDirectory\(\$env:CONTRACT_CLI_ARCHIVE_PATH, \$env:CONTRACT_CLI_EXTRACT_DIR\)/);
+  }
+  assert.deepEqual(calls[0][1], calls[1][1]);
+});
+
+test("macOS and Linux keep their existing tar extraction arguments", () => {
+  for (const platform of ["darwin", "linux"]) {
+    const calls = [];
+    extractArchive("/tmp/O'Neil/archive.tar.gz", "/tmp/合同 tmp", platform, (...args) => calls.push(args));
+    assert.deepEqual(calls, [["tar", ["-xzf", "/tmp/O'Neil/archive.tar.gz", "-C", "/tmp/合同 tmp"], { stdio: "ignore" }]]);
+  }
+});
+
+test("Windows PowerShell extracts a real archive under quoted Unicode paths", { skip: process.platform !== "win32" }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "contract-cli-O'Neil-合同 "));
+  try {
+    const sourceDir = fs.mkdtempSync(path.join(root, "input-"));
+    const source = path.join(sourceDir, "source [1].txt");
+    const archive = path.join(root, "archive [1].zip");
+    const target = path.join(root, "destination '测试’");
+    fs.writeFileSync(source, "archive bytes");
+    zipFixture(sourceDir, archive);
+    extractArchive(archive, target);
+    assert.equal(fs.readFileSync(path.join(target, path.basename(source)), "utf8"), "archive bytes");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("Windows npm installs the bundled CLI under quoted Unicode paths", { skip: process.platform !== "win32", timeout: 240000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "contract-cli-npm-O'Neil-合同 "));
+  try {
+    const packageDir = path.join(root, "package");
+    const assets = path.join(packageDir, "dist", "release-assets");
+    const scripts = path.join(packageDir, "scripts");
+    const home = path.join(root, "home");
+    for (const dir of [assets, scripts, home]) fs.mkdirSync(dir, { recursive: true });
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"));
+    fs.writeFileSync(path.join(packageDir, "package.json"), JSON.stringify(pkg));
+    for (const file of ["install.js", "run.js", "setup.js"]) fs.copyFileSync(path.join(__dirname, file), path.join(scripts, file));
+    const binaryDir = fs.mkdtempSync(path.join(root, "binary-"));
+    const binary = path.join(binaryDir, "contract-cli.exe");
+    execFileSync("go", ["build", "-o", binary, "./cmd/contract-cli"], { cwd: path.join(__dirname, ".."), stdio: "pipe", timeout: 180000 });
+    const arch = { x64: "amd64", arm64: "arm64" }[process.arch];
+    const archiveName = `contract-cli-${pkg.version}-windows-${arch}.zip`;
+    const archive = path.join(assets, archiveName);
+    zipFixture(binaryDir, archive);
+    const digest = crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex");
+    fs.writeFileSync(path.join(assets, "checksums.txt"), `${digest}  ${archiveName}\n`);
+    const npm = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+    assert.ok(fs.existsSync(npm), "npm CLI must be installed with Node");
+    const env = { ...process.env, HOME: home, USERPROFILE: home, TEMP: root, TMP: root, CODEX_HOME: path.join(home, "codex"), CONTRACT_CLI_CONFIG_DIR: path.join(home, "config"), CONTRACT_CLI_NO_UPDATE_CHECK: "1", npm_config_cache: path.join(root, "cache"), npm_config_userconfig: path.join(home, ".npmrc"), npm_config_update_notifier: "false" };
+    const packed = JSON.parse(execFileSync(process.execPath, [npm, "pack", "--json", "--pack-destination", root], { cwd: packageDir, env, encoding: "utf8", timeout: 60000 }));
+    const prefix = path.join(root, "installed '测试’");
+    execFileSync(process.execPath, [npm, "install", path.join(root, packed[0].filename), "--prefix", prefix, "--global=false", "--no-audit", "--no-fund", "--foreground-scripts", "--ignore-scripts=false"], { cwd: root, env, stdio: "pipe", timeout: 60000 });
+    const installed = path.join(prefix, "node_modules", ...pkg.name.split("/"), "bin", "contract-cli.exe");
+    assert.match(execFileSync(installed, ["--version"], { env, encoding: "utf8" }), /contract-cli version/);
+    assert.equal(fs.existsSync(path.join(env.CONTRACT_CLI_CONFIG_DIR, "skill-locations.json")), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
 
 test("CLI summary reports actual binary path and keeps local installation scope explicit", () => {
   const binary = path.resolve("test prefix", "bin", "contract-cli");

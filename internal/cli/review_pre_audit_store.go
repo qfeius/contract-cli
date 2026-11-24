@@ -200,7 +200,7 @@ func validatePreAuditRecord(run *preAuditRun) error {
 	switch run.Stage {
 	case "upload_unknown":
 		return nil
-	case "awaiting_category", "create_pending", "pre_audit_created", "reference_unknown", "reference_not_ready", "awaiting_config", "start_unknown", "start_rejected", "running", "review_failed", "review_succeeded", "completed":
+	case "awaiting_category", "create_pending", "pre_audit_created", "reference_unknown", "reference_not_ready", "awaiting_config", "start_unknown", "start_rejected", "start_rejected_confirmed", "running", "review_failed", "review_succeeded", "completed":
 	default:
 		return invalid()
 	}

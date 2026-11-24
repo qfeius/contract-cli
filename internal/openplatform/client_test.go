@@ -179,10 +179,11 @@ func TestClientDoStreamRunsBeforeRequestHook(t *testing.T) {
 					t.Fatalf("stream trace headers = traceparent %q, X-Log-Id %q", req.Header.Get(tracecontext.HeaderTraceparent), req.Header.Get(tracecontext.HeaderLogID))
 				}
 				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     make(http.Header),
-					Body:       io.NopCloser(strings.NewReader("stream body")),
-					Request:    req,
+					StatusCode:    http.StatusOK,
+					Header:        make(http.Header),
+					Body:          io.NopCloser(strings.NewReader("stream body")),
+					ContentLength: int64(len("stream body")),
+					Request:       req,
 				}, nil
 			}),
 		},
@@ -439,7 +440,8 @@ func TestClientDoStreamWritesSuccessBody(t *testing.T) {
 					Header: http.Header{
 						"Content-Type": {"application/pdf"},
 					},
-					Body: io.NopCloser(strings.NewReader("download bytes")),
+					Body:          io.NopCloser(strings.NewReader("download bytes")),
+					ContentLength: int64(len("download bytes")),
 				}, nil
 			}),
 		},
@@ -971,17 +973,19 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func jsonResponse(payload string) *http.Response {
 	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     make(http.Header),
-		Body:       io.NopCloser(strings.NewReader(payload)),
+		ContentLength: int64(len(payload)),
+		StatusCode:    http.StatusOK,
+		Header:        make(http.Header),
+		Body:          io.NopCloser(strings.NewReader(payload)),
 	}
 }
 
 func responseWithStatus(statusCode int, payload string) *http.Response {
 	return &http.Response{
-		StatusCode: statusCode,
-		Header:     make(http.Header),
-		Body:       io.NopCloser(strings.NewReader(payload)),
+		ContentLength: int64(len(payload)),
+		StatusCode:    statusCode,
+		Header:        make(http.Header),
+		Body:          io.NopCloser(strings.NewReader(payload)),
 	}
 }
 

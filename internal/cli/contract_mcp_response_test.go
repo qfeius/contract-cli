@@ -125,7 +125,7 @@ func TestContractMCPResponseValidatesEnvelopeAndPreservesOutput(t *testing.T) {
 	}
 }
 
-func TestContractMCPResponseKeepsLegacyResponseBehavior(t *testing.T) {
+func TestContractMCPResponseKeepsNonDownloadLegacyBehavior(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name     string
@@ -156,7 +156,14 @@ func TestContractMCPResponseKeepsLegacyResponseBehavior(t *testing.T) {
 			})
 			args := append([]string{"contract"}, tc.args...)
 			args = append(args, "--profile", "contract")
-			if err := app.Run(context.Background(), args); err != nil {
+			err := app.Run(context.Background(), args)
+			if tc.name == "app download" {
+				if err == nil || !strings.Contains(err.Error(), "business code 110125") || stdout.Len() != 0 {
+					t.Fatalf("download business failure was not suppressed: err=%v stdout=%s", err, stdout)
+				}
+				return
+			}
+			if err != nil {
 				t.Fatalf("legacy response behavior changed: %v", err)
 			}
 			if !strings.Contains(stdout.String(), "110125") {

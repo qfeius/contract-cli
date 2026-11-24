@@ -5,8 +5,18 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 NPM_CACHE="${NPM_CONFIG_CACHE:-/tmp/contract-cli-npm-cache}"
 GO_CACHE="${GOCACHE:-/tmp/contract-cli-go-build-cache}"
+GO_MOD_CACHE="$(go env GOMODCACHE)"
 TMP_DIR="$(mktemp -d)"
+TMP_DIR="$(cd "$TMP_DIR" && pwd -P)"
 trap 'rm -rf "$TMP_DIR"' EXIT
+
+export HOME="$TMP_DIR/home"
+export CODEX_HOME="$HOME/codex"
+export CONTRACT_CLI_CONFIG_DIR="$HOME/contract-cli"
+export CONTRACT_CLI_NO_UPDATE_CHECK=1
+export GOMODCACHE="$GO_MOD_CACHE"
+export npm_config_userconfig="$HOME/.npmrc"
+mkdir -p "$HOME"
 
 PREFIX_DIR="$TMP_DIR/prefix"
 CODEX_SKILLS_DIR="$TMP_DIR/codex-skills"

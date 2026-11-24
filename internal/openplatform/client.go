@@ -29,6 +29,7 @@ type Options struct {
 	Logger             *slog.Logger
 	AuthProvider       AuthProvider
 	BeforeRequestHooks []BeforeRequestHook
+	MaxResponseBytes   int64
 }
 
 type BeforeRequestHook func(context.Context, *http.Request) error
@@ -38,6 +39,7 @@ type Client struct {
 	logger             *slog.Logger
 	authProvider       AuthProvider
 	beforeRequestHooks []BeforeRequestHook
+	maxResponseBytes   int64
 }
 
 type RequestContext struct {
@@ -58,6 +60,9 @@ const (
 	maxReadNetworkRetries                   = 1
 	authenticationErrorHeader               = "X-Qfei-Open-Platform-Auth-Error"
 	tokenExpiredErrorType                   = "token_expired"
+	defaultMaxResponseBytes                 = int64(32 << 20)
+	defaultRequestTimeout                   = 30 * time.Second
+	defaultStreamTimeout                    = 10 * time.Minute
 )
 
 type Request struct {
@@ -70,6 +75,8 @@ type Request struct {
 	Raw            bool
 	IdentityPolicy IdentityPolicy
 	OperationKind  OperationKind
+	// FileDownload enables business-error validation for file endpoints only.
+	FileDownload bool
 }
 
 type Response struct {
@@ -135,12 +142,17 @@ func New(options Options) *Client {
 	if authProvider == nil {
 		authProvider = ProfileAuthProvider{}
 	}
+	limit := options.MaxResponseBytes
+	if limit <= 0 {
+		limit = defaultMaxResponseBytes
+	}
 
 	return &Client{
 		httpClient:         httpClient,
 		logger:             logger,
 		authProvider:       authProvider,
 		beforeRequestHooks: append([]BeforeRequestHook(nil), options.BeforeRequestHooks...),
+		maxResponseBytes:   limit,
 	}
 }
 
@@ -153,23 +165,29 @@ Do 验证所选身份并发送请求；规则 user 请求附加验证分支标�
 入参 ctx（context.Context）为执行上下文、requestContext（RequestContext）为已解析身份凭证、request（Request）为接口参数。
 返回 Response 为远端响应，error 为校验或网络错误。
 */
-func (c *Client) Do(ctx context.Context, requestContext RequestContext, request Request) (Response, error) {
+func (c *Client) Do(ctx context.Context, requestContext RequestContext, request Request) (response Response, err error) {
+	fallback := defaultRequestTimeout
+	if request.BodyReader != nil {
+		fallback = defaultStreamTimeout
+	}
+	ctx, cancel := requestBudget(ctx, fallback)
+	defer cancel()
+	dispatched := false
+	defer func() {
+		if err != nil && !dispatched {
+			err = &requestNotSentError{cause: err}
+		}
+	}()
 	method := strings.ToUpper(strings.TrimSpace(request.Method))
 	if method == "" {
 		return Response{}, fmt.Errorf("open platform request method is required")
 	}
-	policy := request.IdentityPolicy
-	if policy == "" {
-		policy = IdentityPolicyForPath(request.Path)
-	}
-	if err := validateIdentityPolicy(requestContext.Identity, policy, request.Path); err != nil {
-		c.logger.Error("open platform identity policy rejected", "method", method, "path", request.Path, "identity", requestContext.Identity, "error", err.Error())
-		return Response{}, err
-	}
-	fullURL, err := buildURL(requestContext.BaseURL, request.Path, mergeQuery(policy, request.Query, requestContext.CommonQuery))
+	target, err := prepareRequestTarget(requestContext, request)
 	if err != nil {
+		c.logger.Error("open platform request target rejected", "method", method, "identity", requestContext.Identity, "error", err.Error())
 		return Response{}, err
 	}
+	fullURL := target.String()
 	if requestContext.PrepareAccessToken != nil {
 		preparedToken, prepareErr := requestContext.PrepareAccessToken(ctx, requestContext.AccessToken)
 		if prepareErr != nil {
@@ -183,7 +201,7 @@ func (c *Client) Do(ctx context.Context, requestContext RequestContext, request 
 
 	headers := cloneHeaders(request.Headers)
 	// 审批矩阵 user 显式选择用户验签分支；此标记不授予权限，后端仍须验证 Bearer。
-	if strings.HasPrefix(request.Path, "/open-apis/rule_engine/v1/") {
+	if strings.HasPrefix(target.Path, "/open-apis/rule_engine/v1/") {
 		headers.Del("X-Qfei-Identity")
 		if requestContext.Identity == config.IdentityUser {
 			headers.Set("X-Qfei-Identity", "user")
@@ -218,7 +236,7 @@ func (c *Client) Do(ctx context.Context, requestContext RequestContext, request 
 
 	refreshed := false
 	for attempt := 0; ; attempt++ {
-		response, requestErr := c.doOnce(ctx, method, fullURL, headers, request, requestTrace)
+		response, requestErr := c.doOnce(ctx, method, fullURL, headers, request, requestTrace, &dispatched)
 		if requestErr == nil {
 			c.logger.Info("open platform request completed", "method", method, "path", request.Path, "status_code", response.StatusCode, "trace_id", requestTrace.TraceID)
 			return response, nil
@@ -266,7 +284,7 @@ func isTrustedTokenExpired(response Response, statusErr *HTTPStatusError) bool {
 		response.Headers.Get(authenticationErrorHeader) == tokenExpiredErrorType
 }
 
-func (c *Client) doOnce(ctx context.Context, method, fullURL string, headers http.Header, request Request, requestTrace tracecontext.RequestTrace) (Response, error) {
+func (c *Client) doOnce(ctx context.Context, method, fullURL string, headers http.Header, request Request, requestTrace tracecontext.RequestTrace, dispatched *bool) (Response, error) {
 	response := Response{TraceID: requestTrace.TraceID}
 	bodyReader := io.Reader(bytes.NewReader(request.Body))
 	if request.BodyReader != nil {
@@ -284,13 +302,17 @@ func (c *Client) doOnce(ctx context.Context, method, fullURL string, headers htt
 		return response, fmt.Errorf("apply open platform request trace: %w", err)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return response, err
+	}
+	*dispatched = true
 	resp, err := c.httpClient.Do(httpRequest)
 	if err != nil {
 		return response, fmt.Errorf("perform open platform request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }() // Read/status errors determine the request result.
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := c.readResponseBody(resp.Body)
 	if err != nil {
 		return response, fmt.Errorf("read open platform response: %w", err)
 	}
@@ -336,6 +358,8 @@ func wrapTraceError(traceID string, err error) error {
 }
 
 func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, request Request, writer io.Writer) (Response, error) {
+	ctx, cancel := requestBudget(ctx, defaultStreamTimeout)
+	defer cancel()
 	if writer == nil {
 		return Response{}, fmt.Errorf("open platform stream writer is required")
 	}
@@ -344,20 +368,30 @@ func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, re
 	if method == "" {
 		return Response{}, fmt.Errorf("open platform request method is required")
 	}
-	policy := request.IdentityPolicy
-	if policy == "" {
-		policy = IdentityPolicyForPath(request.Path)
-	}
-	if err := validateIdentityPolicy(requestContext.Identity, policy, request.Path); err != nil {
-		c.logger.Error("open platform identity policy rejected", "method", method, "path", request.Path, "identity", requestContext.Identity, "error", err.Error())
-		return Response{}, err
-	}
-	fullURL, err := buildURL(requestContext.BaseURL, request.Path, mergeQuery(policy, request.Query, requestContext.CommonQuery))
+	target, err := prepareRequestTarget(requestContext, request)
 	if err != nil {
+		c.logger.Error("open platform stream target rejected", "method", method, "identity", requestContext.Identity, "error", err.Error())
 		return Response{}, err
+	}
+	fullURL := target.String()
+	if requestContext.PrepareAccessToken != nil {
+		token, err := requestContext.PrepareAccessToken(ctx, requestContext.AccessToken)
+		if err != nil {
+			return Response{}, fmt.Errorf("prepare access token: %w", err)
+		}
+		if strings.TrimSpace(token) == "" {
+			return Response{}, fmt.Errorf("prepare access token returned an empty token")
+		}
+		requestContext.AccessToken = token
 	}
 
 	headers := cloneHeaders(request.Headers)
+	if strings.HasPrefix(target.Path, "/open-apis/rule_engine/v1/") {
+		headers.Del("X-Qfei-Identity")
+		if requestContext.Identity == config.IdentityUser {
+			headers.Set("X-Qfei-Identity", "user")
+		}
+	}
 	if headers.Get("Authorization") == "" {
 		headers.Set("Authorization", "Bearer "+requestContext.AccessToken)
 	}
@@ -372,9 +406,39 @@ func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, re
 	if err != nil {
 		return Response{}, fmt.Errorf("create open platform request trace: %w", err)
 	}
-	response := Response{TraceID: requestTrace.TraceID}
-
 	c.logger.Info("open platform stream request started", "method", method, "path", request.Path, "identity", requestContext.Identity, "trace_id", requestTrace.TraceID)
+	refreshed := false
+	for {
+		response, requestErr := c.doStreamOnce(ctx, method, fullURL, headers, request, writer, requestTrace)
+		if requestErr == nil {
+			c.logger.Info("open platform stream request completed", "method", method, "path", request.Path, "status_code", response.StatusCode, "trace_id", requestTrace.TraceID)
+			return response, nil
+		}
+		var statusErr *HTTPStatusError
+		if response.StatusCode == http.StatusUnauthorized && errors.As(requestErr, &statusErr) && isTrustedTokenExpired(response, statusErr) && !refreshed && requestContext.RefreshAccessToken != nil {
+			token, err := requestContext.RefreshAccessToken(ctx, requestContext.AccessToken)
+			if err != nil {
+				return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("refresh access token: %w", err))
+			}
+			if strings.TrimSpace(token) == "" {
+				return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("refresh access token returned an empty token"))
+			}
+			requestContext.AccessToken = token
+			headers.Set("Authorization", "Bearer "+token)
+			refreshed = true
+			if request.BodyReader != nil {
+				return response, wrapTraceError(requestTrace.TraceID, errors.New("access token refreshed, but streaming request body cannot be replayed; retry the command"))
+			}
+			c.logger.Info("retrying stream after trusted token expiry", "method", method, "trace_id", requestTrace.TraceID)
+			continue
+		}
+		c.logger.Error("open platform stream request stopped", "method", method, "status_code", response.StatusCode, "error_type", fmt.Sprintf("%T", requestErr), "trace_id", requestTrace.TraceID)
+		return response, wrapTraceError(requestTrace.TraceID, requestErr)
+	}
+}
+
+func (c *Client) doStreamOnce(ctx context.Context, method, fullURL string, headers http.Header, request Request, writer io.Writer, requestTrace tracecontext.RequestTrace) (Response, error) {
+	response := Response{TraceID: requestTrace.TraceID}
 
 	bodyReader := io.Reader(bytes.NewReader(request.Body))
 	if request.BodyReader != nil {
@@ -403,23 +467,33 @@ func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, re
 	response.StatusCode = resp.StatusCode
 	response.Headers = resp.Header.Clone()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, readErr := io.ReadAll(resp.Body)
+		body, readErr := c.readResponseBody(resp.Body)
 		if readErr != nil {
 			c.logger.Error("read open platform stream error response failed", "method", method, "path", request.Path, "error", readErr.Error(), "trace_id", requestTrace.TraceID)
 			return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("read open platform response: %w", readErr))
 		}
 		response.Body = body
-		err = fmt.Errorf("open platform request failed with status %d: %s", resp.StatusCode, responseSnippet(body))
-		c.logger.Error("open platform stream request failed", "method", method, "path", request.Path, "status_code", resp.StatusCode, "error", err.Error(), "trace_id", requestTrace.TraceID)
-		return response, wrapTraceError(requestTrace.TraceID, err)
+		return response, &HTTPStatusError{StatusCode: resp.StatusCode, ErrorType: responseErrorType(body), Body: body}
 	}
 
-	if _, err := io.Copy(writer, resp.Body); err != nil {
+	var source io.Reader = resp.Body
+	if request.FileDownload && method != http.MethodHead {
+		c.logger.Debug("validate file download response", "trace_id", requestTrace.TraceID)
+		source, err = c.fileDownloadBody(resp)
+		if err != nil {
+			c.logger.Error("file download response rejected", "status_code", resp.StatusCode, "trace_id", requestTrace.TraceID)
+			return response, err
+		}
+	}
+	written, err := io.Copy(writer, source)
+	if err != nil {
 		c.logger.Error("copy open platform stream response failed", "method", method, "path", request.Path, "error", err.Error(), "trace_id", requestTrace.TraceID)
 		return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("copy open platform response: %w", err))
 	}
+	if method != http.MethodHead && resp.ContentLength >= 0 && written != resp.ContentLength {
+		return response, fmt.Errorf("open platform stream size mismatch: expected %d bytes, got %d", resp.ContentLength, written)
+	}
 
-	c.logger.Info("open platform stream request completed", "method", method, "path", request.Path, "status_code", resp.StatusCode, "trace_id", requestTrace.TraceID)
 	return response, nil
 }
 
@@ -493,27 +567,19 @@ func tokenForIdentity(profile config.Profile, identity config.IdentityKind) (*co
 }
 
 func buildURL(baseURL, path string, query url.Values) (string, error) {
-	switch {
-	case strings.Contains(path, "://"):
-		return "", fmt.Errorf("open platform path must be relative")
-	case strings.HasPrefix(path, "/open-apis/"):
-	case strings.HasPrefix(path, OpenWebPathPrefix):
-		if err := ValidateOpenWebPath(path); err != nil {
-			return "", err
-		}
-	default:
-		return "", fmt.Errorf("open platform path must be a relative /open-apis/ or %s path", OpenWebPathPrefix)
+	parsedPath, err := validateRequestPath(path)
+	if err != nil {
+		return "", err
 	}
 
 	parsedBase, err := url.Parse(strings.TrimRight(baseURL, "/"))
 	if err != nil {
 		return "", fmt.Errorf("parse open platform base url: %w", err)
 	}
-	parsedPath, err := url.Parse(path)
-	if err != nil {
-		return "", fmt.Errorf("parse open platform path: %w", err)
-	}
 	parsedURL := parsedBase.ResolveReference(parsedPath)
+	if parsedURL.Scheme != parsedBase.Scheme || parsedURL.Host != parsedBase.Host || parsedURL.Path != parsedPath.Path {
+		return "", fmt.Errorf("open platform path changed its target during resolution")
+	}
 	parsedURL.RawQuery = query.Encode()
 	return parsedURL.String(), nil
 }

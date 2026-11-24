@@ -3,44 +3,58 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+	"unicode"
 )
 
 func defaultSaveFileDialog(ctx context.Context, suggestedName string) (string, error) {
-	suggestedName = strings.TrimSpace(suggestedName)
-	if suggestedName == "" {
-		suggestedName = "download"
+	command, err := buildSaveDialogCommand(runtime.GOOS, suggestedName, exec.LookPath)
+	if err != nil {
+		return "", err
 	}
+	return runSaveDialogCommand(ctx, command)
+}
 
-	switch runtime.GOOS {
+type saveDialogCommand struct {
+	name string
+	args []string
+	env  []string
+}
+
+func buildSaveDialogCommand(platform, suggestedName string, lookup func(string) (string, error)) (saveDialogCommand, error) {
+	name := safeSuggestedFileName(suggestedName)
+	switch platform {
 	case "darwin":
-		return runSaveDialogCommand(ctx, "osascript",
-			"-e", `set targetFile to choose file name with prompt "Save contract file as:" default name `+appleScriptString(suggestedName),
-			"-e", "POSIX path of targetFile",
-		)
+		return saveDialogCommand{name: "osascript", args: []string{"-e", "on run argv", "-e", `set targetFile to choose file name with prompt "Save contract file as:" default name (item 1 of argv)`, "-e", "return POSIX path of targetFile", "-e", "end run", "--", name}}, nil
 	case "windows":
 		script := strings.Join([]string{
 			"Add-Type -AssemblyName System.Windows.Forms",
 			"$dialog = New-Object System.Windows.Forms.SaveFileDialog",
-			"$dialog.FileName = " + powershellString(suggestedName),
+			"$dialog.FileName = $env:CONTRACT_CLI_SAVE_NAME",
 			"if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $dialog.FileName } else { exit 2 }",
 		}, "; ")
-		return runSaveDialogCommand(ctx, "powershell", "-NoProfile", "-Command", script)
+		return saveDialogCommand{name: "powershell", args: []string{"-NoProfile", "-NonInteractive", "-STA", "-Command", script}, env: []string{"CONTRACT_CLI_SAVE_NAME=" + name}}, nil
 	default:
-		if path, err := exec.LookPath("zenity"); err == nil {
-			return runSaveDialogCommand(ctx, path, "--file-selection", "--save", "--confirm-overwrite", "--filename", suggestedName)
+		if path, err := lookup("zenity"); err == nil {
+			return saveDialogCommand{name: path, args: []string{"--file-selection", "--save", "--confirm-overwrite", "--filename=./" + name}}, nil
 		}
-		if path, err := exec.LookPath("kdialog"); err == nil {
-			return runSaveDialogCommand(ctx, path, "--getsavefilename", suggestedName)
+		if path, err := lookup("kdialog"); err == nil {
+			return saveDialogCommand{name: path, args: []string{"--getsavefilename", "./" + name}}, nil
 		}
-		return "", fmt.Errorf("no supported save dialog command found")
+		return saveDialogCommand{}, fmt.Errorf("no supported save dialog command found")
 	}
 }
 
-func runSaveDialogCommand(ctx context.Context, name string, args ...string) (string, error) {
-	output, err := exec.CommandContext(ctx, name, args...).Output()
+func runSaveDialogCommand(ctx context.Context, command saveDialogCommand) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	process := exec.CommandContext(ctx, command.name, command.args...)
+	process.Env = append(os.Environ(), command.env...)
+	output, err := process.Output()
 	if err != nil {
 		return "", err
 	}
@@ -51,10 +65,16 @@ func runSaveDialogCommand(ctx context.Context, name string, args ...string) (str
 	return path, nil
 }
 
-func appleScriptString(value string) string {
-	return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"`
-}
-
-func powershellString(value string) string {
-	return `'` + strings.ReplaceAll(value, `'`, `''`) + `'`
+func safeSuggestedFileName(value string) string {
+	name := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || strings.ContainsRune(`/\:*?"<>|`, r) {
+			return '_'
+		}
+		return r
+	}, strings.TrimSpace(value))
+	name = strings.TrimRight(strings.TrimLeft(name, ".- "), ". ")
+	if name == "" {
+		return "download"
+	}
+	return name
 }

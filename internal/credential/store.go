@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"cn.qfei/contract-cli/internal/config"
+	"cn.qfei/contract-cli/internal/privatefile"
 	keyringlib "github.com/zalando/go-keyring"
 )
 
@@ -28,7 +29,6 @@ const (
 	envDoubaoWorkTaskSession = "SESSION_ID"
 	keyringService           = "cn.qfei.contract-cli"
 	localUserKeyringService  = "cn.qfei.contract-cli.local-user-v1"
-	doubaoWorkTaskKeyPurpose = "cn.qfei.contract-cli/doubao-work-task/credential-key/v1\x00"
 	doubaoWorkTaskNSPurpose  = "cn.qfei.contract-cli/doubao-work-task/session-namespace/v1\x00"
 )
 
@@ -100,6 +100,7 @@ type Options struct {
 	LookupEnv func(string) (string, bool)
 	Keyring   Keyring
 	Runtime   *DeviceRuntime
+	StateDir  string
 }
 
 type DeviceRuntimeKind string
@@ -154,10 +155,17 @@ func resolveDeviceRuntime(lookupEnv func(string) (string, bool), currentDir func
 			return DeviceRuntime{}, fmt.Errorf("doubao work task directory is not a directory: %q", workspace)
 		}
 		namespace := deviceSessionNamespace(doubaoSessionID)
+		state, err := config.DefaultDir()
+		if configured := lookupTrimmedEnv(lookupEnv, "CONTRACT_CLI_CONFIG_DIR"); configured != "" {
+			state, err = filepath.Abs(configured)
+		}
+		if err != nil {
+			return DeviceRuntime{}, fmt.Errorf("resolve private task state: %w", err)
+		}
 		return DeviceRuntime{
 			Kind: DeviceRuntimeDoubaoWorkTask, Workspace: workspace, SessionID: doubaoSessionID,
 			SessionNamespace: namespace,
-			DataDir:          filepath.Join(workspace, ".contract-cli", "sessions", namespace),
+			DataDir:          filepath.Join(state, "device-sessions-v2", namespace),
 		}, nil
 	}
 	return DeviceRuntime{}, errors.New("SKILL_SESSION_WORKSPACE, CODEBUDDY_SESSION_ID, or SESSION_ID is required for Device credential isolation")
@@ -184,6 +192,13 @@ func NewStore(options Options) (Store, error) {
 	case DeviceRuntimeDoubaoCloud:
 		return newCloudStore(runtimeContext, lookupEnv)
 	case DeviceRuntimeDoubaoWorkTask:
+		if options.StateDir != "" {
+			root, err := filepath.Abs(options.StateDir)
+			if err != nil {
+				return nil, err
+			}
+			runtimeContext.DataDir = filepath.Join(root, "device-sessions-v2", runtimeContext.SessionNamespace)
+		}
 		return newTaskStore(runtimeContext)
 	case DeviceRuntimeWorkBuddy, DeviceRuntimeLocalUser:
 		return newKeyringStore(runtimeContext, options.Keyring)
@@ -218,9 +233,13 @@ func newTaskStore(runtimeContext DeviceRuntime) (Store, error) {
 	if err := ensureWritableCredentialDirectory(dir); err != nil {
 		return nil, err
 	}
+	key, err := privateTaskKey(runtimeContext.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	return &encryptedFileStore{
 		dir: dir,
-		key: deriveDoubaoWorkTaskCredentialKey(runtimeContext.SessionID),
+		key: key,
 	}, nil
 }
 
@@ -275,6 +294,9 @@ func (s *encryptedFileStore) Save(profileName string, credential DeviceCredentia
 	if err := os.MkdirAll(s.dir, 0o700); err != nil {
 		return fmt.Errorf("create credential directory: %w", err)
 	}
+	if err := os.Chmod(s.dir, 0o700); err != nil {
+		return err
+	}
 	temporary, err := os.CreateTemp(s.dir, ".credential-*")
 	if err != nil {
 		return fmt.Errorf("create credential temporary file: %w", err)
@@ -300,7 +322,7 @@ func (s *encryptedFileStore) Save(profileName string, credential DeviceCredentia
 	if err := temporary.Close(); err != nil {
 		return fmt.Errorf("close encrypted credential: %w", err)
 	}
-	if err := os.Rename(temporaryPath, s.path(profileName)); err != nil {
+	if err := privatefile.Replace(temporaryPath, s.path(profileName)); err != nil {
 		return fmt.Errorf("replace encrypted credential: %w", err)
 	}
 	return nil
@@ -417,16 +439,18 @@ func deviceSessionNamespace(sessionID string) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func deriveDoubaoWorkTaskCredentialKey(sessionID string) []byte {
-	digest := sha256.Sum256([]byte(doubaoWorkTaskKeyPurpose + sessionID))
-	return append([]byte(nil), digest[:]...)
-}
-
 func ensureWritableCredentialDirectory(dir string) error {
+	session := filepath.Dir(dir)
+	states := filepath.Dir(session)
+	root := filepath.Dir(states)
+	namespace, decodeErr := hex.DecodeString(filepath.Base(session))
+	if filepath.Base(states) != "device-sessions-v2" || decodeErr != nil || len(namespace) != sha256.Size || filepath.Dir(root) == root {
+		return errors.New("invalid private task state layout")
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create Doubao work task credential directory: %w", err)
 	}
-	for _, privateDir := range []string{filepath.Dir(dir), dir} {
+	for _, privateDir := range []string{root, states, session, dir} {
 		if err := os.Chmod(privateDir, 0o700); err != nil {
 			return fmt.Errorf("secure Doubao work task credential directory: %w", err)
 		}

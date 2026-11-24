@@ -8,7 +8,7 @@ import (
 )
 
 func readCommandInput(ctx context.Context, path string) ([]byte, error) {
-	return readCommandInputLimited(ctx, path, 0)
+	return readDefaultCommandInput(ctx, path)
 }
 
 func readCommandInputLimited(ctx context.Context, path string, limit int64) ([]byte, error) {

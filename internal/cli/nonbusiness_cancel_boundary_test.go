@@ -447,6 +447,17 @@ func TestNonBusinessCancelledConfigWriteLogsPreservePreviousState(t *testing.T) 
 
 func TestNonBusinessCancelledConfigResetReportsPartialCommittedState(t *testing.T) {
 	fixture := newNonBusinessBoundaryLegacyConfigFixture(t)
+	workspace := t.TempDir()
+	oldLookup := fixture.options.LookupEnv
+	fixture.options.LookupEnv = func(name string) (string, bool) {
+		if name == "SKILL_SESSION_WORKSPACE" {
+			return workspace, true
+		}
+		if oldLookup != nil {
+			return oldLookup(name)
+		}
+		return "", false
+	}
 	beforeProfile, _ := nonBusinessBoundaryStateSnapshot(t, fixture)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

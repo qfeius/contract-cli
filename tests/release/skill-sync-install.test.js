@@ -13,6 +13,57 @@ const historicalClientSafetySkip = process.platform === "win32" && fs.existsSync
   ? "Real Windows WorkBuddy Skills exist; use an isolated OS account for native tgz installation tests"
   : false;
 
+// Supply official npm pack tarballs; the upgrade itself needs no registry or real client.
+test("official 1.9.5 in place and 1.9.6/7 unregistered migrations via npm", {
+  timeout: 240000, skip: historicalClientSafetySkip || !process.env.CONTRACT_CLI_OFFICIAL_TGZ_DIR,
+}, () => {
+  const { buildLocalTestPackage, runNpm } = require("../../scripts/build-local-test-package.js");
+  const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "cli-official-upgrade-")));
+  const version = "2.0.0-test.skill-upgrade";
+  try {
+    const current = buildLocalTestPackage({ output: temp, version });
+    const major = Number(runNpm(["--version"], { encoding: "utf8" }).split(".")[0]);
+    for (const scenario of ["1.9.5", "1.9.6", "1.9.7", "edited-1.9.7"]) {
+      const old = scenario.replace("edited-", "");
+      const base = path.join(temp, scenario);
+      const prefix = path.join(base, "npm");
+      const env = { ...process.env, HOME: base, CODEX_HOME: path.join(base, "codex"),
+        CONTRACT_CLI_CONFIG_DIR: path.join(base, "config"), CONTRACT_CLI_NO_UPDATE_CHECK: "1" };
+      const opts = { env, cwd: temp, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] };
+      const install = pkg => runNpm(["install", "-g", pkg, "--prefix", prefix, "--offline",
+        "--foreground-scripts", "--no-audit", "--no-fund", ...(major >= 12 ? ["--dangerously-allow-all-scripts"] : [])], opts);
+      const entry = path.join(prefix, ...(process.platform === "win32" ? [] : ["lib"]), "node_modules/@qfeius/contract-cli/scripts/run.js");
+      const cli = args => execFileSync(process.execPath, [entry, ...args], opts);
+      install(path.resolve(process.env.CONTRACT_CLI_OFFICIAL_TGZ_DIR, `qfeius-contract-cli-${old}.tgz`));
+      const original = path.join(env.CODEX_HOME, "skills");
+      cli(["skills", "install", "--target", original, "--force"]);
+      let target = original;
+      if (old !== "1.9.5") {
+        env.CONTRACT_CLI_CONFIG_DIR = path.join(base, "new-config");
+        env.CODEX_HOME = path.join(base, "new-client");
+        target = path.join(env.CODEX_HOME, "skills");
+        fs.cpSync(original, target, { recursive: true, filter: f => path.basename(f) !== ".contract-cli-managed.json" });
+      }
+      const review = path.join(target, "contract-cli-review/SKILL.md");
+      if (scenario.startsWith("edited")) fs.appendFileSync(review, "\nuser edit\n");
+      const before = fs.readFileSync(review, "utf8");
+      const output = install(current);
+      if (scenario.startsWith("edited")) {
+        assert.match(output, /unverified/);
+        assert.equal(fs.readFileSync(review, "utf8"), before);
+        assert.deepEqual(JSON.parse(cli(["skills", "status", "--output=json"])).data.registration.locations, []);
+      } else {
+        assert.match(output, /Skill 自动同步：成功/, scenario + ": " + output);
+        const {cli: identity, registration} = JSON.parse(cli(["skills", "status", "--output=json"])).data;
+        assert.equal(identity.version, version);
+        assert.deepEqual(registration.locations.map(l => [l.target, l.version, l.status]), [[target, version, "success"]]);
+        const expected = JSON.parse(cli(["skills", "list", "--output=json"])).data.skills;
+        for (const skill of expected) assert.ok(fs.readFileSync(path.join(target, skill.directory, "SKILL.md"), "utf8").includes("version: " + version));
+      }
+    }
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
 test("real tgz upgrade runs postinstall, updates registered locations and respects install scope", { timeout: 240000, skip: historicalClientSafetySkip }, () => {
   const { buildLocalTestPackage, runNpm } = require("../../scripts/build-local-test-package.js");
   const root = path.resolve(__dirname, "../..");
@@ -45,6 +96,11 @@ test("real tgz upgrade runs postinstall, updates registered locations and respec
     fs.writeFileSync(path.join(a, "third-party", "SKILL.md"), "keep");
     const upgraded = npm(["install", "-g", p2, "--prefix", prefix, "--foreground-scripts", "--no-audit", "--no-fund"]);
     assert.match(upgraded, /official Skill version: 1.9.4-test.clm111796.2/);
+    assert.match(upgraded, /当前 Agent.*skills status --output json/);
+    const status = JSON.parse(actualCLI(["skills", "status", "--output", "json"]));
+    assert.equal(status.ok, true);
+    assert.deepEqual(status.data.registration.locations.map(l => [l.target, l.version, l.status]),
+      [a, b].map(t => [fs.realpathSync(t), "1.9.4-test.clm111796.2", "success"]));
     for (const target of [a, b]) assert.match(fs.readFileSync(skill(target), "utf8"), /version: 1.9.4-test.clm111796.2/);
     assert.equal(fs.readFileSync(path.join(a, "third-party", "SKILL.md"), "utf8"), "keep");
     fs.writeFileSync(skill(a), "local unchanged");

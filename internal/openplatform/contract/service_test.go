@@ -725,7 +725,8 @@ func TestServiceDownloadFileStreamsAppEndpoint(t *testing.T) {
 					Header: http.Header{
 						"Content-Disposition": {`attachment; filename="contract.pdf"`},
 					},
-					Body: io.NopCloser(strings.NewReader("download bytes")),
+					Body:          io.NopCloser(strings.NewReader("download bytes")),
+					ContentLength: int64(len("download bytes")),
 				}, nil
 			}),
 		},

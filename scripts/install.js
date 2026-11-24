@@ -96,19 +96,21 @@ function verifyArchiveChecksum(archivePath, checksumsPath) {
   }
 }
 
-function extractArchive(archivePath, tempDir) {
-  if (isWindows) {
-    execFileSync(
+function extractArchive(archivePath, tempDir, targetPlatform = process.platform, execute = execFileSync) {
+  if (targetPlatform === "win32") {
+    execute(
       "powershell",
       [
+        "-NoProfile",
+        "-NonInteractive",
         "-Command",
-        `Expand-Archive -Path '${archivePath}' -DestinationPath '${tempDir}' -Force`,
+        "$ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory($env:CONTRACT_CLI_ARCHIVE_PATH, $env:CONTRACT_CLI_EXTRACT_DIR)",
       ],
-      { stdio: "ignore" }
+      { stdio: "ignore", env: { ...process.env, CONTRACT_CLI_ARCHIVE_PATH: archivePath, CONTRACT_CLI_EXTRACT_DIR: tempDir } }
     );
     return;
   }
-  execFileSync("tar", ["-xzf", archivePath, "-C", tempDir], { stdio: "ignore" });
+  execute("tar", ["-xzf", archivePath, "-C", tempDir], { stdio: "ignore" });
 }
 
 function installFromArchive(archivePath) {
@@ -222,4 +224,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { verifyArchiveChecksum, synchronizeSkills, cliInstallSummary };
+module.exports = { verifyArchiveChecksum, synchronizeSkills, cliInstallSummary, extractArchive };

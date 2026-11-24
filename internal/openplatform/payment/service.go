@@ -95,6 +95,7 @@ func (s *Service) SearchPlans(ctx context.Context, requestContext openplatform.R
 	return s.client.Do(ctx, requestContext, openplatform.Request{
 		Method:         http.MethodPost,
 		Path:           "/open-apis/contract/v1/payments/search",
+		OperationKind:  openplatform.OperationRead,
 		Body:           body,
 		IdentityPolicy: openplatform.IdentityPolicyAppOnly,
 	})

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"cn.qfei/contract-cli/internal/privatefile"
 )
 
 type SecretsStore struct {
@@ -74,16 +76,12 @@ func (s *SecretsStore) save(file *secretsFile) error {
 	if file.Secrets == nil {
 		file.Secrets = map[string]string{}
 	}
-	if err := os.MkdirAll(s.dir, 0o755); err != nil {
-		return fmt.Errorf("create secrets dir: %w", err)
-	}
-
 	data, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode secrets: %w", err)
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(s.Path(), data, 0o600); err != nil {
+	if err := privatefile.Write(s.Path(), data); err != nil {
 		return fmt.Errorf("write secrets: %w", err)
 	}
 	return nil

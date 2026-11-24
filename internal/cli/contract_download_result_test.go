@@ -78,7 +78,7 @@ func TestAppDownloadStructuredResult(t *testing.T) {
 	}
 	stdout := &bytes.Buffer{}
 	app := cli.New(cli.Options{Store: store, Stdout: stdout, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("file"))}, nil
+		return &http.Response{StatusCode: 200, Header: make(http.Header), ContentLength: 4, Body: io.NopCloser(strings.NewReader("file"))}, nil
 	})}})
 	path := filepath.Join(dir, "app.txt")
 	if err := app.Run(context.Background(), []string{"contract", "download-file", "123", "--as", "app", "--profile", "contract", "--output-file", path, "--output", "json"}); err != nil {

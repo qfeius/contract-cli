@@ -182,6 +182,10 @@ func (a *App) shouldAutoCheckUpdate(args []string) bool {
 		return false
 	}
 	switch args[0] {
+	case "skills":
+		if len(args) > 1 && args[1] == "status" {
+			return false
+		}
 	case "version", "--version", "-version", "-v", "update":
 		return false
 	}

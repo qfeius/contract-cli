@@ -1,3 +1,117 @@
+## 2026-11-23 - 恢复 GoReleaser Tag 发布链路
+- 范围：release workflow、GoReleaser 配置、发布回归与文档；不修改业务代码、生产 Tag 或远端 Release。
+- 决策：保留三平台检查，移除 gh release create，恢复 GoReleaser -> npm 元信息 -> npm 资产 -> npm publish 顺序，固定旧成功版本 v2.20.1。
+- 兼容：复用可修改的已有 Release，保留说明与同名附件保护；预发布保持 GitHub prerelease/npm beta，普通分支与 fork 不发布；Windows ZIP 改用等价 formats 字段。
+- 测试：先复现 workflow/配置断言失败，再验证恢复后的发布条件、执行顺序及渠道规则；本地验证不执行真实发布。
+- 验证：make release-check、GoReleaser v2.20.1 check 均通过，exhaustive lint 为 0 issues；Windows 原生及远端发布未执行。
+
+## 2026-11-23 - 验证 Windows 配置替换不改写旧文件
+- 配置与凭据保存测试用硬链接保留旧文件，分别核对旧内容不变和目标路径已更新；不修改运行时代码。
+
+## 2026-11-23 - 修复远端 lint 工具安装与 Windows 测试归档
+- 只对固定版本 linter 的安装启用 Go 工具链自动选择，不改变产品 Go 版本、测试或发布条件。
+- Windows 安装测试用 .NET 从独立目录打包 ZIP，不依赖 tar.exe 对 Unicode 路径的编码行为。
+
+## 2026-11-23 - 修复 PR 跨平台检查
+- 自动更新测试显式模拟非 CI 环境；不改变 CI 跳过自动更新的产品行为。
+- Windows 安装器沿用环境变量传递路径，改用 .NET ZIP API 按字面路径解压；真实 npm 安装和归档测试使用独立生成的 ZIP。
+
+## 2026-11-23 - 将 Open Web 大请求体修复合入生产 release PR
+- 来源为原开发分支 `codex/remove-open-web-body-limit` 的 375c86b；仅移除 CLI 大小检查，不放宽生产环境、路径、身份或服务端限制。
+
+## 2026-11-23 - 到期查询与扫描修复集成至生产 release
+- 从 release 合入两个原开发分支，保留仅生产环境约束，不合入环境交付分支。
+- 到期 Skill 以业务时区选日历日期、以 GMT+8 生成平台检索边界；示例使用明确的生产 profile。
+- 补单日边界协议检查及 23 个官方 Skill 的安装、升级登记回归。
+
+## 2026-11-19：取消 CLI Open Web 请求体固定上限
+- 删除 `internal/cli/api_command.go` 的 1 MiB 本地拦截；不变更服务端、身份及路径检查。
+- 补充大 JSON 文件原样发送的回归测试，同步命令帮助、使用文档及 API Call Skill 说明。
+
+## 2026-11-18 - App 模板列表业务失败返回退出码 1
+- 范围：仅 contract template list 的 App 身份（含默认 App）启用已有合同响应校验；参数、User 身份和通用 api call 不变。
+- 行为：HTTP 200 下业务失败仍输出后端响应，CLI 退出 1；正常分页与空列表退出 0。MCP 继续使用原错误文本及输出行为。
+- 回归：contract_template_list_exit_test.go 覆盖 110405、显式失败、默认 App/raw、正常与空结果，另对照 User 和 api call 的透传行为。
+
+## 2026-11-18 - npm 升级后核对 Agent Skill 与历史目录迁移
+- 升级：internal/update 的实时及缓存通知都生成带 --foreground-scripts 的 npm 命令，使 Agent 可以读取安装器逐目录结果。
+- 状态：新增 skills status --output json，离线读取 CLI 路径、版本和各目录最近的登记结果；文件损坏返回失败，不冒充空登记。
+- 提示：安装摘要、帮助、README 和共享 Skill 提醒核对当前 Agent 的真实用户目录；未证明客户端已加载，不推断豆包目录。
+- 迁移：scripts/skill-history.js 复现 1.9.5～1.9.7 安装器写入缩进版本字段的字节结果；仅补 review 与 review-rule 的官方指纹，仍严格校验整目录。
+- 回归：tests/release/skill-sync-install.test.js 用正式 npm 包覆盖 1.9.5 原地、1.9.6/7 无登记迁移、用户修改拒绝接管、已登记多目录更新及 JSON 查询。
+- 复跑：将三个正式 npm pack 压缩包放入 CONTRACT_CLI_OFFICIAL_TGZ_DIR 指定的目录，执行 npm run test:skill-sync-install；安装与升级使用临时 prefix/配置/Skill 目录。
+
+## 2026-11-18 - app 下载业务失败不落盘、不覆盖旧文件
+- 范围：原开发分支修复合同文件、协商文件、主数据附件三类 app 下载；不修改通用 api call、user 签名下载或环境配置。
+- 实现：openplatform/file_download.go 与三类入口显式启用 Request.FileDownload，流式写入前识别 HTTP 200 的业务错误 JSON；保留 trace，仅输出业务码，不记录服务端正文。
+- 文件：失败时非零退出、stdout 不输出错误文件，沿用临时文件提交和清理，--force 也保留原文件；不新增重试或鉴权刷新。
+- 兼容：有有效 Content-Disposition 文件名的附件继续流式传输，包括内容与错误响应相同的 JSON；非文件 JSON 沿用 API 响应读取上限，普通 JSON 内容原样保留。
+- 回归：先红后绿覆盖三类命令的新文件/覆盖/raw、JSON MIME/缺失头/BOM、合法 JSON 附件及编码文件名；另测通用流透传、长度、读取失败、取消和有界读取。
+- 夹具：同步旧下载错误透传断言；基线也复现预审短时限用例受真实宿主探测影响，仅给测试夹具注入固定探测结果，时限/断言/业务代码不变，两项各连续 10 次通过。
+- 验证：专项及全量 Go race/coverage 通过（CLI 覆盖率 84.2%），exhaustive lint 0 issues；Windows CLI/openplatform 测试交叉编译通过，原生未运行。
+- 交付：仅本地修改，未提交推送、未同步 test、未重打安装包，不使用真实凭据或调用业务接口。
+
+## 2026-11-17 - test 审查问题 1/2/4 与 5 编码检查修复
+- 范围：原开发分支 codex/fix-release-doc-issues-20261112；不处理 Windows 长路径、任务相对目录、锁问题或矩阵编码前缀；按用户后续要求提交推送主仓库当前开发分支，再基于最新 test 创建独立集成分支提交 MR。
+- 身份：device_runtime/device_profile 将已有匹配 Device 快照的模式恢复扩展到 Agent 运行时；保持目标校验、任务隔离、旧 OAuth 与 pending/expired 语义，修复恢复后的业务、状态与登出。
+- 下载：signed_download_guard 按请求固定代理选择，代理仅放行精确 host:port 并交由可信代理解析目标；直连继续校验并连接公网 IP，自定义 TLS 拨号保留原 DNS 检查。
+- 输出：debug_logging 登记 include-current-version；save_dialog 移除全局日志，由 contract_download_mcp_command 的命令日志策略记录弹窗边界，保持 JSON 错误可解析。
+- 路径：request_path 遇到字面百分号继续检查后续合法转义；只检查不重写 URL，保留正常编码 ID、正文与通用 api call 能力。
+- 回归：先红后绿覆盖三类 Agent 的 18 个恢复生命周期场景、身份边界、代理离线 DNS/精确端口/选择失败/TLS 兼容、布尔参数排列、弹窗 JSON 和嵌套编码。
+- 验证：全量 go test -race -cover -parallel 1 ./... 通过（CLI 84.2%），exhaustive lint 0 issues；Node 37 通过/3 跳过，Windows CLI 测试交叉编译通过，原生未运行。
+- 环境：通过临时 Go overlay 在 test 集成代码验证 profile/显式地址/恢复及本轮回归；未修改 test 工作区、生产环境约束、真实凭据或已安装 Skill。
+
+## 2026-11-16 - 预审状态保存失败保留鉴权错误
+- 范围：在原问题修复开发分支处理，再 merge 更新主仓库 test MR !47；不直接修改 test、不包含代理下载问题。
+- 实现：review_pre_audit_workflow.go 的启动拒绝、候选任务与轮询失败保存分支使用 errors.Join 保留请求和保存错误，避免 401/403 被覆盖后输出旧恢复数据。
+- 边界：继续由 withPreAuditRun 识别鉴权失败并抑制 stdout；正常审查、未知结果不重发和状态持久化规则不变，无新增接口或锁。
+- 回归：review_pre_audit_output_security_test.go 新增 12 个完整 CLI 场景，覆盖三条路径、401/403、保存成功/失败；先复现六个失败场景，再验证错误链及 stdout 无恢复数据。
+- 验证：聚焦安全回归、全量 Go race/coverage（CLI 83.9%）、exhaustive lint 0 issues、Windows amd64 CLI 测试交叉编译通过；Windows 原生未执行。
+- 隔离：仅模拟 HTTP 和测试临时目录；真实用户 Skill、凭据与登记文件未修改，不调用真实业务接口。
+- 交付：保留开发分支与 MR 集成分支的独立历史；MR 继续保留 test 环境 profile，不发布、不部署。
+
+## 2026-11-16 - 问题 10/12/13/14/15/17 的业务影响子项修复
+- 范围：当前 codex/fix-release-doc-issues-20261112@e759a63；不改强制宿主验签、旧 OAuth、问题 16 或其他排除项，不新增锁，保留通用 api call。
+- 存储：privatefile 为 config/secrets 和 Windows 导入计划提供完整替换；经用户确认，任务凭据改到私有 device-sessions-v2，随机密钥原子首次创建，不信任旧项目密文，旧任务需重新授权，桌面 Keychain 实现不变。
+- 恢复：配置缺失也核对残留 Device 快照；复用现有凭据操作锁并在清理前重查，只删除不匹配凭据；缺省名称仅恢复 contract，保留有效生产登录；auth init/complete 默认错误统一 JSON。
+- 部门：按 product/group/显式类型校验，合同矩阵仍用字符串 SaaS 部门 ID；导入保存类型并在 apply/verify 恢复，新计划 v5，兼容 v4 默认类型计划，旧 CLI 不执行新计划。
+- 网络：普通 API 响应和通用 JSON 输入限 32 MiB；无调用方时限时普通请求 30s、流式上传/下载 10m，保留显式时限；签名下载限 1 GiB，校验 HTTPS、公网 IP、DNS/重定向，保留 CDN 与显式代理。
+- Skill：补齐四个业务路由、预审命令与授权参数说明，修复协商 JSON；从 9 个固定官方 GitHub Tag 补齐 1.9.5–1.9.13 整目录指纹，保留自定义内容保护，新增生成工具和维护说明。
+- 验证：先红后绿；make release-check（Node 37 通过/3 跳过）、全量 race/coverage、exhaustive lint 0 issues、五包 Windows 测试交叉编译通过；仓库 frontmatter/Skill 回归通过，通用严格模板不接受的既有 version 扩展未改；Windows 原生未执行。
+- 问题 11：隔离管道子进程实测强制终止后共享 O_NONBLOCK 残留，正常取消回归通过；临时探针已移除，仅记录发现，不修改取消/非阻塞实现，Windows 原生取消待验证。
+- 交付：真实 Skill 登记与已安装 auth Skill 哈希不变；按用户要求提交并推送 GitLab 主仓库当前同名开发分支，不合并、不发布，不执行生产业务写入。
+
+## 2026-11-16 - 问题 5：预审失败判定与恢复状态修复
+- 范围：当前 codex/fix-release-doc-issues-20261112 分支；正常上传、分类、配置、审查和链接流程不变，不新增接口或锁。
+- 请求：openplatform/client.go 与 not_sent.go 记录整个 Do 的派发证据；发送前失败可识别，已有任一 HTTP 尝试后的刷新或 hook 失败不能误判为未发送。
+- 启动：review_pre_audit_outcome/workflow 仅接受已核实的参数/鉴权拒绝；start_rejected_confirmed 允许显式再发，超时/5xx/未知码/异常响应仍为 start_unknown，候选任务 ID 仅留作核实。
+- 恢复：确定创建、引用或启动未发送时恢复原阶段；先保存再切换内存状态，保存失败停止；旧 start_rejected 不自动放行，历史未知记录不回滚或重放。
+- 上传：移除固定 30 秒；prepare 新增 --deadline（默认 10m），review run 沿用总时限，服从调用方更短时限；未发送清理空记录，已发送超时不自动重传。
+- 回归：先红后绿覆盖未知启动、候选 ID、明确拒绝后显式再发、精确恢复/保存失败、刷新后错误、同 run 创建续行、上传时限及历史记录；同步帮助、Skill、命令文档与 Windows CI。
+- 验证：make release-check、全量 race/coverage、exhaustive lint（0 issues）和 Windows CLI/openplatform 测试交叉编译通过；Windows 原生测试本机未执行。
+- 交付：用户真实 Skill 登记与 auth Skill 哈希未变；按用户要求提交并推送 GitLab 主仓库当前同名开发分支，不合并、不发布、不调用生产业务写接口。
+
+## 2026-11-12 - 审查问题 4/6/9 及 Windows 安装传参修复
+- 范围：在 codex/fix-release-doc-issues-20261112@c83117b 继续修复；不处理其余问题，不改变安装下载协议、哈希或回退规则。
+- 预审：review_pre_audit.go 在预览及恢复输出前核对原身份；鉴权/刷新失败不输出旧结果，预览仍不刷新 Token、不写业务或恢复记录。
+- 下载：contract_command/openapi_gap_command 复用临时文件提交，失败保留原文件并清理临时文件，禁止无 force 覆盖并发文件；raw 保持直接输出。
+- 流式：openplatform 补齐 Token 预准备、可信过期刷新一次、Content-Length 校验（兼容 HEAD/未知长度），不重放已输出内容或不可重放请求体。
+- 查询：仅 app 合同搜索和付款计划搜索标记 OperationRead；通用 POST/写请求策略、api call 透传不变。
+- 安装与日志：install.js 仅 Windows 解压改为固定 PowerShell 脚本+子进程环境传路径；log_redaction.go 修正 flag 状态机并补齐敏感 ID/名称。
+- 回归：先红后绿覆盖跨账号/租户/登出/预览/刷新及 HTTP 401/403 拒绝、三类 app 下载失败/并发保全、流长度、POST 读写策略和参数脱敏；旧 HTTP 夹具补齐真实长度。
+- 验证：make release-check、全量 race/coverage、exhaustive lint（0 issues）、actionlint、六平台构建/校验及 Windows 测试交叉编译通过；Node 31 通过/3 跳过，两个 Windows 原生用例已接入 CI，本机未执行。
+- 交付：真实用户 Skill 登记及 auth Skill 哈希不变；本次仅提交并推送 GitLab 主仓库当前开发分支，不合并、不运行远端 Actions 或发布。
+
+## 2026-11-12 - release 审查问题 1/2/3 修复
+- 范围：当前 codex/fix-release-doc-issues-20261112 分支，基于 GitHub release@2eabbbc；不处理报告其余业务问题。
+- 弹窗：save_dialog.go 使用固定脚本与 argv/子进程环境传名，清洗建议文件名，保留用户选择路径及取消语义。
+- 请求：openplatform 在凭据准备与 HTTP 前校验路径及实际路由身份；普通/流式共用防点段、编码分隔符与身份降级校验。
+- 兼容：保留通用 api call，不增加端点白名单，不扫描或改写 query/body；中文、空格和合法百分号 ID 仍可使用。
+- 发布：删除两个本地发布脚本及旧脚本测试；Actions 增加 Linux/macOS 全量检查、固定 lint、Windows 安全回归和严格标签分流，单批产物不覆盖发布。
+- 回归：新增命令注入、路径/身份、危险付款 ID、通用 API 透传和标签输出测试；修正 15 个 macOS 测试的临时目录路径夹具，隔离安装测试 HOME/配置。
+- 验证：make release-check 通过；Node 29 通过/1 既有跳过；全量 race/coverage 重跑通过（首跑预审 80ms 用例超时，独立连续 5 次通过，未改该业务逻辑）；lint 0 issues、actionlint 通过。
+- 构建：六平台验证构建及 SHA-256 校验通过，Windows 安全测试交叉编译通过；本次交付仅提交并推送 GitLab 主仓库同名开发分支，不合并、不运行远端 Actions 或真实发布。
+
 ## 2026-11-11 — 两个审批 Skill 提交 GitHub 生产 release
 - 来源：基于 github/release@75cad7b 建集成分支，merge 已验收的 contract-approval-efficiency@bd74a29、contract-cli-approval-actions@d9bd52a，保留历史。
 - 范围：引入两个 Skill 共 15 个运行文件；仅适配生产环境说明并补齐效率 Skill 的 Agent policy，不修改业务参考流程。
