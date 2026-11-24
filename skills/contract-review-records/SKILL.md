@@ -1,6 +1,8 @@
 ---
 name: contract-review-records
 description: "通过当前用户授权的 Contract CLI，按有效审查记录的创建时间查询本月或指定期间的合同审查清单，按已定位合同去重，展示合同名称、当前阶段及可用的最新审查入口。旧记录缺业务关联时保留为未定位项并说明结果不完整。只查询，不发起或重新审查。"
+metadata:
+  version: "0.1.1"
 ---
 
 # 我的合同审查清单
@@ -12,7 +14,7 @@ description: "通过当前用户授权的 Contract CLI，按有效审查记录�
 ## 保持当前用户和只读范围
 
 - 复用已经确认的 profile、环境、租户和 USER；所有请求显式携带同一 `--profile`、`--as user`。不切换 app 身份，不传调用人覆盖参数或自建授权头。
-- 必要时按宿主可发现的 `auth`、`contract-cli-shared` 处理已有授权和续期；合同详情复用 `contract-cli-contract`。缺少依赖或 CLI 能力时说明具体缺项，不猜安装地址或要求用户提供凭证、内部 ID。
+- 按[审查历史的授权方式](references/query.md#审查历史的授权方式)核实 REVIEW 路由。复用宿主的 `auth`、`contract-cli-shared` 处理授权和续期，合同详情复用 `contract-cli-contract`。缺少依赖时说明具体缺项。
 - 按实际帮助确认 `contract-cli api call --help` 与 `contract-cli contract get --help` 支持[查询协议](references/query.md)。合同详情保留原始 JSON，并由宿主无损读取长整数 ID；不得先转浮点数再转字符串。本包没有脚本，不依赖 Python。
 - 不上传、创建预审、创建审查组、发起/重发审查、生成报告或打开编辑器。不要为补清单读取风险全文；V3 task/info 的历史物化行为不属于这里的查询链。
 
