@@ -1,0 +1,4 @@
+interface:
+  display_name: "我的合同审查清单"
+  short_description: "按有效审查记录创建时间查询合同清单，展示当前阶段和可用的审查入口"
+  default_prompt: "使用 $contract-review-records 查询我本月创建的当前有效审查记录，按合同去重，列出合同名称、当前阶段和可用的最新审查入口；未定位的旧记录单独说明。"
