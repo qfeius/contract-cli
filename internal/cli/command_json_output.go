@@ -24,7 +24,8 @@ func parseJSONOutputFormat(value string) (bool, error) {
 
 // --json remains a JSON-output alias only for update check.
 func commandRequestsJSON(args []string, options commandLogOptions) bool {
-	return options.outputJSON || (len(args) >= 2 && args[0] == "update" && args[1] == "check" && options.jsonAlias)
+	defaultAuthJSON := len(args) >= 2 && args[0] == "auth" && (args[1] == "init" || args[1] == "complete")
+	return options.outputJSON || defaultAuthJSON || (len(args) >= 2 && args[0] == "update" && args[1] == "check" && options.jsonAlias)
 }
 
 func (a *App) renderJSONCommandResult(data any) error {

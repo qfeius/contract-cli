@@ -142,15 +142,15 @@ contract-cli contract get <contract-id> --profile <profile> --output json
 - `succeeded` 后可继续执行授权前尚未发送的原业务请求一次，不再追加二次确认。
 - `uncertain` / `busy` 必须告知当前结果不确定并结束当前轮次；禁止重试 `auth complete`，禁止重新执行 `auth init`。
 - `denied` / `expired` / `restart_required` 为终态；先询问用户是否重新授权。只有收到新的用户消息明确同意后，才执行 `auth init --profile <profile> --output json --restart`，随后再次立即结束当前轮次。
-- `auth status` 不支持 `--output`，禁止自动附加该参数。
+- `auth status` 可使用 `--output json` 获取结构化结果；省略时保留默认输出。状态查询不负责刷新 Token。
 - Refresh Token 返回 `invalid_grant` 时也必须先询问用户；CLI 会清理失效 Token，但会保留可能存在的 pending 会话。只有收到新的用户消息明确同意后，才先执行 `auth status --profile <profile> --as user`，再根据真实状态选择复用现有会话、普通 `auth init` 或带 `--restart` 的 `auth init`；不要直接重复未确认结果的写请求。
 - CLI 确认当前进程来自本地桌面客户端时，豆包、WorkBuddy、Codex 的 Device 凭证按当前系统用户 + profile 保存，不绑定任务 ID，可跨任务复用。当前自动识别的本地共享范围覆盖 macOS 和 Windows，分别使用 macOS Keychain 和 Credential Manager；系统安全存储不可用时直接失败，不降级成明文文件。Linux 暂保留任务隔离，WorkBuddy 使用 Secret Service。
 - `auth init` / `auth complete` 的 `credential_scope` 为 `user` 表示本地跨任务共享，为 `task` 表示任务隔离；`auth status` 显示同义的 `Credential Scope`，应以 CLI 结果为准。
 - 云端、沙箱或识别不明确时保持任务隔离；不能仅凭 `SESSION_ID` 或操作系统类型判断为本地。不得为了共享凭证修改环境标记或伪造客户端信息。
 - 豆包 AgentKit / Skills Sandbox 运行在云端 Skill 环境，必须提供 `SKILL_SESSION_WORKSPACE` 和格式正确的 `CONTRACT_CLI_CREDENTIAL_KEY_V1`。
-- 豆包普通工作任务在隔离范围内使用 `SESSION_ID`；所有 CLI 命令必须从任务初始工作目录执行，不得在授权前后切换到其他目录。凭证以 AES-256-GCM 密文保存到当前任务目录，仅在该任务内复用；缺少任务隔离所需信息时直接失败。
+- 豆包普通工作任务在隔离范围内使用 `SESSION_ID`；为保持授权产物可见，所有 CLI 命令必须从任务初始工作目录执行，不得在授权前后切换到其他目录。凭证以 AES-256-GCM 密文保存在当前配置目录内的私有任务状态区，使用随机密钥，不放入项目目录，也不从会话 ID 推导密钥；仅在同一配置目录和任务内复用。旧项目目录中的任务密文不自动迁入，升级后这类旧任务须重新授权一次；不自动删除项目中的旧文件。
 - 不自动迁移旧任务凭证。升级后首次进入本地共享范围可能需要重新授权，后续任务复用共享登录态；旧 Authorization Code 模式仍保留，不与 Device 凭证自动互迁。
-- `auth init` 成功后，CLI 会把 Device 运行所需的非敏感 profile 快照与 pending transaction 一起加密保存。AgentKit 同一会话工作区或豆包普通工作任务的任务目录仍存在、但临时 HOME 中没有本地 profile 时，CLI 只会在命令显式携带 `--profile <profile>` 且快照完整匹配时恢复 profile。
+- `auth init` 成功后，CLI 会把 Device 运行所需的非敏感 profile 快照与 pending transaction 一起加密保存。AgentKit 同一会话工作区或豆包普通工作任务的私有状态区仍存在、但配置文件缺失时，CLI 会按选定名称恢复完整匹配的 profile；省略名称时只尝试默认 `contract`，不枚举其他配置。
 - 恢复只写入当前沙箱临时 HOME；不会把 `config.json`、`secrets.json`、App Secret 或明文 profile 写进会话工作区。快照缺失或损坏时，按错误提示重新执行 `config add` 和 `auth init`，禁止猜测环境、scope、client 或 endpoint。
 - WorkBuddy 未被确认为本地桌面执行时，仍以 `CODEBUDDY_SESSION_ID` 隔离凭证；缺少任务 ID 时直接失败，不跨任务读取其他凭证。
 
@@ -258,7 +258,7 @@ contract-cli auth use --profile <profile> --as app
 存储约束：
 
 - `config.json` 保存 profile、identity 元数据；旧授权码模式仍保持原有 token 存储行为
-- Device Token 不写入 `config.json`：已确认本地桌面执行时写入操作系统安全存储，按当前系统用户 + profile 共享；任务隔离范围内，AgentKit 写入会话工作区的 AES-256-GCM 密文，豆包普通工作任务写入任务目录的 AES-256-GCM 密文，WorkBuddy 的系统安全存储凭证绑定任务 ID
+- Device Token 不写入 `config.json`：已确认本地桌面执行时写入操作系统安全存储，按当前系统用户 + profile 共享；任务隔离范围内，AgentKit 保持会话工作区的加密存储，豆包普通工作任务使用配置目录内的私有任务状态区和随机密钥，WorkBuddy 的系统安全存储凭证绑定任务 ID
 - 豆包加密 Device 凭证可包含恢复当前 Device profile 所需的非敏感快照；不包含 App 身份、旧 OAuth Token、手机号、企业 ID 或业务参数
 - 豆包普通工作任务在任务隔离范围内使用任务级加密，用于避免明文落盘和正常对话泄露，但不能抵御同一沙箱内具有文件和进程访问能力的 Shell，禁止宣称存在进程级 Secret 隔离
 - `secrets.json` 只保存 app 的 `app_secret`

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,9 +60,16 @@ func TestContractDownloadUsesActualHTTPContentLength(t *testing.T) {
 			baseTransport := client.Transport
 			client.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				if strings.HasPrefix(req.URL.Path, "/open-apis/") {
-					return jsonResponse(fmt.Sprintf(`{"code":0,"data":{"file_id":"1","file_size":%d,"download_url":%q}}`, tc.metadataSize, server.URL+"/tenant/contract.pdf?X-Tos-Expires=300&X-Tos-Signature=test")), nil
+					return jsonResponse(fmt.Sprintf(`{"code":0,"data":{"file_id":"1","file_size":%d,"download_url":%q}}`, tc.metadataSize, "https://storage.example.test/tenant/contract.pdf?X-Tos-Expires=300&X-Tos-Signature=test")), nil
 				}
-				return baseTransport.RoundTrip(req)
+				// Route only this injected storage fixture to the local TLS server.
+				local, parseErr := url.Parse(server.URL)
+				if parseErr != nil {
+					return nil, parseErr
+				}
+				request := req.Clone(req.Context())
+				request.URL.Scheme, request.URL.Host = local.Scheme, local.Host
+				return baseTransport.RoundTrip(request)
 			})
 			stdout := &bytes.Buffer{}
 			app := cli.New(cli.Options{Stdout: stdout, Stderr: io.Discard, Store: store, HTTPClient: client})

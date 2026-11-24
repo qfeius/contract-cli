@@ -5,6 +5,8 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +86,45 @@ func TestAPIWebCallUsesCLIUserAuthorizationAndExactRequest(t *testing.T) {
 	}
 	if output := stdout.String(); !strings.Contains(output, `"total": 3`) {
 		t.Fatalf("output = %q", output)
+	}
+}
+
+func TestAPIWebCallPreservesUnregisteredRoutesAndOpaqueData(t *testing.T) {
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(apiWebTestProfile(), true); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"arbitrary":{"id":"..","text":"合同 / %","url":"https://example.com/a%20b"}}`
+	calls := 0
+	app := cli.New(cli.Options{Store: store, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.URL.Path != "/open-web/web/new-product/unregistered/action" || r.URL.Query().Get("opaque") != "../研发/%" || string(data) != body || r.Header.Get("Authorization") != "Bearer user-token" {
+			t.Fatalf("generic request was restricted or changed: %s %s", r.URL, data)
+		}
+		return jsonResponse(`{"code":0}`), nil
+	})}})
+	if err := app.Run(context.Background(), []string{"api", "call", "--channel", "web", "POST", "/open-web/web/new-product/unregistered/action", "--query", "opaque=../研发/%", "--data", body}); err != nil || calls != 1 {
+		t.Fatalf("generic call failed: %v requests=%d", err, calls)
+	}
+}
+
+func TestRuleRowDeleteRejectsDotIDBeforeHTTP(t *testing.T) {
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(apiWebTestProfile(), true); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	app := cli.New(cli.Options{Store: store, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return jsonResponse(`{"code":0}`), nil
+	})}})
+	err := app.Run(context.Background(), []string{"rule", "table", "row", "delete", "..", "--product-id", "contract", "--group-id", "approve_matrix", "--table-id", "table-1", "--as", "user"})
+	if err == nil || calls != 0 {
+		t.Fatalf("dot row ID escaped its resource: %v requests=%d", err, calls)
 	}
 }
 
@@ -234,7 +275,7 @@ func TestAPIWebCallRejectsTrustedIdentityHeaders(t *testing.T) {
 	}
 }
 
-func TestAPIWebCallRejectsAppIdentityAndOversizedBodyBeforeHTTP(t *testing.T) {
+func TestAPIWebCallRejectsAppIdentityBeforeHTTP(t *testing.T) {
 	t.Parallel()
 
 	store := config.NewStore(t.TempDir())
@@ -260,13 +301,44 @@ func TestAPIWebCallRejectsAppIdentityAndOversizedBodyBeforeHTTP(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "only supports --as user") {
 		t.Fatalf("unexpected app identity error: %v", err)
 	}
+}
 
-	err = app.Run(context.Background(), []string{
-		"api", "call", "--channel", "web", "--profile", "contract",
-		"POST", "/open-web/web/clm/contract/info", "--data", strings.Repeat("x", 1024*1024+1),
-	})
-	if err == nil || !strings.Contains(err.Error(), "exceeds 1048576 bytes") {
-		t.Fatalf("unexpected body size error: %v", err)
+func TestAPIWebCallSendsLargeInputFileUnchanged(t *testing.T) {
+	store := config.NewStore(t.TempDir())
+	if err := store.UpsertProfile(apiWebTestProfile(), true); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		size int
+	}{
+		{"large_workflow", 7 << 20},
+		{"over_eight_mib", (8 << 20) + 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"config":"` + strings.Repeat("x", tc.size-len(`{"config":""}`)) + `"}`)
+			path := filepath.Join(t.TempDir(), "workflow.json")
+			if err := os.WriteFile(path, body, 0600); err != nil {
+				t.Fatal(err)
+			}
+			calls := 0
+			app := cli.New(cli.Options{
+				Store: store, Stdout: io.Discard, Stderr: io.Discard,
+				HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					calls++
+					got, err := io.ReadAll(req.Body)
+					if err != nil || !bytes.Equal(got, body) {
+						t.Fatalf("request body mismatch: got %d bytes, want %d; err=%v", len(got), len(body), err)
+					}
+					return jsonResponse(`{"code":0}`), nil
+				})},
+			})
+			err := app.Run(context.Background(), []string{"api", "call", "--channel", "web", "--profile", "contract",
+				"POST", "/open-web/web/clm/contract/info", "--input-file", path})
+			if err != nil || calls != 1 {
+				t.Fatalf("Run() err=%v, HTTP calls=%d; want success and one call", err, calls)
+			}
+		})
 	}
 }
 

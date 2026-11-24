@@ -54,8 +54,8 @@ func TestReviewSkillDistributionAndRouting(t *testing.T) {
 			count++
 		}
 	}
-	if count != 22 {
-		t.Fatalf("want 22 installed skill directories, got %d", count)
+	if count != 23 {
+		t.Fatalf("want 23 installed skill directories, got %d", count)
 	}
 	if _, err := os.Stat(filepath.Join(target, ".contract-cli-managed.json")); err != nil {
 		t.Fatalf("complete installation must retain its management marker: %v", err)

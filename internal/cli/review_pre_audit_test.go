@@ -18,6 +18,7 @@ import (
 
 	"cn.qfei/contract-cli/internal/cli"
 	"cn.qfei/contract-cli/internal/config"
+	"cn.qfei/contract-cli/internal/invocation"
 )
 
 const preAuditID = "1195051801729040728"
@@ -49,15 +50,18 @@ func newPreAuditHarness(t *testing.T, transport func(*http.Request) (*http.Respo
 		t.Fatal(err)
 	}
 	out := new(bytes.Buffer)
-	app := cli.New(cli.Options{Store: store, Stdout: out, Stderr: io.Discard, HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		if transport == nil {
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
-		if r.Header.Get("Authorization") != "Bearer "+preAuditToken("896684654038353011", "1002718663263913046") {
-			t.Fatal("preaudit must send the bound user token")
-		}
-		return transport(r)
-	})}})
+	app := cli.New(cli.Options{Store: store, Stdout: out, Stderr: io.Discard,
+		// Deadline tests must not spend their budget probing the real host.
+		InspectEnvironment: func(context.Context, int) invocation.Result { return invocation.Result{} },
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if transport == nil {
+				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+			if r.Header.Get("Authorization") != "Bearer "+preAuditToken("896684654038353011", "1002718663263913046") {
+				t.Fatal("preaudit must send the bound user token")
+			}
+			return transport(r)
+		})}})
 	file := filepath.Join(t.TempDir(), "contract.pdf")
 	if err := os.WriteFile(file, []byte("contract bytes"), 0600); err != nil {
 		t.Fatal(err)

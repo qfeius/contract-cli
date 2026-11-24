@@ -30,12 +30,12 @@ func (a *App) loadDeviceAwareProfile(profileName string) (config.Profile, error)
 		if err := a.validateProductionDeviceCredentialIfAvailable(profile); err != nil {
 			return config.Profile{}, err
 		}
-		return a.restoreLocalDeviceIdentity(profile)
+		return a.restoreDeviceIdentity(profile)
 	}
 
 	normalizedProfileName := strings.TrimSpace(profileName)
 	if normalizedProfileName == "" {
-		return config.Profile{}, profileNotFoundError(profileName)
+		normalizedProfileName = "contract"
 	}
 	agentKitWorkspace, inAgentKit := a.lookupEnv("SKILL_SESSION_WORKSPACE")
 	workTaskSession, inDoubaoWorkTask := a.lookupEnv("SESSION_ID")

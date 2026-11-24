@@ -210,6 +210,7 @@ func helpRegistry() map[string]helpTopic {
 		{"contract-cli auth use [flags]", "切换默认业务身份"},
 		{"contract-cli version", "查看版本信息"},
 		{"contract-cli skills list", "列出内置 Agent skills"},
+		{"contract-cli skills status", "查看 Skill 同步登记记录"},
 		{"contract-cli skills install [flags]", "安装内置 Agent skills"},
 		{"contract-cli update check [flags]", "检查 npm 远端版本"},
 		{"contract-cli environment inspect [flags]", "探测当前 CLI 的宿主客户端环境"},
@@ -303,7 +304,7 @@ func addAPIHelp(registry map[string]helpTopic) {
 		},
 		Notes: []string{
 			"method、path、query/body 和响应映射由业务 Skill 提供；CLI 不发现接口，也不负责编排业务语义。",
-			"只接受相对 /open-web/web/ 路径；请求体最大 1 MiB。",
+			"只接受相对 /open-web/web/ 路径；大请求体建议使用 --input-file。",
 			"Authorization、Cookie、租户/用户和网关可信身份头由 CLI 与网关管理，不能通过 --header 传入。",
 			"HTTP 2xx 不等于业务成功；调用方仍需按业务 Skill 的响应映射判断。",
 		},
@@ -492,6 +493,7 @@ func addSkillsHelp(registry map[string]helpTopic) {
 		Usage: []string{"contract-cli skills <subcommand> [flags]"},
 		Commands: []helpCommand{
 			{"contract-cli skills list", "列出内置 Agent skills"},
+			{"contract-cli skills status", "查看 Skill 同步登记记录"},
 			{"contract-cli skills install [flags]", "安装内置 Agent skills"},
 		},
 		Notes: []string{
@@ -499,6 +501,10 @@ func addSkillsHelp(registry map[string]helpTopic) {
 			"首次安装或未识别的历史位置：未找到可自动同步的位置时，先提示用户确认真实目录，或提供经过核实的推荐目录；确认前不自动安装所有候选。",
 			"历史通用安装入口仍可使用，但不能用 GitHub 默认分支的 Skill 代替当前 CLI 配套版本同步。",
 		},
+	}
+	registry["skills status"] = helpTopic{
+		Name: "skills status", Summary: "只读查询当前 CLI 和各目录最近一次登记的版本、状态；不验证客户端是否加载。",
+		Usage: []string{"contract-cli skills status [--output json]"},
 	}
 	registry["skills list"] = helpTopic{
 		Name:    "skills list",
@@ -2053,7 +2059,10 @@ func addRuleHelp(registry map[string]helpTopic) {
 
 func ruleTableHelpTopic(name string, summary string, usage string, extraFlags []helpFlag, examples []string, notes []string) helpTopic {
 	if strings.HasPrefix(name, "rule table row ") && name != "rule table row delete" {
-		extraFlags = append(extraFlags, helpFlag{"--department-id-type <type>", "contract/approve_matrix 默认 tenant_department_id；可显式选择兼容类型"})
+		extraFlags = append(extraFlags, helpFlag{"--department-id-type <type>", "contract/approve_matrix 默认 tenant_department_id；其他范围默认 open_department_id，可显式选择兼容类型"})
+	}
+	if name == "rule table import plan" {
+		extraFlags = append(extraFlags, helpFlag{"--department-id-type <type>", "contract/approve_matrix 仅 tenant_department_id；其他范围默认 open_department_id，可显式选择兼容类型"})
 	}
 	return helpTopic{
 		Name:    name,

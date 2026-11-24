@@ -171,9 +171,10 @@ func TestContractDownloadFileCommandWritesOutputFileAsApp(t *testing.T) {
 					t.Fatalf("path = %s", req.URL.Path)
 				}
 				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     make(http.Header),
-					Body:       io.NopCloser(strings.NewReader("download bytes")),
+					StatusCode:    http.StatusOK,
+					Header:        make(http.Header),
+					Body:          io.NopCloser(strings.NewReader("download bytes")),
+					ContentLength: int64(len("download bytes")),
 				}, nil
 			}),
 		},
@@ -224,9 +225,10 @@ func TestContractDownloadFileCommandUsesSaveDialogByDefault(t *testing.T) {
 		HTTPClient: &http.Client{
 			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     make(http.Header),
-					Body:       io.NopCloser(strings.NewReader("dialog bytes")),
+					StatusCode:    http.StatusOK,
+					Header:        make(http.Header),
+					Body:          io.NopCloser(strings.NewReader("dialog bytes")),
+					ContentLength: int64(len("dialog bytes")),
 				}, nil
 			}),
 		},
@@ -354,9 +356,10 @@ func TestContractDownloadFileCommandRawWritesStdout(t *testing.T) {
 		HTTPClient: &http.Client{
 			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     make(http.Header),
-					Body:       io.NopCloser(strings.NewReader("raw bytes")),
+					StatusCode:    http.StatusOK,
+					Header:        make(http.Header),
+					Body:          io.NopCloser(strings.NewReader("raw bytes")),
+					ContentLength: int64(len("raw bytes")),
 				}, nil
 			}),
 		},
@@ -396,9 +399,10 @@ func TestContractDownloadFileCommandValidationAndForce(t *testing.T) {
 			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				requests++
 				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     make(http.Header),
-					Body:       io.NopCloser(strings.NewReader("new bytes")),
+					StatusCode:    http.StatusOK,
+					Header:        make(http.Header),
+					Body:          io.NopCloser(strings.NewReader("new bytes")),
+					ContentLength: int64(len("new bytes")),
 				}, nil
 			}),
 		},

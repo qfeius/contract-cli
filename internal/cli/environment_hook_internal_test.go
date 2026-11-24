@@ -243,6 +243,8 @@ func TestEnvironmentTimeoutDoesNotBlockBusinessOrPinNextRequestSource(t *testing
 func TestEnvironmentHookRespectsBusinessCancellationWithoutSending(t *testing.T) {
 	for _, cancelBefore := range []bool{true, false} {
 		ctx, cancel := context.WithCancel(context.Background())
+		type callerContextKey struct{}
+		ctx = context.WithValue(ctx, callerContextKey{}, true)
 		if cancelBefore {
 			cancel()
 		}
@@ -250,7 +252,7 @@ func TestEnvironmentHookRespectsBusinessCancellationWithoutSending(t *testing.T)
 		app := &App{logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 			inspectEnvironment: func(received context.Context, _ int) invocation.Result {
 				detections++
-				if received != ctx {
+				if received.Value(callerContextKey{}) != true {
 					t.Fatal("lost caller context")
 				}
 				cancel()

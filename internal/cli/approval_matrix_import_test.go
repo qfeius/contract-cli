@@ -141,6 +141,25 @@ func TestApprovalMatrixImportPlanAndRetryableApply(t *testing.T) {
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("plan permissions = %o, want 600", info.Mode().Perm())
 	}
+	// Existing v4 plans without an explicit department mode remain resumable.
+	legacyBody, err := os.ReadFile(planPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var legacyPlan map[string]any
+	legacyDecoder := json.NewDecoder(bytes.NewReader(legacyBody))
+	legacyDecoder.UseNumber()
+	if err := legacyDecoder.Decode(&legacyPlan); err != nil {
+		t.Fatal(err)
+	}
+	legacyPlan["version"] = 4
+	legacyBody, err = json.Marshal(legacyPlan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(planPath, legacyBody, 0600); err != nil {
+		t.Fatal(err)
+	}
 
 	stdout.Reset()
 	applyArgs := []string{"rule", "table", "import", "apply", "--plan-id", planID, "--profile", "contract", "--as", "app"}

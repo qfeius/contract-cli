@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"cn.qfei/contract-cli/internal/openplatform"
 	contractsvc "cn.qfei/contract-cli/internal/openplatform/contract"
@@ -109,14 +111,19 @@ func (a *App) resolveContractDownloadPath(ctx context.Context, fileID string, ou
 	}
 	outputPath := strings.TrimSpace(outputFile)
 	if outputPath == "" {
+		logger := a.commandTraceLogger(ctx)
+		logger.Debug("save dialog started")
 		selectedPath, err := a.saveFileDialog(ctx, fileID)
 		if err != nil {
+			logger.Error("save dialog failed", "error_type", fmt.Sprintf("%T", err))
 			return "", fmt.Errorf("select save path failed; pass --output-file <path> in non-GUI environments: %w", err)
 		}
 		outputPath = strings.TrimSpace(selectedPath)
 		if outputPath == "" {
+			logger.Error("save dialog returned no path")
 			return "", fmt.Errorf("select save path failed; pass --output-file <path> in non-GUI environments")
 		}
+		logger.Debug("save dialog completed")
 	}
 	if _, err := os.Lstat(outputPath); err == nil && !force {
 		return "", fmt.Errorf("download output file %q already exists; pass --force to overwrite", outputPath)
@@ -127,6 +134,32 @@ func (a *App) resolveContractDownloadPath(ctx context.Context, fileID string, ou
 }
 
 func (a *App) downloadSignedContractFileToPath(ctx context.Context, rawURL string, expectedSize *int64, outputPath string, force bool) error {
+	return a.downloadFileToPath(ctx, outputPath, force, func(writer io.Writer) error {
+		return a.downloadSignedContractFile(ctx, rawURL, expectedSize, writer)
+	})
+}
+
+func (a *App) writeContractDownload(ctx context.Context, fileID, outputFile string, raw, force bool, download func(io.Writer) error) (string, error) {
+	outputPath, err := a.resolveContractDownloadPath(ctx, fileID, outputFile, raw, force)
+	if err != nil {
+		return "", err
+	}
+	if raw {
+		return "", download(a.stdout)
+	}
+	return outputPath, a.downloadFileToPath(ctx, outputPath, force, download)
+}
+
+func (a *App) downloadFileToPath(ctx context.Context, outputPath string, force bool, download func(io.Writer) error) (err error) {
+	logger := a.commandTraceLogger(ctx)
+	logger.Info("download file staging started", "overwrite", force)
+	defer func() {
+		if err != nil {
+			logger.Error("download file staging failed", "error_type", fmt.Sprintf("%T", err))
+		} else {
+			logger.Info("download file committed")
+		}
+	}()
 	temporary, err := os.CreateTemp(filepath.Dir(outputPath), filepath.Base(outputPath)+".part-*")
 	if err != nil {
 		return fmt.Errorf("create temporary download file: %w", err)
@@ -134,13 +167,16 @@ func (a *App) downloadSignedContractFileToPath(ctx context.Context, rawURL strin
 	temporaryPath := temporary.Name()
 	defer func() { _ = os.Remove(temporaryPath) }() // Best-effort removal, including after rename.
 
-	downloadErr := a.downloadSignedContractFile(ctx, rawURL, expectedSize, temporary)
+	downloadErr := download(temporary)
 	closeErr := temporary.Close()
 	if downloadErr != nil {
 		return downloadErr
 	}
 	if closeErr != nil {
 		return fmt.Errorf("close temporary download file: %w", closeErr)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	return commitDownloadedFile(temporaryPath, outputPath, force)
 }
@@ -201,6 +237,11 @@ func copyDownloadedFileNoReplace(temporaryPath string, outputPath string) error 
 }
 
 func (a *App) downloadSignedContractFile(ctx context.Context, rawURL string, expectedSize *int64, writer io.Writer) error {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 10*time.Minute)
+		defer cancel()
+	}
 	logger := a.commandTraceLogger(ctx)
 	parsedURL, err := validateSignedDownloadURL(rawURL)
 	if err != nil {
@@ -227,9 +268,15 @@ func (a *App) downloadSignedContractFile(ctx context.Context, rawURL string, exp
 		logger.Error("signed contract file download failed", "host", parsedURL.Hostname(), "status_code", response.StatusCode)
 		return fmt.Errorf("signed file download failed with status %d", response.StatusCode)
 	}
-	written, err := io.Copy(writer, response.Body)
+	if response.ContentLength > maxSignedFileBytes {
+		return fmt.Errorf("%w (%d bytes)", errSignedFileTooLarge, maxSignedFileBytes)
+	}
+	written, err := copySignedFile(writer, response.Body, maxSignedFileBytes)
 	if err != nil {
 		logger.Error("copy signed contract file download failed", "host", parsedURL.Hostname(), "error_type", fmt.Sprintf("%T", err))
+		if errors.Is(err, errSignedFileTooLarge) {
+			return err
+		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return fmt.Errorf("copy signed file download: %w", ctxErr)
 		}
@@ -249,6 +296,7 @@ func (a *App) downloadSignedContractFile(ctx context.Context, rawURL string, exp
 
 func signedDownloadHTTPClient(base *http.Client) *http.Client {
 	client := *base
+	client.Transport = publicSignedFileTransport(base.Transport)
 	client.Jar = nil
 	previousCheckRedirect := client.CheckRedirect
 	client.CheckRedirect = func(request *http.Request, via []*http.Request) error {
@@ -279,6 +327,9 @@ func validateSignedDownloadURL(rawURL string) (*url.URL, error) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
 		return nil, fmt.Errorf("contract file metadata returned an invalid HTTPS download URL")
+	}
+	if err := publicFileHost(parsed.Hostname()); err != nil {
+		return nil, err
 	}
 	return parsed, nil
 }

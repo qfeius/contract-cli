@@ -66,3 +66,26 @@ func TestPreAuditCreateHelpExplainsCategoryReselectionAndUnknownOutcome(t *testi
 		}
 	}
 }
+
+func TestPreAuditHelpExplainsDeadlineAndSafeRecovery(t *testing.T) {
+	app, out := alignmentApp(t, nil)
+	if err := app.Run(context.Background(), []string{"review", "pre-audit", "prepare", "--help"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, rule := range []string{"--deadline", "10m"} {
+		if !strings.Contains(out.String(), rule) {
+			t.Errorf("prepare help lacks %s", rule)
+		}
+	}
+	out.Reset()
+	if err := app.Run(context.Background(), []string{"review", "pre-audit", "start", "--help"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, content := range []string{out.String(), reviewSkill(t, "contract-cli-review")} {
+		for _, rule := range []string{"start_rejected_confirmed", "start_rejected", "人工核实", "未发送"} {
+			if !strings.Contains(content, rule) {
+				t.Errorf("help/Skill lacks recovery rule %s", rule)
+			}
+		}
+	}
+}

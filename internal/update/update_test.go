@@ -32,7 +32,7 @@ func TestCheckFindsNewBetaVersion(t *testing.T) {
 	if result.LatestVersion != "0.1.0-beta.2" {
 		t.Fatalf("LatestVersion = %q, want 0.1.0-beta.2", result.LatestVersion)
 	}
-	if result.InstallCommand != "npm install -g @qfeius/contract-cli@beta --registry https://registry.npmjs.org" {
+	if result.InstallCommand != "npm install -g @qfeius/contract-cli@beta --registry https://registry.npmjs.org --foreground-scripts" {
 		t.Fatalf("InstallCommand = %q", result.InstallCommand)
 	}
 }
@@ -187,8 +187,8 @@ func TestNoticeFromCacheComparesLatestAgainstCurrent(t *testing.T) {
 	if !strings.Contains(notice.Message, "contract-cli 0.1.0-beta.2 available") {
 		t.Fatalf("notice message = %q", notice.Message)
 	}
-	if notice.Command != cache.InstallCommand {
-		t.Fatalf("notice command = %q, want %q", notice.Command, cache.InstallCommand)
+	if want := cache.InstallCommand + " --foreground-scripts"; notice.Command != want {
+		t.Fatalf("notice command = %q, want %q", notice.Command, want)
 	}
 
 	if notice := NoticeFromCache(cache, "0.1.0-beta.2", DefaultPackageName); notice != nil {

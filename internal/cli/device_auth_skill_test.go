@@ -43,7 +43,7 @@ func TestDeviceAuthSkillsEnforceWorkBuddyTurnBoundaries(t *testing.T) {
 		"Refresh Token 返回 `invalid_grant` 时也必须先询问用户",
 		"先执行 `auth status --profile <profile> --as user`",
 		"根据真实状态选择复用现有会话、普通 `auth init` 或带 `--restart` 的 `auth init`",
-		"auth status` 不支持 `--output",
+		"auth status` 可使用 `--output json`",
 		"豆包 AgentKit / Skills Sandbox 运行在云端 Skill 环境",
 		"豆包普通工作任务在隔离范围内使用 `SESSION_ID`",
 		"必须从任务初始工作目录执行",
