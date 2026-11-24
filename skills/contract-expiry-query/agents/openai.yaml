@@ -1,0 +1,6 @@
+interface:
+  display_name: "合同到期与未归档筛选"
+  short_description: "查询过去或未来指定天数到期的合同，并支持组合筛选当前尚未完成归档的合同"
+  default_prompt: "请使用 $contract-expiry-query 查询未来 30 天到期且目前未归档的合同，默认包含今天，并使用已确认的查询环境与业务时区。"
+policy:
+  allow_implicit_invocation: true

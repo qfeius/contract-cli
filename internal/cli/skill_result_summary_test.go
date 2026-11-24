@@ -51,7 +51,7 @@ func TestSkillResultSummaryNoLocationIsNotFailure(t *testing.T) {
 
 func TestSkillResultSummaryInstallAndAllRegisteredLocations(t *testing.T) {
 	a, out, _, _ := summaryApp(t)
-	first, second, selected := filepath.Join(t.TempDir(), "a"), filepath.Join(t.TempDir(), "b"), filepath.Join(t.TempDir(), "selected")
+	first, second, selected := filepath.Join(canonicalSkillTempDir(t), "a"), filepath.Join(canonicalSkillTempDir(t), "b"), filepath.Join(canonicalSkillTempDir(t), "selected")
 	for _, target := range []string{first, second} {
 		out.Reset()
 		if err := a.Run(context.Background(), []string{"skills", "install", "--target", target, "--force"}); err != nil {
@@ -78,7 +78,7 @@ func TestSkillResultSummaryInstallAndAllRegisteredLocations(t *testing.T) {
 
 func TestSkillResultSummaryMixedSyncDoesNotHideInvalidTarget(t *testing.T) {
 	a, out, stderr, _ := summaryApp(t)
-	good, missing := filepath.Join(t.TempDir(), "good"), filepath.Join(t.TempDir(), "missing")
+	good, missing := filepath.Join(canonicalSkillTempDir(t), "good"), filepath.Join(canonicalSkillTempDir(t), "missing")
 	for _, target := range []string{good, missing} {
 		if err := a.Run(context.Background(), []string{"skills", "install", "--target", target, "--force"}); err != nil {
 			t.Fatal(err)
@@ -115,7 +115,7 @@ func TestSkillResultSummaryCorruptRegistryIsNotEmptyOrSuccessful(t *testing.T) {
 	}
 	out.Reset()
 	stderr.Reset()
-	target := filepath.Join(t.TempDir(), "skills")
+	target := filepath.Join(canonicalSkillTempDir(t), "skills")
 	if err := a.Run(context.Background(), []string{"skills", "install", "--target", target, "--force"}); err == nil {
 		t.Fatal("expected installation failure")
 	}

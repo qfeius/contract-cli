@@ -61,6 +61,7 @@
 
 4. 验证安装结果
    - 用 contract-cli skills list 获取当前 CLI 的内置技能清单，作为预期清单。
+   - 在当前 Agent 内运行 `contract-cli skills status --output json`。对照 `data.cli` 和 `data.registration.locations`，核对实际使用的 CLI、Skill 目录和最近同步版本。只读登记记录，不扫描客户端；目录缺失或状态不是 success 时不要报告同步成功。
    - 检查目标目录中的技能名称、数量、SKILL.md 版本和附属文件。
    - 确认没有因跳过已有目录而保留旧版本。
    - 注意：skills list 只显示内置清单，不能单独证明客户端已安装或加载成功。

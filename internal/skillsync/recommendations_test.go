@@ -40,7 +40,7 @@ func TestClientSkillHintsRejectRelativeOrUnknownRoots(t *testing.T) {
 }
 
 func TestRecommendationsAreReadOnlyAndExcludeAlreadyProcessedTargets(t *testing.T) {
-	home, state := t.TempDir(), filepath.Join(t.TempDir(), "not-created-state")
+	home, state := canonicalSkillTempDir(t), filepath.Join(t.TempDir(), "not-created-state")
 	root := filepath.Join(home, ".codex")
 	if err := os.MkdirAll(root, 0755); err != nil {
 		t.Fatal(err)

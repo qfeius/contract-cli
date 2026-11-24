@@ -153,6 +153,8 @@ contract-cli review pre-audit prepare --profile <profile> --as user --file <path
 
 保存 `runId`、`sourceFileId` 和 `workflowStage=awaiting_category`。这一步只上传CLM正文，不是审查成功，也不返回导航地址；接着按「选择合同分类」查询并让用户选择。当前CLI直接文件 `review run` 同样停在此阶段并返回未完成错误；保留runId继续，不重新上传。
 
+上传总时限默认10分钟，可通过 `prepare --deadline 2m` 调整；`review run` 沿用其 `--deadline`，均不能延长调用方时限。确认上传未发送时，CLI清理本次空记录，可修复原因后重新prepare；一旦已发送而结果未知，保留run人工核实，不重新上传。
+
 `prepare`不接收stdin或URL。本地附件使用上方预审流程；`review file upload` 仅支持 CLM 文件引用，显式传入 `--file` 或 `--stdin` 会被拒绝，包含预览命令和 `--stdin=false`。不要把附件字节直接上传到 AI，也不要在缺少引用参数时改用字节上传。创建预审后的 AI 引用由 `pre-audit create` 内部完成，无须再执行一次上传命令。当前不支持通过文件地址上传，`review run` 的 `source.type=url` 在执行和预览时均会报错；遇到文件地址时请用户提供可读本地附件，再执行CLM预审，不自动下载或将URL直传AI。本地预审的 `sourceFileId/latestFileId` 是CLM文件ID，后续create返回的 `fileId/fileHash` 是AI文件身份，不能混用。大整数使用无损JSON/字符串，禁止经浮点丢失精度。
 
 ## 合同 ID → 协商引用上传
@@ -427,6 +429,8 @@ contract-cli review pre-audit resume --profile <profile> --as user --run-id <run
 ```
 
 已知taskId按「两轮审查与请求重试」决定续查或第二轮再次发起；再次发起仍通过原run执行 `pre-audit start`，不新建预审。**启动结果未知**且无taskId时提示人工核实，保留runId/preAuditId，不自动重发，也不绕过状态机改用task start；本轮不实现请求号找回AI任务。状态成功但详情未就绪时按下文只读补查，不凭resume的缓存结果认定成功。审查已成功但**链接失败**时，CLI非零退出并保留final明细和字符串IDs；resume仅重取同一预审地址，不重新创建或审查，不因此触发第二轮。准备阶段不冒充审查成功。
+
+CLI确认创建、引用或启动请求未发送时，恢复原阶段，修复原因后使用原run继续；恢复记录保存失败则停止核实。只有确认未创建任务的参数或鉴权拒绝才记为 `start_rejected_confirmed`，由用户修复原因后显式start，不自动重发。超时、5xx、未知业务码或响应不完整保持 `start_unknown`；异常响应里的 `start.candidateTaskId` 仅供人工核实，不作为成功taskId续查。旧版 `start_rejected` 证据不足，也须人工核实，不能改记录绕过；新版恢复记录继续使用新版CLI处理。
 
 恢复记录位于配置目录的 `preaudit-runs`，绑定profile/API origin及实际JWT租户/用户；切换账号、损坏/缺失记录时停止，不新建run代替恢复。不保存token、正文或签名URL，无自动过期或后台清理，由用户管理。
 

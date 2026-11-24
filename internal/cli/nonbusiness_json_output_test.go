@@ -49,6 +49,30 @@ func TestNonBusinessExplicitJSONVersionAliases(t *testing.T) {
 	}
 }
 
+func TestDeviceAuthorizationDefaultErrorsAreJSON(t *testing.T) {
+	for _, action := range []string{"init", "complete"} {
+		for _, debug := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/debug=%t", action, debug), func(t *testing.T) {
+				fixture := newNonBusinessJSONFixture(t)
+				args := []string{"auth", action, "--profile", "missing-profile"}
+				if debug {
+					args = append(args, "--debug")
+				}
+				code := cli.New(fixture.options).Execute(context.Background(), args)
+				if code == 0 || fixture.stdout.Len() != 0 {
+					t.Fatal("missing authorization reported success")
+				}
+				records := nonBusinessJSONRecords(t, fixture.stderr.Bytes())
+				last := records[len(records)-1]
+				if last["ok"] != false || last["error"] == nil {
+					t.Fatalf("default error is not structured JSON: %v", last)
+				}
+				nonBusinessJSONNoSecrets(t, fixture.stderr.String())
+			})
+		}
+	}
+}
+
 func TestNonBusinessExplicitJSONConfigAdd(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {

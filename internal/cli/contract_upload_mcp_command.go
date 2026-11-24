@@ -168,7 +168,7 @@ func (a *App) uploadContractAttachmentContent(ctx context.Context, session contr
 }
 
 func validateAttachmentUploadResponse(phase string, body []byte) error {
-	if err := validateContractMCPResponse(body); err == nil {
+	if err := validateContractEnvelope("contract MCP", body); err == nil {
 		return nil
 	}
 	var envelope struct {

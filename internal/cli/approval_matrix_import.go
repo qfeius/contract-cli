@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,11 +21,12 @@ import (
 
 	"cn.qfei/contract-cli/internal/openplatform"
 	"cn.qfei/contract-cli/internal/output"
+	"cn.qfei/contract-cli/internal/privatefile"
 	"github.com/gofrs/flock"
 )
 
 const (
-	approvalMatrixImportPlanVersion = 4
+	approvalMatrixImportPlanVersion = 5
 	approvalMatrixRowCountLimit     = 2000
 )
 
@@ -88,6 +88,7 @@ type approvalMatrixImportPlan struct {
 	Profile            string                          `json:"profile"`
 	ProductID          string                          `json:"product_id"`
 	GroupID            string                          `json:"group_id"`
+	DepartmentIDType   string                          `json:"department_id_type,omitempty"`
 	TableID            string                          `json:"table_id"`
 	Status             string                          `json:"status"`
 	Operations         []approvalMatrixImportOperation `json:"operations"`
@@ -142,7 +143,7 @@ runApprovalMatrixImportPlan 读取矩阵列头和全量规则行，校验容量�
 返回值为解析、鉴权、矩阵读取或计划保存错误；业务校验问题通过 status=needs_input 输出并返回 nil。
 */
 func (a *App) runApprovalMatrixImportPlan(ctx context.Context, args []string) error {
-	parsed, err := parseArgs(args, structuredValueFlags("--product-id", "--group-id", "--table-id"), commonBoolFlags())
+	parsed, err := parseArgs(args, structuredValueFlags("--product-id", "--group-id", "--table-id", "--department-id-type"), commonBoolFlags())
 	if err != nil {
 		return err
 	}
@@ -153,6 +154,17 @@ func (a *App) runApprovalMatrixImportPlan(ctx context.Context, args []string) er
 	if options.raw {
 		return fmt.Errorf("rule table import plan does not support --raw because it returns structured state")
 	}
+	productID, groupID, err := requiredRuleProductGroup(parsed)
+	if err != nil {
+		return err
+	}
+	if err := validateApprovalMatrixImportIDType(options, productID, groupID); err != nil {
+		return err
+	}
+	departmentIDType, err := matrixDepartmentIDType(productID, groupID, options.departmentIDType)
+	if err != nil {
+		return err
+	}
 	body, err := resolveRequiredRawBody(ctx, options)
 	if err != nil {
 		return err
@@ -160,17 +172,6 @@ func (a *App) runApprovalMatrixImportPlan(ctx context.Context, args []string) er
 	input, err := decodeApprovalMatrixImportInput(body)
 	if err != nil {
 		return err
-	}
-	productID, groupID, err := requiredRuleProductGroup(parsed)
-	if err != nil {
-		return err
-	}
-	departmentIDType := "open_department_id"
-	if productID == "contract" && groupID == "approve_matrix" {
-		if err := validateApprovalMatrixImportIDType(options, productID, groupID); err != nil {
-			return err
-		}
-		departmentIDType = "tenant_department_id"
 	}
 	tableID := strings.TrimSpace(parsed.String("--table-id"))
 	if tableID == "" {
@@ -255,6 +256,7 @@ func (a *App) runApprovalMatrixImportPlan(ctx context.Context, args []string) er
 		Profile:            requestContext.Profile.Name,
 		ProductID:          productID,
 		GroupID:            groupID,
+		DepartmentIDType:   options.departmentIDType,
 		TableID:            tableID,
 		Status:             "needs_confirmation",
 		Operations:         operations,
@@ -363,6 +365,9 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 	if err != nil {
 		return err
 	}
+	if err := restoreMatrixPlanDepartmentMode(&options, plan); err != nil {
+		return err
+	}
 	if err := validateApprovalMatrixImportIDType(options, plan.ProductID, plan.GroupID); err != nil {
 		return err
 	}
@@ -399,7 +404,7 @@ func (a *App) runApprovalMatrixImportApply(ctx context.Context, args []string) e
 		return a.renderApprovalMatrixImportApplyResult(options, plan)
 	}
 	// 旧计划缺少行快照时必须重新确认；app 凭证轮换保持兼容。
-	if plan.Version != approvalMatrixImportPlanVersion || plan.RowSnapshot == nil || plan.ContextFingerprint != approvalMatrixContextFingerprint(requestContext) || a.now().Sub(plan.CreatedAt) > 24*time.Hour {
+	if !compatibleMatrixPlanVersion(plan) || plan.RowSnapshot == nil || plan.ContextFingerprint != approvalMatrixContextFingerprint(requestContext) || a.now().Sub(plan.CreatedAt) > 24*time.Hour {
 		plan.Status = "invalidated"
 		plan.Reason = "plan expired or identity/credential/application/environment changed; generate a new plan"
 		if err := a.saveApprovalMatrixImportPlan(plan); err != nil {
@@ -748,6 +753,9 @@ func (a *App) runApprovalMatrixPlanControl(ctx context.Context, action string, a
 	if err != nil {
 		return err
 	}
+	if err := restoreMatrixPlanDepartmentMode(&options, plan); err != nil {
+		return err
+	}
 	if err := validateApprovalMatrixImportIDType(options, plan.ProductID, plan.GroupID); err != nil {
 		return err
 	}
@@ -786,7 +794,7 @@ func (a *App) runApprovalMatrixPlanControl(ctx context.Context, action string, a
 			return err
 		}
 	case "verify":
-		if plan.Version != approvalMatrixImportPlanVersion || plan.RowSnapshot == nil {
+		if !compatibleMatrixPlanVersion(plan) || plan.RowSnapshot == nil {
 			return fmt.Errorf("import plan lacks a compatible row snapshot; generate a new plan")
 		}
 		if summarizeApprovalMatrixImportPlan(plan).Unverified == 0 {
@@ -1158,17 +1166,8 @@ func (a *App) saveApprovalMatrixImportPlan(plan approvalMatrixImportPlan) error 
 		return fmt.Errorf("close approval matrix import plan: %w", err)
 	}
 	path := filepath.Join(dir, plan.PlanID+".json")
-	if err := os.Rename(temporaryPath, path); err != nil {
-		// Windows 的 os.Rename 不覆盖已存在文件；持有 plan lock 时使用兼容回退。
-		if runtime.GOOS != "windows" {
-			return fmt.Errorf("replace approval matrix import plan: %w", err)
-		}
-		if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-			return fmt.Errorf("remove previous approval matrix import plan: %w", removeErr)
-		}
-		if retryErr := os.Rename(temporaryPath, path); retryErr != nil {
-			return fmt.Errorf("replace approval matrix import plan: %w", retryErr)
-		}
+	if err := privatefile.Replace(temporaryPath, path); err != nil {
+		return fmt.Errorf("replace approval matrix import plan: %w", err)
 	}
 	return nil
 }
@@ -1440,7 +1439,7 @@ approvalMatrixImportPlanOutput 构造稳定的结构化输出，在计划和执�
 返回值为包含状态、定位信息、摘要和逐行结果的 JSON 对象。
 */
 func approvalMatrixImportPlanOutput(plan approvalMatrixImportPlan) map[string]any {
-	return map[string]any{
+	result := map[string]any{
 		"status":     plan.Status,
 		"plan_id":    plan.PlanID,
 		"profile":    plan.Profile,
@@ -1453,6 +1452,10 @@ func approvalMatrixImportPlanOutput(plan approvalMatrixImportPlan) map[string]an
 		"operations": plan.Operations,
 		"reason":     plan.Reason,
 	}
+	if plan.DepartmentIDType != "" {
+		result["department_id_type"] = plan.DepartmentIDType
+	}
+	return result
 }
 
 /*
@@ -1539,6 +1542,9 @@ validateApprovalMatrixImportIDType 保证合同矩阵计划、执行和核验使
 入参 options 为 CLI 参数，productID 和 groupID 为目标范围；返回不匹配时的参数错误。
 */
 func validateApprovalMatrixImportIDType(options commandOptions, productID, groupID string) error {
+	if productID == "contract" && groupID == "approve_matrix" && options.departmentIDType != "" && options.departmentIDType != "tenant_department_id" {
+		return fmt.Errorf("contract approval matrix import requires --department-id-type tenant_department_id")
+	}
 	if productID == "contract" && groupID == "approve_matrix" &&
 		options.userIDType != "" && options.userIDType != "tenant_employee_id" {
 		return fmt.Errorf("contract approval matrix import requires --user-id-type tenant_employee_id")

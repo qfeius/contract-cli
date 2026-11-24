@@ -1209,7 +1209,7 @@ contract-cli api call --channel web GET /open-web/web/clm/employee/info --profil
 预期结果：
 
 - 复用 CLI 自身 profile 的 user 授权，响应按业务 Skill 的映射判断，不以 HTTP 2xx 直接认定业务成功。
-- query 使用可重复的 `--query key=value`；JSON 使用 `--input-file` / `--data`，请求体不超过 1 MiB，不自动补 `user_id_type`。
+- query 使用可重复的 `--query key=value`；JSON 使用 `--input-file` / `--data`，超过 1 MiB 的请求体也原样发送，不自动补 `user_id_type`。
 - 不依赖独立的 `contract-cli-api-call` Skill，不临时猜测接口、参数或业务结果。
 
 ### 7.2 通道、路径、身份与请求头边界

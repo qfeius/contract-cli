@@ -175,9 +175,10 @@ func TestDoubaoWorkTaskRuntimeRejectsInvalidCurrentDirectory(t *testing.T) {
 
 func TestDoubaoWorkTaskStoreEncryptsAndIsolatesSessions(t *testing.T) {
 	workspace := t.TempDir()
+	state := t.TempDir()
 	t.Chdir(workspace)
 
-	storeA, err := NewStore(Options{LookupEnv: envLookup(map[string]string{"SESSION_ID": "task-a"})})
+	storeA, err := NewStore(Options{LookupEnv: envLookup(map[string]string{"SESSION_ID": "task-a"}), StateDir: state})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +197,7 @@ func TestDoubaoWorkTaskStoreEncryptsAndIsolatesSessions(t *testing.T) {
 	}
 
 	credentialPath := filepath.Join(
-		workspace, ".contract-cli", "sessions", deviceSessionNamespace("task-a"), "credentials", profileFileName("contract"),
+		state, "device-sessions-v2", deviceSessionNamespace("task-a"), "credentials", profileFileName("contract"),
 	)
 	raw, err := os.ReadFile(credentialPath)
 	if err != nil {
@@ -209,7 +210,7 @@ func TestDoubaoWorkTaskStoreEncryptsAndIsolatesSessions(t *testing.T) {
 	if got := credentialInfo.Mode().Perm(); got != 0o600 {
 		t.Fatalf("credential permissions = %o, want 600", got)
 	}
-	sessionDir := filepath.Join(workspace, ".contract-cli", "sessions", deviceSessionNamespace("task-a"))
+	sessionDir := filepath.Join(state, "device-sessions-v2", deviceSessionNamespace("task-a"))
 	sessionInfo, err := os.Stat(sessionDir)
 	if err != nil {
 		t.Fatal(err)
@@ -230,7 +231,7 @@ func TestDoubaoWorkTaskStoreEncryptsAndIsolatesSessions(t *testing.T) {
 		t.Fatalf("unexpected loaded credential: %+v", loaded)
 	}
 
-	storeB, err := NewStore(Options{LookupEnv: envLookup(map[string]string{"SESSION_ID": "task-b"})})
+	storeB, err := NewStore(Options{LookupEnv: envLookup(map[string]string{"SESSION_ID": "task-b"}), StateDir: state})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,19 +245,21 @@ func TestDoubaoWorkTaskStoreEncryptsAndIsolatesSessions(t *testing.T) {
 
 func TestDoubaoWorkTaskStoreRejectsUnwritableCredentialRoot(t *testing.T) {
 	workspace := t.TempDir()
+	state := t.TempDir()
 	t.Chdir(workspace)
-	if err := os.WriteFile(filepath.Join(workspace, ".contract-cli"), []byte("blocks directory creation"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(state, "device-sessions-v2"), []byte("blocks directory creation"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewStore(Options{LookupEnv: envLookup(map[string]string{"SESSION_ID": "task-a"})}); err == nil {
+	if _, err := NewStore(Options{LookupEnv: envLookup(map[string]string{"SESSION_ID": "task-a"}), StateDir: state}); err == nil {
 		t.Fatal("unwritable credential root unexpectedly accepted")
 	}
 }
 
 func TestDoubaoWorkTaskStoreTightensExistingSessionDirectoryPermissions(t *testing.T) {
 	workspace := t.TempDir()
+	state := t.TempDir()
 	t.Chdir(workspace)
-	sessionDir := filepath.Join(workspace, ".contract-cli", "sessions", deviceSessionNamespace("task-a"))
+	sessionDir := filepath.Join(state, "device-sessions-v2", deviceSessionNamespace("task-a"))
 	credentialDir := filepath.Join(sessionDir, "credentials")
 	if err := os.MkdirAll(credentialDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -268,7 +271,7 @@ func TestDoubaoWorkTaskStoreTightensExistingSessionDirectoryPermissions(t *testi
 		t.Fatal(err)
 	}
 
-	if _, err := NewStore(Options{LookupEnv: envLookup(map[string]string{"SESSION_ID": "task-a"})}); err != nil {
+	if _, err := NewStore(Options{LookupEnv: envLookup(map[string]string{"SESSION_ID": "task-a"}), StateDir: state}); err != nil {
 		t.Fatal(err)
 	}
 	for _, dir := range []string{sessionDir, credentialDir} {

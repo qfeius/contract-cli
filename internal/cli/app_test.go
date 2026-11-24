@@ -301,7 +301,7 @@ func TestUpdateCheckJSONReportsAvailableBetaVersion(t *testing.T) {
 	if output["current_version"] != "0.1.0-beta.1" || output["latest_version"] != "0.1.0-beta.2" {
 		t.Fatalf("unexpected update output: %+v", output)
 	}
-	if output["command"] != "npm install -g @qfeius/contract-cli@beta --registry https://registry.npmjs.org" {
+	if output["command"] != "npm install -g @qfeius/contract-cli@beta --registry https://registry.npmjs.org --foreground-scripts" {
 		t.Fatalf("missing install command: %+v", output)
 	}
 	if _, ok := output["_notice"]; ok {
@@ -315,6 +315,9 @@ func TestUpdateCheckJSONReportsAvailableBetaVersion(t *testing.T) {
 		t.Fatalf("unexpected update cache: %s", string(cacheContent))
 	}
 }
+
+// These cases model a desktop user regardless of the runner's CI flags.
+func interactiveUpdateTestEnv(string) (string, bool) { return "", false }
 
 func TestAutomaticUpdateNoticeRefreshesStaleCacheSynchronously(t *testing.T) {
 	stdout := &bytes.Buffer{}
@@ -338,6 +341,7 @@ func TestAutomaticUpdateNoticeRefreshesStaleCacheSynchronously(t *testing.T) {
 	}
 
 	app := cli.New(cli.Options{
+		LookupEnv:            interactiveUpdateTestEnv,
 		Stdout:               stdout,
 		Stderr:               stderr,
 		Store:                store,
@@ -408,6 +412,7 @@ func TestAutomaticUpdateNoticeDoesNotUseStaleCacheWhenRefreshFails(t *testing.T)
 	}
 
 	app := cli.New(cli.Options{
+		LookupEnv:            interactiveUpdateTestEnv,
 		Stdout:               stdout,
 		Stderr:               stderr,
 		Store:                store,
@@ -471,6 +476,7 @@ func TestAutomaticUpdateNoticeKeepsFreshNoUpdateCache(t *testing.T) {
 	}
 
 	app := cli.New(cli.Options{
+		LookupEnv:            interactiveUpdateTestEnv,
 		Stdout:               stdout,
 		Stderr:               stderr,
 		Store:                store,
@@ -517,6 +523,7 @@ func TestAutomaticUpdateNoticeWritesMissingCacheSynchronously(t *testing.T) {
 	cachePath := filepath.Join(filepath.Dir(store.Path()), "update-check.json")
 
 	app := cli.New(cli.Options{
+		LookupEnv:            interactiveUpdateTestEnv,
 		Stdout:               stdout,
 		Stderr:               stderr,
 		Store:                store,
@@ -607,6 +614,7 @@ func TestAutomaticUpdateNoticeRetriesFailureEveryRun(t *testing.T) {
 	registryRequests := 0
 
 	app := cli.New(cli.Options{
+		LookupEnv:            interactiveUpdateTestEnv,
 		Stdout:               stdout,
 		Stderr:               stderr,
 		Store:                config.NewStore(t.TempDir()),
@@ -935,9 +943,10 @@ func TestConfigAddAndAuthStatus(t *testing.T) {
 	store := config.NewStore(t.TempDir())
 
 	app := cli.New(cli.Options{
-		Stdout: stdout,
-		Stderr: stderr,
-		Store:  store,
+		Stdout:          stdout,
+		Stderr:          stderr,
+		Store:           store,
+		CredentialStore: &memoryDeviceCredentialStore{values: map[string]credential.DeviceCredential{}},
 		HTTPClient: &http.Client{
 			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				switch req.URL.Path {
@@ -1007,9 +1016,10 @@ func TestConfigAddUsesProdPresetByDefault(t *testing.T) {
 	store := config.NewStore(t.TempDir())
 
 	app := cli.New(cli.Options{
-		Stdout: stdout,
-		Stderr: stderr,
-		Store:  store,
+		Stdout:          stdout,
+		Stderr:          stderr,
+		Store:           store,
+		CredentialStore: &memoryDeviceCredentialStore{values: map[string]credential.DeviceCredential{}},
 		HTTPClient: &http.Client{
 			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				switch req.URL.String() {
@@ -1981,10 +1991,10 @@ func TestAuthDeviceInitQRCodeFailureDoesNotSwitchLegacyProfile(t *testing.T) {
 func TestDoubaoWorkTaskAuthInitRejectsUnwritableCredentialRootBeforeRemoteRequest(t *testing.T) {
 	workspace := t.TempDir()
 	t.Chdir(workspace)
-	if err := os.WriteFile(filepath.Join(workspace, ".contract-cli"), []byte("not a directory"), 0o600); err != nil {
+	store := config.NewStore(t.TempDir())
+	if err := os.WriteFile(filepath.Join(filepath.Dir(store.Path()), "device-sessions-v2"), []byte("not a directory"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	store := config.NewStore(t.TempDir())
 	profile := config.Profile{
 		Name: "contract", Environment: "prod", Resource: "https://open.qfei.cn", BusinessType: "contract",
 		Identities: config.Identities{User: config.UserIdentity{
@@ -2218,7 +2228,7 @@ func TestDoubaoWorkTaskRestoresDeviceProfileFromTaskCredential(t *testing.T) {
 		}
 		return "", false
 	}
-	credentials, err := credential.NewStore(credential.Options{LookupEnv: lookupEnv})
+	credentials, err := credential.NewStore(credential.Options{LookupEnv: lookupEnv, StateDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2243,7 +2253,7 @@ func TestDoubaoWorkTaskRestoresDeviceProfileFromTaskCredential(t *testing.T) {
 	store := config.NewStore(t.TempDir())
 	stdout := &bytes.Buffer{}
 	app := cli.New(cli.Options{
-		Stdout: stdout, Store: store, LookupEnv: lookupEnv, Now: fixedCLINow,
+		Stdout: stdout, Store: store, LookupEnv: lookupEnv, Now: fixedCLINow, CredentialStore: credentials,
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			if req.URL.Path != "/token/contract" {
 				t.Fatalf("unexpected URL: %s", req.URL)
@@ -2629,9 +2639,10 @@ func decodeJSONObject(t *testing.T, data []byte) map[string]any {
 
 func jsonResponse(payload string) *http.Response {
 	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     make(http.Header),
-		Body:       io.NopCloser(strings.NewReader(payload)),
+		ContentLength: int64(len(payload)),
+		StatusCode:    http.StatusOK,
+		Header:        make(http.Header),
+		Body:          io.NopCloser(strings.NewReader(payload)),
 	}
 }
 

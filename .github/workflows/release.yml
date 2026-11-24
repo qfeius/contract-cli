@@ -1,59 +1,105 @@
 name: release
 
 on:
+  pull_request:
+    branches: [release]
   push:
-    tags:
-      - "*"
+    branches: [release]
+    tags: ["v*"]
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 env:
   NPM_REGISTRY_URL: https://registry.npmjs.org/
   NPM_ACCESS: public
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
-          registry-url: ${{ env.NPM_REGISTRY_URL }}
-          package-manager-cache: false
+      - name: Validate tag
+        if: github.ref_type == 'tag'
+        run: node scripts/release-metadata.js "$GITHUB_REF_NAME"
+      - name: Test and verify installation
+        run: make release-check
+      - name: Install pinned linter
+        env:
+          GOTOOLCHAIN: auto
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+      - name: Lint
+        run: golangci-lint run --enable=exhaustive ./...
 
+  windows-security:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Windows npm installation regression
+        run: node --test scripts/install.test.js
+      - name: Security regression tests without native dialogs
+        run: go test -timeout 3m ./internal/cli ./internal/openplatform ./internal/config ./internal/credential ./internal/privatefile -run "TestSaveDialog|TestRuleRowDeleteRejectsDotID|TestAPIWebCall|TestClientRejectsUnsafePaths|TestClientCannotWeakenRouteIdentityPolicy|TestClientPreservesSafeEncodedIDs|TestClientUsesDecodedRuleRoute|TestPreAudit|TestRequestNotSent|TestAppDownloadsPreserveFilesOnFailure|TestLogRedaction|TestStream|TestAppSearchPOSTs|TestDefaultCommandInput|TestDefaultInjectedCommand|TestTaskCredentials|TestTaskStoreDoesNotImport|TestConcurrentTaskKey|TestTaskPrivateState|TestPrivate|TestFailedReplacement|TestAuthenticationReset|TestConfigRecreation|TestDeviceProfileRecoveryUsesDefault|TestDeviceAuthorizationDefaultErrors|TestClientResponseLimit|TestClientDefaultDeadline|TestClientMultipartDefault|TestSignedDownload|TestMatrixDepartmentDefaults|TestMatrixImportRecognizes|TestMatrixImportKeepsExplicit|TestApprovalPlan"
+
+  publish:
+    needs: [checks, windows-security]
+    if: github.event_name == 'push' && github.ref_type == 'tag' && github.repository == 'qfeius/contract-cli'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org/
+          package-manager-cache: false
+      - name: Validate release metadata
+        id: metadata
+        run: node scripts/release-metadata.js "$GITHUB_REF_NAME"
       - name: Publish GitHub Release
         uses: goreleaser/goreleaser-action@v6
         with:
-          version: latest
+          version: v2.20.1
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ github.token }}
-
       - name: Prepare package
         env:
+          VERSION: ${{ steps.metadata.outputs.version }}
           PACKAGE_NAME: ${{ vars.NPM_PACKAGE_NAME }}
         run: |
           [ -z "${PACKAGE_NAME:-}" ] || npm pkg set "name=$PACKAGE_NAME"
-          npm pkg set "version=${GITHUB_REF_NAME#v}" "config.downloadBaseURLTemplate=https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
-
+          npm pkg set "version=$VERSION" "config.downloadBaseURLTemplate=https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
       - name: Build npm release assets
-        run: make release-assets
-
-      - name: Publish npm package
-        if: ${{ github.repository == 'qfeius/contract-cli' }}
         env:
-          NPM_TAG: ${{ contains(github.ref_name, 'beta') && 'beta' || 'latest' }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          make release-assets
+          (cd dist/release-assets && sha256sum -c checksums.txt)
+          npm pack --dry-run
+      - name: Publish npm package
+        env:
+          NPM_TAG: ${{ steps.metadata.outputs.channel }}
         run: npm publish --provenance --registry "$NPM_REGISTRY_URL" --access "$NPM_ACCESS" --tag "$NPM_TAG"

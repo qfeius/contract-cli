@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -919,11 +920,11 @@ func (a *App) runRuleTableRowCreate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := validateApprovalMatrixDepartmentIDs(body, options.departmentIDType); err != nil {
-		return err
-	}
 	productID, groupID, tableID, err := requiredRuleTable(parsed)
 	if err != nil {
+		return err
+	}
+	if err := validateMatrixDepartmentScope(body, productID, groupID, options.departmentIDType); err != nil {
 		return err
 	}
 	return a.executeRuleOpenPlatformRequest(ctx, options, http.MethodPost, ruleTablePath(productID, groupID, tableID)+"/table_rows", nil, body)
@@ -1000,11 +1001,11 @@ func (a *App) runRuleTableRowSearch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := validateApprovalMatrixDepartmentIDs(body, options.departmentIDType); err != nil {
-		return err
-	}
 	productID, groupID, tableID, err := requiredRuleTable(parsed)
 	if err != nil {
+		return err
+	}
+	if err := validateMatrixDepartmentScope(body, productID, groupID, options.departmentIDType); err != nil {
 		return err
 	}
 	query, err := requiredPageQueryWithPageSizeRange(parsed, 1, 100)
@@ -1032,11 +1033,11 @@ func (a *App) runRuleTableRowUpdate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := validateApprovalMatrixDepartmentIDs(body, options.departmentIDType); err != nil {
-		return err
-	}
 	productID, groupID, tableID, err := requiredRuleTable(parsed)
 	if err != nil {
+		return err
+	}
+	if err := validateMatrixDepartmentScope(body, productID, groupID, options.departmentIDType); err != nil {
 		return err
 	}
 	path := ruleTablePath(productID, groupID, tableID) + "/table_rows/" + escapePathSegment(parsed.positionals[0])
@@ -1095,31 +1096,15 @@ func (a *App) downloadAppOpenPlatformFile(ctx context.Context, options commandOp
 		return err
 	}
 
-	writer, outputPath, closeOutput, err := a.contractDownloadWriter(ctx, strings.TrimSpace(suggestedName), outputFile, options.raw, force)
+	outputPath, err := a.writeContractDownload(ctx, strings.TrimSpace(suggestedName), outputFile, options.raw, force, func(writer io.Writer) error {
+		_, err := client.DoStream(ctx, requestContext, openplatform.Request{
+			Method: http.MethodGet, Path: path, IdentityPolicy: openplatform.IdentityPolicyAppOnly,
+			FileDownload: true,
+		}, writer)
+		return err
+	})
 	if err != nil {
 		return err
-	}
-	if closeOutput != nil {
-		defer func() {
-			if closeOutput != nil {
-				_ = closeOutput()
-			}
-		}()
-	}
-
-	if _, err := client.DoStream(ctx, requestContext, openplatform.Request{
-		Method:         http.MethodGet,
-		Path:           path,
-		IdentityPolicy: openplatform.IdentityPolicyAppOnly,
-	}, writer); err != nil {
-		return err
-	}
-	if closeOutput != nil {
-		closeErr := closeOutput()
-		closeOutput = nil
-		if closeErr != nil {
-			return fmt.Errorf("close download output file: %w", closeErr)
-		}
 	}
 	if !options.raw {
 		_, _ = fmt.Fprintf(a.stdout, "Downloaded file to %s\n", outputPath)

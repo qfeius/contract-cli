@@ -17,8 +17,6 @@ type apiCallOptions struct {
 	query   url.Values
 }
 
-const maxOpenWebBodyBytes = 1024 * 1024
-
 func (a *App) runAPI(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("missing api subcommand")
@@ -65,11 +63,6 @@ func (a *App) runAPICall(ctx context.Context, args []string) error {
 	body, err := resolveRawBody(ctx, options.commandOptions)
 	if err != nil {
 		a.logger.Error("resolve api call body failed", "channel", options.channel, "method", method, "path", path, "error", err.Error())
-		return err
-	}
-	if len(body) > maxOpenWebBodyBytes {
-		err = fmt.Errorf("open web request body exceeds %d bytes", maxOpenWebBodyBytes)
-		a.logger.Error("api call body rejected", "channel", options.channel, "method", method, "path", path, "body_bytes", len(body), "error", err.Error())
 		return err
 	}
 	a.logger.Info("dispatch api web call", "method", method, "path", path, "query_keys", len(options.query), "body_bytes", len(body))
