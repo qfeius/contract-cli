@@ -1,0 +1,6 @@
+interface:
+  display_name: "创建协商群聊"
+  short_description: "核实当前协商资格后创建群或经本人确认加入已有群，并回查结果"
+  default_prompt: "使用 $contract-cooperation-chat 查找当前合同协商，先核实当前轮次及我的协商资格。创建群和加入已有群分别确认，完成后回查并返回群入口。"
+policy:
+  allow_implicit_invocation: true

@@ -27,8 +27,8 @@ func TestSkillSyncUpgradeAddsBundledReviewSkills(t *testing.T) {
 			count++
 		}
 	}
-	if count != 23 {
-		t.Fatalf("integrated distributable Skill count = %d, want 23", count)
+	if count != 28 {
+		t.Fatalf("integrated distributable Skill count = %d, want 28", count)
 	}
 	previous := fstest.MapFS{}
 	err = fs.WalkDir(contractskills.FS, ".", func(path string, entry fs.DirEntry, walkErr error) error {
@@ -37,7 +37,9 @@ func TestSkillSyncUpgradeAddsBundledReviewSkills(t *testing.T) {
 		}
 		if entry.IsDir() {
 			if path == "contract-cli-review" || path == "contract-cli-review-rule" || path == "contract-cooperation-chat-group" ||
-				path == "contract-approval-efficiency" || path == "contract-cli-approval-actions" || path == "contract-expiry-query" {
+				path == "contract-approval-efficiency" || path == "contract-cli-approval-actions" || path == "contract-expiry-query" ||
+				path == "contract-cooperation-chat" || path == "contract-sharev1-2" || path == "contract-review-records" ||
+				path == "contract-submit" || path == "contract-process-person-replace" {
 				return fs.SkipDir
 			}
 			return nil
@@ -67,10 +69,37 @@ func TestSkillSyncUpgradeAddsBundledReviewSkills(t *testing.T) {
 	if err := makeApp(contractskills.FS, &output).Run(context.Background(), []string{"__internal", "skill-sync-on-install"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"contract-cli-review", "contract-cli-review-rule", "contract-cooperation-chat-group", "contract-approval-efficiency", "contract-cli-approval-actions", "contract-expiry-query"} {
+	for _, name := range []string{"contract-cli-review", "contract-cli-review-rule", "contract-cooperation-chat-group", "contract-approval-efficiency", "contract-cli-approval-actions", "contract-expiry-query", "contract-cooperation-chat", "contract-sharev1-2", "contract-review-records", "contract-submit", "contract-process-person-replace"} {
 		body, err := os.ReadFile(filepath.Join(target, name, "SKILL.md"))
 		if err != nil || !strings.Contains(string(body), "name: "+name) {
 			t.Fatalf("new official Skill %s missing or invalid: %v", name, err)
+		}
+	}
+	for _, path := range []string{
+		"contract-cooperation-chat/references/contract-cli.md",
+		"contract-sharev1-2/references/api.md",
+		"contract-sharev1-2/references/business-rules.md",
+		"contract-review-records/references/query.md",
+		"contract-submit/references/cooperation-preform.md",
+		"contract-submit/references/cooperation-submit.md",
+		"contract-submit/references/discovery.md",
+		"contract-submit/references/field-save.md",
+		"contract-submit/references/form.md",
+		"contract-submit/references/ordinary-file-preparation.md",
+		"contract-submit/references/runtime.md",
+		"contract-submit/references/submit.md",
+		"contract-process-person-replace/references/api.md",
+		"contract-process-person-replace/references/interactions.md",
+		"contract-process-person-replace/references/node-rules.md",
+		"contract-process-person-replace/references/runtime.md",
+	} {
+		want, readErr := fs.ReadFile(contractskills.FS, path)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		got, readErr := os.ReadFile(filepath.Join(target, filepath.FromSlash(path)))
+		if readErr != nil || !bytes.Equal(got, want) {
+			t.Fatalf("installed Skill reference %s differs from bundle: %v", path, readErr)
 		}
 	}
 	registry := readSkillSyncRegistry(t, filepath.Join(state, "skill-locations.json"))

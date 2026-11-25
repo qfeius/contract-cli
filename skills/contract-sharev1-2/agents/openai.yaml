@@ -1,0 +1,6 @@
+interface:
+  display_name: "contract-sharev1-2"
+  short_description: "处理企业内部合同分享、记录查询、逐条取消及有效期调整，保留权限校验与人工确认"
+  default_prompt: "使用 $contract-sharev1-2，按当前用户权限处理合同内部分享、查询或取消指定记录，执行前确认对象、接收人和有效期。"
+policy:
+  allow_implicit_invocation: true

@@ -95,6 +95,29 @@ test('shared decisions reach every delivered business workflow', () => {
   assert.ok(!modules.includes('upload-url'));
 });
 
+test('shared decisions route five business workflows without conflating read-only and app flows', () => {
+  const decisions = read('contract-cli-shared').split('## 快速决策')[1].split('\n## ')[0];
+  for (const name of ['contract-cooperation-chat', 'contract-sharev1-2', 'contract-review-records', 'contract-submit', 'contract-process-person-replace']) {
+    const routes = decisions.split('\n').filter(line => line.includes(`../${name}/SKILL.md`));
+    assert.equal(routes.length, 1, `expected one route for ${name}`);
+    assert.ok(fs.existsSync(path.join(root, name, 'SKILL.md')));
+  }
+  const query = decisions.split('\n').find(line => line.includes('../contract-cooperation-chat-group/SKILL.md'));
+  assert.ok(query.includes('不主动建群'));
+  const app = decisions.split('\n').find(line => line.includes('../contract-cli-contract/SKILL.md'));
+  assert.ok(app.includes('app 分享'));
+});
+
+test('five Skill release guidance stays production-only and describes gateway limits accurately', () => {
+  const submitRuntime = fs.readFileSync(path.join(root, 'contract-submit/references/runtime.md'), 'utf8');
+  assert.match(submitRuntime, /仅支持生产环境/);
+  assert.match(submitRuntime, /https:\/\/open\.qfei\.cn/);
+  assert.doesNotMatch(submitRuntime, /https:\/\/(?:test-|dev-|open-b\.|myaccount-b\.)/);
+  const processRuntime = fs.readFileSync(path.join(root, 'contract-process-person-replace/references/runtime.md'), 'utf8');
+  assert.doesNotMatch(processRuntime, /当前 CLI 请求体上限 1 MiB/);
+  assert.match(processRuntime, /生产网关/);
+});
+
 test('authorization guidance does not reject supported JSON status output', () => {
   for (const name of ['auth', 'contract-cli-contract-search']) {
     assert.doesNotMatch(read(name), /auth status`?\s*不支持\s*`?--output/);

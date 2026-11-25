@@ -1,3 +1,19 @@
+## 2026-11-25 - 五个原始业务 Skill 合入 GitHub 生产 release
+- 基线：github/release@3530565；真实 merge 原始开发分支，不使用 blue 或其交付中间分支，不 cherry-pick。
+- 来源：contract-cooperation-chat@c8070e8、contract-sharev1-2@95b4df9、contract-submit@bac16e9、contract-process-person-replace@218dff7、contract-review-records@f5ede06。
+- 范围：五个 Skill、共享导航、Agent 元数据、安装升级及生产指引回归；业务 SKILL.md 和接口规则保留原分支内容及版本标记。
+- 适配：送审运行说明仅保留生产端点，非生产请求停止；流程换人说明改为实际生产网关请求限制，不改变未知写入、权限与确认规则。
+- 生产：运行代码、环境与凭据校验、构建安装脚本及 Tag 发布流程与 release 一致；成品 CLI 拒绝 test/dev/blue，npm 包无非生产端点指引。
+- 验证：先红后绿；make release-check 全部通过（Node 42 通过/3 平台跳过），npm 包安装 28 个 Skill、五项参考文档字节一致，exhaustive lint 0 issues。
+- 边界：仅提交 GitHub release PR；Windows 原生和生产业务未实测，生产接口配置另见 prod-contract-charts !763；不合并、不打 Tag、不发布。
+
+## 2026-11-24 - GitHub release 同步 GitLab master
+- 来源：基于 upstream/master@8dfe6e5 合并 github/release@3530565，保留双方提交历史。
+- 决策：除 AI 变更记录外完整文件树对齐 GitHub release，保留仅生产环境约束。
+- 范围：同步到期查询、扫描修复、安装升级与基于 Tag 的发布链路；合并双方历史记录。
+- 验证：make release-check 全部通过（Node 40 通过、3 项平台跳过）；exhaustive lint 0 issues，完整文件树除本记录外与源一致。
+- 交付：仅准备 master MR，不直接合并、发布或修改 Tag。
+
 ## 2026-11-23 - 恢复 GoReleaser Tag 发布链路
 - 范围：release workflow、GoReleaser 配置、发布回归与文档；不修改业务代码、生产 Tag 或远端 Release。
 - 决策：保留三平台检查，移除 gh release create，恢复 GoReleaser -> npm 元信息 -> npm 资产 -> npm publish 顺序，固定旧成功版本 v2.20.1。
@@ -91,6 +107,15 @@
 - 验证：make release-check、全量 race/coverage、exhaustive lint（0 issues）和 Windows CLI/openplatform 测试交叉编译通过；Windows 原生测试本机未执行。
 - 交付：用户真实 Skill 登记与 auth Skill 哈希未变；按用户要求提交并推送 GitLab 主仓库当前同名开发分支，不合并、不发布、不调用生产业务写接口。
 
+## 2026-11-12 - GitHub release 同步 GitLab master
+- 来源：基于 upstream/master@ecf42ea，merge GitHub release@2eabbbc，保留双方提交历史。
+- 决策：按用户确认，除变更记录外完整文件树对齐 GitHub release，仅支持生产环境。
+- 范围：同步审批 Skill 生产说明、审查测试修复及生产配置、授权、凭据隔离与配套安装资料。
+- 历史：保留 GitHub 与 GitLab 的全部变更记录，按日期倒序整理。
+- 验证：全量 Go race/coverage、exhaustive lint（0 issues）、Node（23 通过/1 跳过）、冒烟、构建参数及 npm 安装/打包检查通过。
+- 隔离：本地安装检查须隔离 HOME、CODEX_HOME、CONTRACT_CLI_CONFIG_DIR，并使用规范临时路径；防止自动同步触碰真实用户 Skill。
+- 交付：仅提交主空间 master MR，不直接合并、不发布或部署。
+
 ## 2026-11-12 - 审查问题 4/6/9 及 Windows 安装传参修复
 - 范围：在 codex/fix-release-doc-issues-20261112@c83117b 继续修复；不处理其余问题，不改变安装下载协议、哈希或回退规则。
 - 预审：review_pre_audit.go 在预览及恢复输出前核对原身份；鉴权/刷新失败不输出旧结果，预览仍不刷新 Token、不写业务或恢复记录。
@@ -121,6 +146,30 @@
 - 产物：按正式脚本构建六平台资产，npm 包含全部 15 文件；隔离离线安装 22 个 Skill、实际二进制拒绝非生产预设及地址覆盖通过。
 - 交付：仅创建 GitHub qfeius/contract-cli release PR，不创建 GitLab MR，不合并、不打标签、不执行 npm 发布或真实业务写入。
 
+## 2026-11-10 — 审批效率与审批操作统一上蓝
+- 摘要：基于 blue@a3d2138 创建上线分支，merge 已验收的 contract-approval-efficiency@bd74a29 与 contract-cli-approval-actions@d9bd52a。
+- 范围：引入两个 Skill 共 15 个运行文件，保留原业务说明；为效率 Skill 补齐统一的 Agent policy 元数据。
+- 回归：先复现安装数量及元数据检查失败，更新 22 项安装断言，并覆盖两个 Skill 的增量安装和第三方内容保留。
+- 验证：TMPDIR=/private/tmp 全量 Go race 测试通过，exhaustive lint 0 issues；Node 24 通过、2 项跳过；npm 清单包含全部 15 个文件。
+- 配套：提取 19 个 Open Web 接口，蓝环境配置另发 MR 补齐其中缺失的 17 条精确 URL。
+- 交付：统一上线分支提交到主空间 blue MR，不直接合并、部署或执行真实业务写入。
+
+## 2026-11-09 — master 合入 blue
+- 摘要：基于 upstream/blue@9bfd2eb 创建中间分支，merge upstream/master@5a8ef80，保留双方提交历史。
+- 范围：master 的功能改动已包含在 blue，本次仅合并 docs/ai-changes.md 双方记录。
+- 决策：保留 blue 当前多环境能力；合并结果除变更记录外与 blue 基线一致。
+- 校验：核对合并父提交、完整文件树差异与文档空白；不涉及新增或修改 Go 代码。
+- 交付：创建目标为 blue 的 MR，供评审合入。
+
+## 2026-11-06 — 同步 GitHub release 到 blue 并保留多环境
+- 来源：基于 upstream/blue@87484fa，merge 冻结的 GitHub release@b9dc391，保留双方提交历史。
+- 决策：按用户确认保留 blue 当前 prod/test 预设、显式服务地址、自定义 profile 与凭据隔离；不带入 release 的严格 prod 限制。
+- 范围：逐项核对并保留 21 个环境相关运行、测试、Skill 和文档文件；除本变更记录外，最终文件内容与原 blue 完全一致。
+- 冲突：仅合并 docs/ai-changes.md，按时间保留 release 与 blue 双方历史记录；协商群查询能力原已在 blue。
+- 回归：先以 blue 多环境用例复现自动合并后被严格 prod 拒绝，再恢复 blue 环境实现并验证通过。
+- 验证：全量 Go race/coverage 通过（CLI 83.0%），exhaustive lint 0 issues；Node 24 通过、2 项既有跳过，构建参数检查通过。
+- 交付：仅生成同步分支与 MR，不直接合并目标分支，不发布安装包、不部署，也不执行真实合同业务操作。
+
 ## 2026-11-06 — GitHub release 同步到 GitLab master
 - 摘要：同步最新 release 的协商群查询 Skill 与正式版仅 prod 环境限制。
 - 来源：基于 upstream/master@cdb50da 建独立同步分支，merge 冻结的 GitHub release@b9dc391，保留双方提交历史。
@@ -145,6 +194,15 @@
 - 一致性：运行代码、全部 Skill 与测试逐文件匹配产品验证包 blue@87484fa 的源码，仅变更记录不同。
 - 验证：完整 Go race/coverage 通过（CLI 83.0%），exhaustive lint 0 issues；Node 安装升级回归 24 通过、2 项既有跳过。
 - 交付：向个人 GitHub fork 推送独立分支并创建 release PR，不包含 delivery 测试安装包，不执行 Release/npm 发布。
+
+## 2026-11-03 — 协商群查询 Skill 上蓝集成
+- 摘要：基于 upstream/blue@cdb50da 创建独立集成分支，merge 开发分支 contract-cooperation-chat-group@933dbcd，保留提交历史。
+- 范围：原样引入 contract-cooperation-chat-group 的 3 个运行文件；固定交付分支仅额外包含测试包与说明，未合入交付二进制。
+- 决策：仅检查分支、安装分发与测试兼容，不修改 Skill 流程或 CLI 运行代码，不发起真实合同业务查询。
+- 回归：先复现新增 Skill 导致的 19/20 数量断言失败，更新两处测试并覆盖协商群 Skill 的增量安装。
+- 质量：修正 blue 基线测试代码的关闭结果检查、nil-context 用例写法及条件分支；保留原有测试语义。
+- 验证：全量 Go race/coverage 通过（CLI 83.0%）；Node 安装升级回归 24 通过、2 项既有跳过；exhaustive lint 0 issues。
+- 分发：npm 打包清单包含新增全部 3 文件，逐字节与开发分支一致；通过独立 MR 进入 blue，未直接合并或部署。
 
 ## 2026-10-22 — 同步 GitHub 1.9.9 到 GitLab master
 - 摘要：同步正式 release 的协商查询、交接 Skill、Open Web 调用及 Skill 元数据版本修正。
