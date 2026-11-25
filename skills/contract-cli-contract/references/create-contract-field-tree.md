@@ -151,6 +151,8 @@ $
 ├── relation_list[]
 │   ├── relation_name
 │   └── contract_numbers[]
+├── project_changes
+│   └── add_project_ids[]
 └── attribute_permission_list[]
     ├── attribute_key
     └── permission_type_code
@@ -232,6 +234,7 @@ $
 | `collection_plan_list` | `array<object>` | 可选 | 收款计划列表。 | 主要用于收入类合同。 |
 | `contract_budget_list` | `array<object>` | 可选 | 预算明细列表。 | 详情看 `Node: $.contract_budget_list[]`。 |
 | `relation_list` | `array<object>` | 可选 | 关联合同列表。 | 详情看 `Node: $.relation_list[]`。 |
+| `project_changes` | `object` | 可选 | 所属项目关系增量。 | 详情看 `Node: $.project_changes`。 |
 | `attribute_permission_list` | `array<object>` | 可选 | 字段权限列表。 | 详情看 `Node: $.attribute_permission_list[]`。 |
 
 ## 3. Node: $.our_party_list[]
@@ -448,3 +451,13 @@ $
 | --- | --- | --- | --- | --- |
 | `attribute_key` | `string` | 可选 | 字段属性 key。 | 用来定位具体字段。 |
 | `permission_type_code` | `integer` | 可选 | 权限类型 code。 | 当前版本只支持 `2`（读权限，不可编辑）；`3` 表示写权限，可编辑。 |
+
+## 15. Node: $.project_changes
+
+在创建普通合同或补充协议时填写所属项目。所属项目由当前流程配置决定是否可填写及是否必填。
+
+| 字段 | 类型 | 必填性 | 业务含义 | 联动/注意 |
+| --- | --- | --- | --- | --- |
+| `add_project_ids` | `array<string>` | 可选 | 要关联的项目 ID。 | 使用同一调用身份的项目查询结果，支持多个项目。 |
+
+创建时仅需传入要新增的项目，省略 `remove_relation_ids`。

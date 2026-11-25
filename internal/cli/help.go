@@ -583,6 +583,7 @@ func addContractHelp(registry map[string]helpTopic) {
 			{"contract-cli contract sync-user-groups [flags]", "同步用户分组"},
 			{"contract-cli contract text <contract-id> [flags]", "获取合同文本"},
 			{"contract-cli contract create [flags]", "创建合同"},
+			{"contract-cli contract project search [flags]", "查询创建合同可选的所属项目"},
 			{"contract-cli contract field update [flags]", "app 身份更新合同字段信息"},
 			{"contract-cli contract sign switch-to-paper [flags]", "app 身份将电子签合同转纸质签"},
 			{"contract-cli contract sign-url get <contract-id> [flags]", "app 身份获取签署链接"},
@@ -766,6 +767,38 @@ func addContractHelp(registry map[string]helpTopic) {
 			"user: /open-apis/contract/v1/mcp/contracts",
 			"app: /open-apis/contract/v1/contracts",
 			"app 创建合同时，请调用方自行在 JSON body 中提供 create_user_id。",
+			"填写所属项目时，先用同一身份执行 contract project search，再把项目 ID 字符串写入 project_changes.add_project_ids。",
+		},
+	}
+	registry["contract project"] = helpTopic{
+		Name:  "contract project",
+		Usage: []string{"contract-cli contract project search [flags]"},
+		Commands: []helpCommand{
+			{"contract-cli contract project search [flags]", "按调用身份搜索可选项目"},
+		},
+	}
+	registry["contract project search"] = helpTopic{
+		Name:    "contract project search",
+		Summary: "查询创建合同可选的所属项目。",
+		Usage:   []string{"contract-cli contract project search [--keyword <name>] [--page-index <n>] [--page-size <n>] [flags]"},
+		Flags: []helpFlag{
+			{"--profile <name>", "与创建合同相同的 profile；不传使用当前 profile"},
+			{"--as <user|app>", "请求身份；不传使用 profile 默认身份"},
+			{"--keyword <name>", "按项目名称搜索；省略时查询可见项目"},
+			{"--page-index <n>", "页码从 0 开始，默认 0"},
+			{"--page-size <n>", "每页 1 到 200 条，默认 10"},
+			{"--output <json|yaml|table>", "输出格式，默认 json"},
+			{"--raw", "原样输出响应 body"},
+		},
+		Examples: []string{
+			"contract-cli contract project search --profile contract --as user --keyword 采购",
+			"contract-cli contract project search --profile contract --as user --keyword 采购 --output table",
+			"contract-cli contract project search --profile contract --as app --page-size 20",
+		},
+		Notes: []string{
+			"user 按当前登录用户的项目查看权限查询，app 按应用授权的租户范围查询。",
+			"表格逐项展示项目名称、状态、所属部门、项目周期和项目 ID，并显示当前页与项目总数。",
+			"将选中的项目 ID（JSON 中为 data.content[].project_id）填入创建合同的 project_changes.add_project_ids。",
 		},
 	}
 	registry["contract upload-file"] = helpTopic{

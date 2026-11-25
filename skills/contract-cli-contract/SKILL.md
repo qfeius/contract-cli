@@ -13,6 +13,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 - `contract-cli contract get <contract-id>`
 - `contract-cli contract create`
+- `contract-cli contract project search`
 - `contract-cli contract sync-user-groups`
 - `contract-cli contract text <contract-id>`
 - `contract-cli contract summary query`
@@ -60,6 +61,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - 想按合同编号/完整名称查询摘要，或为本地文件生成摘要：读 [智书合同摘要 Skill](../zhishu-contract-summary/SKILL.md)
 - 想更新字段选项、拿签署链接、查询流程字段、合同授权、电子签链接或协商列表：读 [references/openapi-gap-commands.md](references/openapi-gap-commands.md)
 - 想直接透传创建合同请求体：用 `contract create`
+- 想查询创建合同时可选的所属项目：用 `contract project search`，与创建命令使用相同的 `--profile` 和 `--as`。
 - 想拿正文文本：用 `contract text`
 - 想看分类树：用 `contract category list`
 - 想看模板或创建模板实例：用 `contract template ...`
