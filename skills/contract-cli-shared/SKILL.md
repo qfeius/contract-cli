@@ -37,11 +37,16 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 - 个人协商搜索、详情和历史版本文件：读 [../contract-cooperation/SKILL.md](../contract-cooperation/SKILL.md)；固定 user，不发起智能审查。
 - 按人员、部门、角色、合同或流程统计审批、盖章和归档效率：读 [../contract-approval-efficiency/SKILL.md](../contract-approval-efficiency/SKILL.md)，仅统计当前用户获准查询的任务及可读流程。
 - 本人任务加签、转办、抄送：读 [../contract-cli-approval-actions/SKILL.md](../contract-cli-approval-actions/SKILL.md)；不用于审批通过、拒绝或代他人办理。
+- 按人员查询后台流程中的审批、盖章、归档节点，并替换配置人员：读 [../contract-process-person-replace/SKILL.md](../contract-process-person-replace/SKILL.md)，要求本人后台权限；不用于合同实例换人或当前任务转办。
+- 个人身份办理已有上传类合同的表单保存、完成协商及提交审批：读 [../contract-submit/SKILL.md](../contract-submit/SKILL.md)，按实际对象和页面权限核对前置与确认，不把文件 ID 当合同 ID；尚未形成草稿时需已有建草稿能力。
 - 按合同查询关联协商当前轮次的飞书群 ID 和状态：读 [../contract-cooperation-chat-group/SKILL.md](../contract-cooperation-chat-group/SKILL.md)，不主动建群、拉人或读取群消息。
+- 创建合同协商群、经本人同意加入已有协商群：读 [../contract-cooperation-chat/SKILL.md](../contract-cooperation-chat/SKILL.md)，先核实当前轮次和本人协商资格，不把建群请求当作加入已有群的同意。
+- 当前用户向本租户员工分享合同、查询或取消内部分享、调整分享期限：读 [../contract-sharev1-2/SKILL.md](../contract-sharev1-2/SKILL.md)，写入前核对权限、实际授权范围及用户确认，不用于外部公开链接或 app 分享。
 - 查询合同归属人与交接历史、将指定合同交接给接收人：读 [../contract-handover/SKILL.md](../contract-handover/SKILL.md)；不等同于审批任务转办，写入前确认影响。
-- 合同详情、创建、已知合同正文读取、模板、分类、枚举、字段更新、签署链接、合同授权、电子签、分享、app 协商管理、审批：读 [../contract-cli-contract/SKILL.md](../contract-cli-contract/SKILL.md)
+- 合同详情、创建、已知合同正文读取、模板、分类、枚举、字段更新、签署链接、合同授权、电子签、app 分享、app 协商管理、审批：读 [../contract-cli-contract/SKILL.md](../contract-cli-contract/SKILL.md)
   这里现在采用“主文档 + 字段树附录 + 枚举附录”的结构
 - 单份文件智能审查、系统内合同审查入口或继续审查任务：读 [../contract-cli-review/SKILL.md](../contract-cli-review/SKILL.md)，按实际能力检查系统当前正文与场景关联；不能用审批任务代替 AI 审查任务。
+- 查询当前登录人本月或指定期间的有效审查记录：读 [../contract-review-records/SKILL.md](../contract-review-records/SKILL.md)，按记录创建时间筛选，只查询，不发起或重新审查。
 - 审查清单、审查规则及规则分组查询/维护：读 [../contract-cli-review-rule/SKILL.md](../contract-cli-review-rule/SKILL.md)。仅在审查中选择已有清单仍由审查 Skill 处理；不要路由到审批矩阵。
 - 付款申请、付款计划、付款记录：读 [../contract-cli-payment/SKILL.md](../contract-cli-payment/SKILL.md)
   这里采用“主规则 + 命令示例附录”的结构

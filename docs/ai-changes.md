@@ -1,3 +1,12 @@
+## 2026-11-25 - 五个原始业务 Skill 合入 GitHub 生产 release
+- 基线：github/release@3530565；真实 merge 原始开发分支，不使用 blue 或其交付中间分支，不 cherry-pick。
+- 来源：contract-cooperation-chat@c8070e8、contract-sharev1-2@95b4df9、contract-submit@bac16e9、contract-process-person-replace@218dff7、contract-review-records@f5ede06。
+- 范围：五个 Skill、共享导航、Agent 元数据、安装升级及生产指引回归；业务 SKILL.md 和接口规则保留原分支内容及版本标记。
+- 适配：送审运行说明仅保留生产端点，非生产请求停止；流程换人说明改为实际生产网关请求限制，不改变未知写入、权限与确认规则。
+- 生产：运行代码、环境与凭据校验、构建安装脚本及 Tag 发布流程与 release 一致；成品 CLI 拒绝 test/dev/blue，npm 包无非生产端点指引。
+- 验证：先红后绿；make release-check 全部通过（Node 42 通过/3 平台跳过），npm 包安装 28 个 Skill、五项参考文档字节一致，exhaustive lint 0 issues。
+- 边界：仅提交 GitHub release PR；Windows 原生和生产业务未实测，生产接口配置另见 prod-contract-charts !763；不合并、不打 Tag、不发布。
+
 ## 2026-11-24 - GitHub release 同步 GitLab master
 - 来源：基于 upstream/master@8dfe6e5 合并 github/release@3530565，保留双方提交历史。
 - 决策：除 AI 变更记录外完整文件树对齐 GitHub release，保留仅生产环境约束。

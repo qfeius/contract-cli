@@ -4,15 +4,14 @@
 
 ## 固定当前个人身份
 
-- 沿用用户选定的环境、CLI、profile 和个人身份。用实际 `contract-cli api call --help`、`auth status --help` 核支持的选项；使用 `contract-cli auth status --profile '<已核 profile>' --as user`。授权未就绪按当前 CLI 官方流程恢复，保留已确定的对象和范围。不给用户索取 Token、Cookie 或 App Secret，不切 APP 兜底。
+- 本发行版仅支持生产环境。沿用已核实的生产 CLI、profile 和个人身份；用户要求非生产环境时停止并说明，不擅自改为生产操作。用实际 `contract-cli api call --help`、`auth status --help` 核支持的选项；使用 `contract-cli auth status --profile '<已核 profile>' --as user`。授权未就绪按当前 CLI 官方流程恢复，保留已确定的对象和范围。不给用户索取 Token、Cookie 或 App Secret，不切 APP 兜底。
 - 用同一个 profile 的公开 `open_platform_base_url`、`resource`、`authorization_server_metadata_url` 判环境。采用当前工具已支持的配置读取方式；不读取或回显含密钥的整个配置。标签、默认 profile 和执行渠道本身均不能决定环境。
 
 | 实际已核环境 | API 和 resource | 授权元数据 | 原页面站点 |
 | --- | --- | --- | --- |
-| test | `https://test-open.qtech.cn` | `https://test-myaccount.qtech.cn/.well-known/oauth-authorization-server/contract` | `https://test-contract.qtech.cn` |
 | prod | `https://open.qfei.cn` | `https://myaccount.qfei.cn/.well-known/oauth-authorization-server/contract` | `https://contract.qfei.cn` |
 
-已核特殊站点按其可靠端点映射；混用、站点未知或与用户选定环境不同时，暂停受影响请求。一次完整读取开始和结束、恢复会话及实际写前都核对当前上下文。当前员工：
+仅使用表内生产端点；混用、站点未知或与用户选定环境不同时，暂停受影响请求，不覆盖端点绕过生产限制。一次完整读取开始和结束、恢复会话及实际写前都核对当前上下文。当前员工：
 
 ```sh
 contract-cli api call --channel web --profile '<已核 profile>' --as user --raw GET /open-web/web/clm/employee/info
