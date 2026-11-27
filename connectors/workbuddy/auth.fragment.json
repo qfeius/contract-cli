@@ -1,0 +1,14 @@
+{
+  "auth": {
+    "darwin": "contract-cli auth device-login --profile contract --timeout 5m",
+    "linux": "contract-cli auth device-login --profile contract --timeout 5m",
+    "win32": "contract-cli.cmd auth device-login --profile contract --timeout 5m"
+  },
+  "authUrlDomain": "myaccount.qfei.cn",
+  "authWaitForExit": true,
+  "authDeviceFlow": {
+    "uriPattern": "(https://myaccount\\.qfei\\.cn/[^\\s\"<>]+)",
+    "defaultExpiresInSeconds": 300,
+    "codeEmbeddedInUri": true
+  }
+}

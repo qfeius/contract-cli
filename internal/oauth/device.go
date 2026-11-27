@@ -31,6 +31,7 @@ type DeviceAuthorizationResponse struct {
 	VerificationURI         string `json:"verification_uri"`
 	VerificationURIComplete string `json:"verification_uri_complete"`
 	ExpiresIn               int64  `json:"expires_in"`
+	Interval                int64  `json:"interval,omitempty"`
 }
 
 type DeviceTokenRequest struct {

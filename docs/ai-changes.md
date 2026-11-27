@@ -1,3 +1,29 @@
+## 2026-11-27 - WorkBuddy 适配提交与上架资料准备
+- 目标：GitHub qfeius/contract-cli 的 release，基线 985a2a2；不合入 blue，不修改原 auth login 或 init/complete 单次调用契约。
+- 验证：make release-check 全部通过，golangci-lint run --enable=exhaustive ./... 为 0 issues；真实授权与存储复查结果见适配说明。
+- 资料：单独生成 1.0.1 ZIP，包含当前 28 个 Skill 并保留动态安装；增加 device-login 能力检查，资料生成与安装模拟共 16 项通过。
+- 边界：不合并、不打 Tag、不发布 npm；上架按钮链路、双来源 Skill 去重及 Linux/Windows 仍需验收。
+
+## 2026-11-27 - WorkBuddy 本机真实授权验收
+- 产物：1.9.16-test.workbuddy.20261127.1 macOS arm64 npm 包，独立安装到 outputs/workbuddy-device-auth-test-20261127/install。
+- 配置：专用本机测试连接器使用独立 profile 和配置目录，保留 authDeviceFlow/authWaitForExit；不覆盖正式 CLI、原登录或现有 Skill。
+- 结果：WorkBuddy 5.3.14 任务前台执行 device-login，浏览器确认后退出 0；WorkBuddy 与 Codex 新进程均读到 authorized/user，测试包 SHA-256 通过，exhaustive lint 0 issues。
+- 边界：ZIP 解析通过，平台不执行 CLI 联通自测；任务内授权不是连接器按钮验收，未测客户端整体重启及其他平台，未提审/发布。
+
+## 2026-11-27 - WorkBuddy 授权进程保留兜底
+- 范围：连接器 auth.fragment.json、客户端调度回归、Makefile 和适配说明。
+- 决策：authDeviceFlow 外显式启用 authWaitForExit，覆盖未提供界面 onDeviceCode 回调的入口；不改变服务端或原授权流程。
+- 测试：先复现缺少回调时 URL 提取后提前杀进程，再验证两类入口等待结果、取消和非零退出；使用本机 WorkBuddy 调度方法及无网络真实子进程。
+- 边界：取消、超时、客户端崩溃仍可中断；未进行真实账号端到端授权，未更新已交付 ZIP 或发布。
+
+## 2026-11-27 - WorkBuddy 连接器设备码等待授权
+- 基线：github/release@985a2a2，新建 codex/workbuddy-device-auth-20261127；主工作区已有改动不动。
+- 范围：新增 auth device-login、连接器授权配置片段、帮助/Skill 指引及回归测试；复用现有 Device 授权、凭据锁与状态机。
+- 决策：CLI 按 interval 主动查询，slow_down 退避；不引入浏览器回调，终态/未知结果/取消停止；auth init/complete 单次行为不变。
+- 服务端：公开生产元数据已声明 Device Grant、token/refresh/revoke；无需新接口或回调，未操作真实登录或业务。
+- 验证：全量 go test -race -cover -parallel 1 ./... 通过，CLI 84.3%；Node 42 通过/3 平台跳过，exhaustive lint 0 issues，原生构建及帮助检查通过。
+- 边界：原凭据隔离不放宽，Linux 连接器跨重启仍需专项验证；需新 CLI 发布后才更新上架 ZIP 最低版本，未推送/发布。
+
 ## 2026-11-25 - 五个原始业务 Skill 合入 GitHub 生产 release
 - 基线：github/release@3530565；真实 merge 原始开发分支，不使用 blue 或其交付中间分支，不 cherry-pick。
 - 来源：contract-cooperation-chat@c8070e8、contract-sharev1-2@95b4df9、contract-submit@bac16e9、contract-process-person-replace@218dff7、contract-review-records@f5ede06。

@@ -85,6 +85,13 @@ Device Grant 一次授权同时包含合同与智审平台访问范围；本 Ski
 
 ## 快速流程
 
+### WorkBuddy 连接器托管授权
+
+- 仅 WorkBuddy 连接器的 `cli.json.auth` 调度 `contract-cli auth device-login --profile contract --timeout 5m`，并配置 `authDeviceFlow`。CLI 输出完整授权链接后按服务端间隔主动查询，不监听浏览器回调，也不自动打开浏览器。
+- 这不是普通 Agent 对话的默认授权方式。下面 `auth init` 展示后立即结束轮次、用户确认后只调用一次 `auth complete` 的规则保持不变，Agent 不得为绕开这些规则自行改用 `device-login`。
+- 连接器使用现有 Device CredentialStore、环境校验和登录复用。拒绝、过期、取消、存储失败或结果不确定时停止，不自动重新授权；只有明确同意后才可加 `--restart`。
+- 同一台机器能否跨任务复用仍以既有运行环境识别及 `credential_scope` 为准；新增命令不会把任务隔离凭据改为全局共享。连接器需使用与业务命令相同的配置目录和 profile。
+
 ### 豆包 / WorkBuddy / Codex Device 授权
 
 使用上一步选定的 profile，不在授权过程中重新初始化或切换地址：

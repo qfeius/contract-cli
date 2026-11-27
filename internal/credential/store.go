@@ -46,6 +46,7 @@ const (
 )
 
 type PendingTransaction struct {
+	PollIntervalSeconds     int64         `json:"poll_interval_seconds,omitempty"`
 	Status                  PendingStatus `json:"status,omitempty"`
 	DeviceCode              string        `json:"device_code"`
 	VerificationURIComplete string        `json:"verification_uri_complete,omitempty"`

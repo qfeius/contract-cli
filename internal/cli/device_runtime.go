@@ -85,7 +85,7 @@ func deviceCredentialScope(runtimeContext credential.DeviceRuntime) string {
 }
 
 // Called under the same lock as auth complete, refresh and logout.
-func (a *App) reuseDeviceAuthorization(ctx context.Context, profile config.Profile, store credential.Store, existing credential.DeviceCredential) (bool, error) {
+func (a *App) reuseDeviceAuthorization(ctx context.Context, profile config.Profile, store credential.Store, existing credential.DeviceCredential, emit func(deviceAuthOutput) error) (bool, error) {
 	if existing.Token == nil || existing.Token.AccessToken == "" {
 		return false, nil
 	}
@@ -111,7 +111,7 @@ func (a *App) reuseDeviceAuthorization(ctx context.Context, profile config.Profi
 		output.ExpiresAt = stored.Token.Expiry.Format(time.RFC3339)
 		output.ExpiresAtDisplay = formatDeviceAuthorizationExpiry(stored.Token.Expiry)
 	}
-	return true, a.writeDeviceAuthOutput(output)
+	return true, emit(output)
 }
 
 // A fresh config directory can recover the already-authorized scoped profile;
