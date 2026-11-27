@@ -522,6 +522,8 @@ func (a *App) runAuth(ctx context.Context, args []string) error {
 		return a.runAuthDeviceInit(ctx, args[1:])
 	case "complete":
 		return a.runAuthDeviceComplete(ctx, args[1:])
+	case "device-login":
+		return a.runAuthDeviceLogin(ctx, args[1:])
 	case "status":
 		return a.runAuthStatus(ctx, args[1:])
 	case "logout":

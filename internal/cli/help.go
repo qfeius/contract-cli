@@ -204,6 +204,7 @@ func helpRegistry() map[string]helpTopic {
 		{"contract-cli config add [flags]", "初始化或更新 profile"},
 		{"contract-cli auth init [flags]", "发起 Device 用户授权"},
 		{"contract-cli auth complete [flags]", "单次查询 Device 授权结果"},
+		{"contract-cli auth device-login [flags]", "连接器设备码登录并等待授权"},
 		{"contract-cli auth login [flags]", "登录 user 或 app 身份"},
 		{"contract-cli auth status [flags]", "查看授权状态"},
 		{"contract-cli auth logout [flags]", "登出指定身份"},
@@ -383,11 +384,24 @@ func addAuthHelp(registry map[string]helpTopic) {
 		Commands: []helpCommand{
 			{"contract-cli auth init [flags]", "发起 Device 用户授权"},
 			{"contract-cli auth complete [flags]", "单次查询 Device 授权结果"},
+			{"contract-cli auth device-login [flags]", "连接器设备码登录并等待授权"},
 			{"contract-cli auth login [flags]", "登录 user 或 app 身份"},
 			{"contract-cli auth status [flags]", "查看授权状态"},
 			{"contract-cli auth logout [flags]", "登出指定身份"},
 			{"contract-cli auth use [flags]", "切换默认业务身份"},
 		},
+	}
+	registry["auth device-login"] = helpTopic{
+		Name:    "auth device-login",
+		Summary: "供连接器调度的 Device Grant 登录：输出授权链接并按间隔主动查询，不使用浏览器回调。",
+		Usage:   []string{"contract-cli auth device-login [flags]"},
+		Flags: []helpFlag{
+			{"--profile <name>", "固定使用选定的生产 profile"},
+			{"--timeout <duration>", "最大等待时间，默认及上限为 5m"},
+			{"--restart", "仅在用户明确确认后替换旧 Device 会话"},
+		},
+		Examples: []string{"contract-cli auth device-login --profile contract --timeout 5m"},
+		Notes:    []string{"普通 Agent 对话继续使用 auth init/complete；仅授权等待模式持续查询。拒绝、过期、取消或结果不确定时停止，不自动重启。"},
 	}
 	registry["auth init"] = helpTopic{
 		Name:    "auth init",
